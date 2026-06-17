@@ -25,7 +25,7 @@
 
 use crate::fields::{CrustType, Lithology};
 use crate::grid::Topology;
-use crate::params::Params;
+use config::Params;
 use hexx::{Hex, HexOrientation, OffsetHexMode};
 use sim::Rng;
 use std::cmp::Ordering;

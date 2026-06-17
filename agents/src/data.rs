@@ -13,9 +13,9 @@
 //! skill values stay continuous, so `nutrition`, `gain`, and `cap` are floats.
 
 use bevy_ecs::prelude::Resource;
+use config::{Asset, Config};
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::path::Path;
 
 /// Index of a good (and of every inventory / stock `Vec`).
 pub type GoodId = usize;
@@ -213,54 +213,52 @@ pub struct Registry {
 }
 
 impl Registry {
-    /// The defaults shipped with the crate.
+    /// The defaults shipped with the crate — the bundled content set.
     pub fn bundled() -> Self {
-        Self::from_ron(DataFiles {
-            goods: include_str!("../data/goods.ron"),
-            skills: include_str!("../data/skills.ron"),
-            recipes: include_str!("../data/recipes.ron"),
-            traits: include_str!("../data/traits.ron"),
-            moods: include_str!("../data/moods.ron"),
-            predicates: include_str!("../data/predicates.ron"),
-            verbs: include_str!("../data/verbs.ron"),
-        })
-        .expect("bundled data is valid")
+        Self::load(&Config::bundled()).expect("bundled data is valid")
     }
 
-    /// Load every data RON file from a directory.
-    pub fn load(dir: impl AsRef<Path>) -> Result<Self, LoadError> {
-        let dir = dir.as_ref();
-        let read = |f: &str| std::fs::read_to_string(dir.join(f));
-        let (goods, skills, recipes, traits, moods, predicates, verbs) = (
-            read("goods.ron")?,
-            read("skills.ron")?,
-            read("recipes.ron")?,
-            read("traits.ron")?,
-            read("moods.ron")?,
-            read("predicates.ron")?,
-            read("verbs.ron")?,
-        );
-        Self::from_ron(DataFiles {
-            goods: &goods,
-            skills: &skills,
-            recipes: &recipes,
-            traits: &traits,
-            moods: &moods,
-            predicates: &predicates,
-            verbs: &verbs,
-        })
+    /// Load every data RON document from a [`Config`]'s content source (the
+    /// bundled defaults, a live directory, or a test set).
+    pub fn load(cfg: &Config) -> Result<Self, LoadError> {
+        // config does the byte-sourcing and RON parse into the DTO shapes; the
+        // resolution below (names → ids, cross-validation) is ours.
+        Self::resolve(
+            cfg.load(Asset::Goods)?,
+            cfg.load(Asset::Skills)?,
+            cfg.load(Asset::Recipes)?,
+            cfg.load(Asset::Traits)?,
+            cfg.load(Asset::Moods)?,
+            cfg.load(Asset::Predicates)?,
+            cfg.load(Asset::Verbs)?,
+        )
     }
 
-    /// Parse and resolve the RON documents.
+    /// Parse and resolve the RON documents (each field is one document's text).
     pub fn from_ron(files: DataFiles) -> Result<Self, LoadError> {
-        let goods: Vec<GoodDef> = ron::from_str(files.goods)?;
-        let skills: Vec<SkillDef> = ron::from_str(files.skills)?;
-        let traits: Vec<TraitDef> = ron::from_str(files.traits)?;
-        let moods: Vec<MoodDef> = ron::from_str(files.moods)?;
-        let predicates: Vec<String> = ron::from_str(files.predicates)?;
-        let verb_defs: Vec<VerbDef> = ron::from_str(files.verbs)?;
-        let raw: Vec<RecipeDef> = ron::from_str(files.recipes)?;
+        Self::resolve(
+            config::parse(files.goods)?,
+            config::parse(files.skills)?,
+            config::parse(files.recipes)?,
+            config::parse(files.traits)?,
+            config::parse(files.moods)?,
+            config::parse(files.predicates)?,
+            config::parse(files.verbs)?,
+        )
+    }
 
+    /// Resolve already-parsed definitions into the registry: intern each name to
+    /// a dense id and validate every cross-reference (a recipe naming an unknown
+    /// good/skill, a mood opposing an unknown mood) up front.
+    fn resolve(
+        goods: Vec<GoodDef>,
+        skills: Vec<SkillDef>,
+        raw: Vec<RecipeDef>,
+        traits: Vec<TraitDef>,
+        moods: Vec<MoodDef>,
+        predicates: Vec<String>,
+        verb_defs: Vec<VerbDef>,
+    ) -> Result<Self, LoadError> {
         let good_ids = index(goods.iter().map(|g| &g.name));
         let skill_ids = index(skills.iter().map(|s| &s.name));
         let trait_ids = index(traits.iter().map(|t| &t.name));
@@ -411,8 +409,7 @@ fn index<'a>(names: impl Iterator<Item = &'a String>) -> HashMap<String, usize> 
 /// Why loading game data failed.
 #[derive(Debug)]
 pub enum LoadError {
-    Io(std::io::Error),
-    Ron(ron::error::SpannedError),
+    Config(config::ConfigError),
     UnknownGood(String),
     UnknownSkill(String),
     UnknownTrait(String),
@@ -423,8 +420,7 @@ pub enum LoadError {
 impl std::fmt::Display for LoadError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            LoadError::Io(e) => write!(f, "reading game data: {e}"),
-            LoadError::Ron(e) => write!(f, "parsing game data: {e}"),
+            LoadError::Config(e) => write!(f, "loading game data: {e}"),
             LoadError::UnknownGood(n) => write!(f, "recipe refers to unknown good '{n}'"),
             LoadError::UnknownSkill(n) => write!(f, "recipe refers to unknown skill '{n}'"),
             LoadError::UnknownTrait(n) => write!(f, "trait/mood refers to unknown trait '{n}'"),
@@ -436,14 +432,9 @@ impl std::fmt::Display for LoadError {
 
 impl std::error::Error for LoadError {}
 
-impl From<std::io::Error> for LoadError {
-    fn from(e: std::io::Error) -> Self {
-        LoadError::Io(e)
-    }
-}
-impl From<ron::error::SpannedError> for LoadError {
-    fn from(e: ron::error::SpannedError) -> Self {
-        LoadError::Ron(e)
+impl From<config::ConfigError> for LoadError {
+    fn from(e: config::ConfigError) -> Self {
+        LoadError::Config(e)
     }
 }
 

@@ -14,19 +14,17 @@
 //! - [`grid`]   — addressing & adjacency ([`Topology`]) and the [`Buffered`]
 //!   double-buffer; no physics.
 //! - [`fields`] — the categorical tile qualities (crust, lithology).
-//! - [`params`] — every tunable constant in one [`Params`] struct.
 //! - [`worldgen`] — minimal initial world (plates → elevation → rock/ore).
 //! - [`world`]  — the [`World`] substrate that owns the fields and runs `Φ`.
 //! - [`rng`]    — a seedable [`SplitMix64`] so runs are reproducible.
 
 pub mod fields;
 pub mod grid;
-pub mod params;
 pub mod rng;
 pub mod world;
 pub mod worldgen;
 
+pub use config::Params;
 pub use grid::{Buffered, Coord, Topology};
-pub use params::Params;
 pub use rng::SplitMix64;
 pub use world::{Interaction, TileView, World};

@@ -1,7 +1,7 @@
 # Emergent Dialogue — the NPC's inner life, spoken
 
 > **Status: BUILT (2026-06).** All three layers are implemented in
-> `agents/src/dialogue.rs` (+ `data/intents.ron`, `data/grammar.ron`, the `ai::Input`
+> `agents/src/dialogue.rs` (+ `assets/data/intents.ron`, `assets/data/grammar.ron`, the `ai::Input`
 > extension, and the director's `Effect::Voice` hook), with the demo
 > (`agents/examples/dialogue_demo.rs`) and tests. The §8 build plan was executed in full;
 > what shipped vs. what is deferred is in §11 (added at build time). Read alongside
@@ -319,7 +319,7 @@ The §8 plan was executed in full. Specifics:
 
 - **The meaning layer reuses the IAUS scorer.** `ai::Input` gained the listener-relative
   axes `OpinionOf` / `GrievanceAgainst` / `SharedHistory` / `Prominence` (goals return `0`
-  for them). A conversational `Intent` (`data/intents.ron`, ~14 of them) is authored in the
+  for them). A conversational `Intent` (`assets/data/intents.ron`, ~14 of them) is authored in the
   `ConsiderationDef` idiom and scored by **`ai::score` verbatim** — *speaking is acting*.
   `Move`s (Turn/Stir/Sway/Grudge over Speaker|Listener) are the canon social consequence,
   applied in the tick. Which intent fires is emergent (vengeful→threaten, warm→confide,
@@ -329,7 +329,7 @@ The §8 plan was executed in full. Specifics:
   `MemRecord`s with importance + Ebbinghaus `strength` (rises on recall, fades otherwise);
   `SharedHistory` reads it; the referent is the most salient memory of the listener (a
   standing `Grievance` is the loudest). Per-soul, written for both parties.
-- **The surface is a generative grammar** (`data/grammar.ron`): a Tracery-style
+- **The surface is a generative grammar** (`assets/data/grammar.ron`): a Tracery-style
   symbol→productions map with `#recursion#` and `#speaker#`/`#listener#`/`#referent#`
   slots, keyed `act/affect` (mood-coloured) with a bare-`act` fallback, seeded by the
   dialogue RNG. Stable name epithets per entity. Composed, never a phrasebook.

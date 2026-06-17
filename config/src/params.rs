@@ -6,7 +6,8 @@
 //! gradient — expressed as simple constants. Elevation is in metres so the
 //! lapse rate is the familiar ~6.5 °C/km; temperatures are in °C.
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct Params {
     // --- Time ---
     /// Ticks in one orbit. One tick = one day, so 365 by default. Drives the

@@ -6,9 +6,9 @@ edition = "2024"
 [dependencies]
 bevy_ecs = { version = "0.18.1", features = ["multi_threaded"] }
 bevy_tasks = "0.18"
+config = { path = "../config" }
 game_sim = { path = "../game_sim" }
 pathfinding = "4.15"
-ron = "0.12.1"
 serde = { version = "1.0.228", features = ["derive"] }
 sim = { path = "../sim" }
 smallvec = "1"

@@ -82,115 +82,18 @@ const SPINES: [Register; 9] = [
     Register::Wonder,
 ];
 
-/// Knobs for the drama manager. Off by default, so a director-free world is unchanged.
+// Drama-manager knobs ([`DirectorConfig`]) live Bevy-free in the `config` crate;
+// re-exported here and wrapped in an ECS-resource newtype.
+pub use config::DirectorConfig;
+
+/// ECS-resource handle for the [`DirectorConfig`] knobs. Derefs to the config.
 #[derive(Resource, Clone, Debug)]
-pub struct DirectorConfig {
-    pub enabled: bool,
-    /// Ticks between beats — the cadence at which `Γ` pushes the story onward.
-    pub beat_interval: u64,
-    /// Hexes around the protagonist a beat's wake is watched (for attribution) and a
-    /// marvel/region disaster reaches by default.
-    pub reach: i32,
+pub struct DirectorRes(pub DirectorConfig);
 
-    /// The least **impact** (`drama × cast-fit`) a beat must reach for the director to
-    /// tell it. Below this, no castable beat is dramatic enough — so a peaceful,
-    /// provisioned, forgiving world `Γ` can find no leverage in falls **silent**. The
-    /// knob that makes the *world*, not a button, the thing that quiets the director.
-    pub impact_floor: f32,
-
-    /// Novelty heat added to a told beat (and its register/tags), and how fast it cools —
-    /// the diversity pressure that keeps the register rotating.
-    pub novelty_heat: f32,
-    pub novelty_cool: f32,
-    /// Sample among the top-`shortlist` scored beats, so the telling varies.
-    pub shortlist: usize,
-
-    /// How many threads run at once (decision #13: a few interleaved stories).
-    pub max_threads: usize,
-    /// Drama multiplier for **trunk** (betrayal/vengeance) beats, so betrayal dominates
-    /// *emergently* (decision #17) rather than by a hard rule.
-    pub trunk_bonus: f32,
-    /// Scoring multipliers: a beat that suits the active thread's phase is favoured; one
-    /// that doesn't is damped; one whose register *is* the thread's spine is favoured.
-    pub phase_match: f32,
-    pub phase_miss: f32,
-    pub spine_match: f32,
-    /// When a climax is **timed onto another thread's high** (a collision), this bonus,
-    /// fired with this probability.
-    pub collision_bonus: f32,
-    pub collision_chance: f32,
-
-    /// Attachment = `1 + prominence / prom_scale`. The audience's investment, manufactured.
-    pub prom_scale: f32,
-    /// Prominence trickled to every living soul each interval (mere presence), and the
-    /// fraction of all prominence that persists each interval (slow fade, so the
-    /// audience's attachment lingers past the avatar's death).
-    pub presence_gain: f32,
-    pub prominence_decay: f32,
-    /// Prominence a beat confers on each cast member (being *featured*), and the extra a
-    /// thread's *Setup* grooming confers on its chosen victim — *the game grooms your
-    /// affection on purpose.*
-    pub feature_gain: f32,
-    pub groom_gain: f32,
-    /// A prominence floor the protagonist is held to (the avatar is always somewhat the
-    /// audience's), and the ceiling all prominence is clamped to.
-    pub proto_seed: f32,
-    pub prom_cap: f32,
-    /// Heat a thread must bank before it ripens to a climax — scaled up by the lead's
-    /// prominence, so the most-invested figure gets the longest slow burn (variable
-    /// tempo, decision #18).
-    pub ripeness_base: f32,
-
-    /// Opinion past which someone casts as an Ally (warm) or a Foe (cold).
-    pub ally_threshold: f32,
-    pub foe_threshold: f32,
-    /// Sustenance/rest below which the protagonist reads as imperilled (ambient readout).
-    pub peril: f32,
-    /// EMA factor for the ambient tension readout (inspection only; not the objective).
-    pub tension_smoothing: f32,
-    /// Moral arithmetic: suffering per manufactured wound is scaled by this; grief per
-    /// death in a beat's wake; how long that wake is watched; the weight brighter affect
-    /// carries in the *staged-experience* total (suffering carries 1.0).
-    pub anguish_scale: f32,
-    pub grief_per_death: f32,
-    pub wake_ttl: u64,
-    pub bright_weight: f32,
-}
-
-impl Default for DirectorConfig {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            beat_interval: 14,
-            reach: 3,
-            impact_floor: 1.0,
-            novelty_heat: 2.0,
-            novelty_cool: 0.03,
-            shortlist: 3,
-            max_threads: 3,
-            trunk_bonus: 2.0,
-            phase_match: 1.6,
-            phase_miss: 0.6,
-            spine_match: 1.4,
-            collision_bonus: 1.7,
-            collision_chance: 0.5,
-            prom_scale: 1.5,
-            presence_gain: 0.006,
-            prominence_decay: 0.985,
-            feature_gain: 0.5,
-            groom_gain: 0.9,
-            proto_seed: 0.6,
-            prom_cap: 8.0,
-            ripeness_base: 2.0,
-            ally_threshold: 0.08,
-            foe_threshold: -0.08,
-            peril: 25.0,
-            tension_smoothing: 0.25,
-            anguish_scale: 1.0,
-            grief_per_death: 4.0,
-            wake_ttl: 24,
-            bright_weight: 0.3,
-        }
+impl std::ops::Deref for DirectorRes {
+    type Target = DirectorConfig;
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
@@ -631,7 +534,7 @@ fn pick_other(spine: Register, proto: Entity, cands: &[Cand], cfg: &DirectorConf
 pub(crate) fn director_step(
     mut commands: Commands,
     mut substrate: ResMut<Substrate>,
-    cfg: Res<DirectorConfig>,
+    cfg: Res<DirectorRes>,
     book: Res<BeatBook>,
     reg: Res<Registry>,
     mut features: ResMut<Features>,

@@ -1,0 +1,8 @@
+(
+    enabled: false,
+    cooldown: 6,
+    appeal_floor: 0.18,
+    memory_cap: 16,
+    forget_rate: 0.01,
+    echo_penalty: 0.5,
+)

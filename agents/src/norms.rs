@@ -29,8 +29,8 @@ use crate::data::{PredicateId, Registry, TraitId};
 use crate::goals::{ConditionDef, GoalError};
 use crate::plan::{Condition, PlanState};
 use bevy_ecs::prelude::Resource;
+use config::{Asset, Config};
 use serde::Deserialize;
-use std::path::Path;
 
 /// The deontic status a norm confers on its act.
 #[derive(Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
@@ -67,20 +67,25 @@ pub struct Norm {
 pub struct Norms(pub Vec<Norm>);
 
 impl Norms {
-    /// The defaults shipped with the crate (an empty `norms.ron` — no taboos unless
+    /// The defaults shipped with the crate (an empty norms set — no taboos unless
     /// a scenario authors them).
     pub fn bundled(reg: &Registry) -> Self {
-        Self::from_ron(include_str!("../data/norms.ron"), reg).expect("bundled norms are valid")
+        Self::load(&Config::bundled(), reg).expect("bundled norms are valid")
     }
 
-    /// Load `norms.ron` from a directory, resolving verb/predicate/trait names.
-    pub fn load(dir: impl AsRef<Path>, reg: &Registry) -> Result<Self, NormError> {
-        Self::from_ron(&std::fs::read_to_string(dir.as_ref().join("norms.ron"))?, reg)
+    /// Load the norms from a [`Config`]'s content source, resolving
+    /// verb/predicate/trait names.
+    pub fn load(cfg: &Config, reg: &Registry) -> Result<Self, NormError> {
+        Self::from_defs(cfg.load(Asset::Norms)?, reg)
     }
 
     /// Parse and resolve a norms document.
     pub fn from_ron(ron: &str, reg: &Registry) -> Result<Self, NormError> {
-        let defs: Vec<NormDef> = ron::from_str(ron)?;
+        Self::from_defs(config::parse(ron)?, reg)
+    }
+
+    /// Resolve already-parsed norm definitions against the registry.
+    fn from_defs(defs: Vec<NormDef>, reg: &Registry) -> Result<Self, NormError> {
         let norms = defs
             .into_iter()
             .map(|d| {
@@ -186,8 +191,7 @@ fn unit_weight() -> f32 {
 /// Why loading norms failed.
 #[derive(Debug)]
 pub enum NormError {
-    Io(std::io::Error),
-    Ron(ron::error::SpannedError),
+    Config(config::ConfigError),
     UnknownVerb(String),
     UnknownTrait(String),
     /// A `when` condition failed to resolve (unknown predicate/good/…).
@@ -197,8 +201,7 @@ pub enum NormError {
 impl std::fmt::Display for NormError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            NormError::Io(e) => write!(f, "reading norms: {e}"),
-            NormError::Ron(e) => write!(f, "parsing norms: {e}"),
+            NormError::Config(e) => write!(f, "loading norms: {e}"),
             NormError::UnknownVerb(n) => write!(f, "norm regulates unknown verb '{n}'"),
             NormError::UnknownTrait(n) => write!(f, "norm defied by unknown trait '{n}'"),
             NormError::Condition(e) => write!(f, "norm's `when`: {e}"),
@@ -206,14 +209,9 @@ impl std::fmt::Display for NormError {
     }
 }
 impl std::error::Error for NormError {}
-impl From<std::io::Error> for NormError {
-    fn from(e: std::io::Error) -> Self {
-        NormError::Io(e)
-    }
-}
-impl From<ron::error::SpannedError> for NormError {
-    fn from(e: ron::error::SpannedError) -> Self {
-        NormError::Ron(e)
+impl From<config::ConfigError> for NormError {
+    fn from(e: config::ConfigError) -> Self {
+        NormError::Config(e)
     }
 }
 

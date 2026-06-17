@@ -21,8 +21,8 @@ use crate::data::{PredicateId, Registry};
 use crate::norms::Norms;
 use crate::plan::{Condition, GoodSel, PlanState};
 use bevy_ecs::prelude::Resource;
+use config::{Asset, Config};
 use serde::Deserialize;
-use std::path::Path;
 
 /// An authored goal: the state of the world it wants true, and how appealing
 /// pursuing it is (utility considerations over the goal's deficit).
@@ -48,19 +48,24 @@ pub struct Goals(pub Vec<Goal>);
 pub const MIN_APPEAL: f32 = 1e-4;
 
 impl Goals {
-    /// The defaults shipped with the crate.
+    /// The defaults shipped with the crate — the bundled content set.
     pub fn bundled(reg: &Registry) -> Self {
-        Self::from_ron(include_str!("../data/goals.ron"), reg).expect("bundled goals are valid")
+        Self::load(&Config::bundled(), reg).expect("bundled goals are valid")
     }
 
-    /// Load `goals.ron` from a directory, resolving any good names against `reg`.
-    pub fn load(dir: impl AsRef<Path>, reg: &Registry) -> Result<Self, GoalError> {
-        Self::from_ron(&std::fs::read_to_string(dir.as_ref().join("goals.ron"))?, reg)
+    /// Load the goals from a [`Config`]'s content source, resolving any good
+    /// names against `reg`.
+    pub fn load(cfg: &Config, reg: &Registry) -> Result<Self, GoalError> {
+        Self::from_defs(cfg.load(Asset::Goals)?, reg)
     }
 
     /// Parse and resolve a goals document.
     pub fn from_ron(ron: &str, reg: &Registry) -> Result<Self, GoalError> {
-        let defs: Vec<GoalDef> = ron::from_str(ron)?;
+        Self::from_defs(config::parse(ron)?, reg)
+    }
+
+    /// Resolve already-parsed goal definitions against the registry.
+    fn from_defs(defs: Vec<GoalDef>, reg: &Registry) -> Result<Self, GoalError> {
         let goals = defs
             .into_iter()
             .map(|d| {
@@ -277,8 +282,7 @@ impl GoodSelDef {
 /// Why loading goals failed.
 #[derive(Debug)]
 pub enum GoalError {
-    Io(std::io::Error),
-    Ron(ron::error::SpannedError),
+    Config(config::ConfigError),
     UnknownGood(String),
     UnknownTrait(String),
     UnknownMood(String),
@@ -289,8 +293,7 @@ pub enum GoalError {
 impl std::fmt::Display for GoalError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            GoalError::Io(e) => write!(f, "reading goals: {e}"),
-            GoalError::Ron(e) => write!(f, "parsing goals: {e}"),
+            GoalError::Config(e) => write!(f, "loading goals: {e}"),
             GoalError::UnknownGood(n) => write!(f, "goal refers to unknown good '{n}'"),
             GoalError::UnknownTrait(n) => write!(f, "goal refers to unknown trait '{n}'"),
             GoalError::UnknownMood(n) => write!(f, "goal refers to unknown mood '{n}'"),
@@ -300,14 +303,9 @@ impl std::fmt::Display for GoalError {
     }
 }
 impl std::error::Error for GoalError {}
-impl From<std::io::Error> for GoalError {
-    fn from(e: std::io::Error) -> Self {
-        GoalError::Io(e)
-    }
-}
-impl From<ron::error::SpannedError> for GoalError {
-    fn from(e: ron::error::SpannedError) -> Self {
-        GoalError::Ron(e)
+impl From<config::ConfigError> for GoalError {
+    fn from(e: config::ConfigError) -> Self {
+        GoalError::Config(e)
     }
 }
 

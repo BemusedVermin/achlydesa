@@ -24,6 +24,7 @@ use crate::factions::Opinion;
 use crate::people::{Grievance, Mood, Needs, Npc, Personality};
 use crate::{Position, Substrate};
 use bevy_ecs::prelude::*;
+use config::{Asset, Bundled};
 use game_sim::SplitMix64;
 use serde::Deserialize;
 use sim::Rng;
@@ -159,18 +160,18 @@ impl ConsiderationDef {
     }
 }
 
-/// The whole repertoire of conversational intents — authored in `data/intents.ron`.
+/// The whole repertoire of conversational intents — authored in `assets/data/intents.ron`.
 #[derive(Resource, Clone, Debug, Default)]
 pub struct IntentBook(pub Vec<Intent>);
 
 impl IntentBook {
     pub fn bundled() -> Self {
-        Self::from_ron(include_str!("../data/intents.ron"), &Registry::bundled())
+        Self::from_ron(Bundled::get(Asset::Intents), &Registry::bundled())
             .expect("bundled intents are valid")
     }
 
     pub fn from_ron(ron: &str, reg: &Registry) -> Result<Self, String> {
-        let defs: Vec<IntentDef> = ron::from_str(ron).map_err(|e| e.to_string())?;
+        let defs: Vec<IntentDef> = config::parse(ron).map_err(|e| e.to_string())?;
         let mut out = Vec::with_capacity(defs.len());
         for d in defs {
             // Validate move names eagerly, like the beat book does.
@@ -193,25 +194,18 @@ impl IntentBook {
     }
 }
 
-/// Knobs for the dialogue layer. Off by default → a dialogue-free world is unchanged.
-#[derive(Resource, Clone, Debug)]
-pub struct DialogueConfig {
-    pub enabled: bool,
-    /// Ticks a speaker waits between utterances (so the world isn't a wall of chatter).
-    pub cooldown: u64,
-    /// The least appeal an intent must reach for an agent to bother saying it — below
-    /// this it has nothing worth saying (the conversational analogue of the impact floor).
-    pub appeal_floor: f32,
-    /// How many memories an NPC keeps; and how fast a memory's strength fades per tick.
-    pub memory_cap: usize,
-    pub forget_rate: f32,
-    /// Penalty to re-saying the same act to the same listener too soon (anti-repetition).
-    pub echo_penalty: f32,
-}
+// Dialogue knobs ([`DialogueConfig`]) live Bevy-free in the `config` crate;
+// re-exported here and wrapped in an ECS-resource newtype.
+pub use config::DialogueConfig;
 
-impl Default for DialogueConfig {
-    fn default() -> Self {
-        Self { enabled: false, cooldown: 6, appeal_floor: 0.18, memory_cap: 16, forget_rate: 0.01, echo_penalty: 0.5 }
+/// ECS-resource handle for the [`DialogueConfig`] knobs. Derefs to the config.
+#[derive(Resource, Clone, Debug)]
+pub struct DialogueRes(pub DialogueConfig);
+
+impl std::ops::Deref for DialogueRes {
+    type Target = DialogueConfig;
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
@@ -414,7 +408,7 @@ struct Cand {
 pub(crate) fn converse(
     mut commands: Commands,
     substrate: Res<Substrate>,
-    cfg: Res<DialogueConfig>,
+    cfg: Res<DialogueRes>,
     book: Res<IntentBook>,
     reg: Res<Registry>,
     director: Option<Res<crate::director::Director>>,
@@ -655,11 +649,11 @@ pub struct Grammar(HashMap<String, Vec<String>>);
 
 impl Grammar {
     pub fn bundled() -> Self {
-        Self::from_ron(include_str!("../data/grammar.ron")).expect("bundled grammar is valid RON")
+        Self::from_ron(Bundled::get(Asset::Grammar)).expect("bundled grammar is valid RON")
     }
 
     pub fn from_ron(ron: &str) -> Result<Self, String> {
-        ron::from_str(ron).map(Grammar).map_err(|e| e.to_string())
+        config::parse(ron).map(Grammar).map_err(|e| e.to_string())
     }
 
     /// Compose a line for an act + affect, filling the listener/speaker/referent slots.
@@ -860,7 +854,7 @@ pub fn repertoire(world: &World) -> Vec<String> {
 /// player who just addressed it). `None` if it has nothing worth saying. Cadence/cooldown
 /// is ignored: the soul was spoken to, and answers.
 pub fn reply(world: &mut World, speaker: Entity, listener: Entity) -> Option<Utterance> {
-    let floor = world.resource::<DialogueConfig>().appeal_floor;
+    let floor = world.resource::<DialogueRes>().appeal_floor;
     let (id, score) = available(world, speaker, listener).into_iter().next()?;
     if score < floor {
         return None;
@@ -944,7 +938,7 @@ pub fn perform(world: &mut World, speaker: Entity, listener: Entity, intent_id: 
     }
 
     // Phase 3 — render, remember, log.
-    let cap = world.resource::<DialogueConfig>().memory_cap;
+    let cap = world.resource::<DialogueRes>().memory_cap;
     let utt = world.resource_scope::<Dialogue, Utterance>(|_w, mut dlg| {
         let surface = dlg.render(intent.act, affect_bucket, &referent, &speaker_name, &listener_name);
         let importance = (intent.weight + if made_grudge { 0.6 } else { 0.0 }).min(2.0);

@@ -15,6 +15,7 @@
 //! beat to `beats.ron` and the director can tell it, with no Rust changes.
 
 use crate::data::Registry;
+use config::{Asset, Bundled};
 use serde::Deserialize;
 
 /// A role a beat casts from the protagonist's social world — Polti's *actants*. The
@@ -282,14 +283,14 @@ pub struct BeatBook(pub Vec<Beat>);
 impl BeatBook {
     /// The defaults shipped with the crate.
     pub fn bundled() -> Self {
-        let book = Self::from_ron(include_str!("../data/beats.ron")).expect("bundled beats are valid RON");
+        let book = Self::from_ron(Bundled::get(Asset::Beats)).expect("bundled beats are valid RON");
         book.validate(&Registry::bundled()).expect("bundled beats resolve against the bundled registry");
         book
     }
 
     /// Parse a beats document (names resolved lazily at enactment).
-    pub fn from_ron(ron: &str) -> Result<Self, ron::error::SpannedError> {
-        Ok(BeatBook(ron::from_str(ron)?))
+    pub fn from_ron(ron: &str) -> Result<Self, config::ConfigError> {
+        Ok(BeatBook(config::parse(ron)?))
     }
 
     /// Fail fast on any trait / mood name a beat refers to that the registry doesn't

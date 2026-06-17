@@ -63,7 +63,7 @@ WWN's four point-of-interest categories and is fleshed out by two WWN tags (Enem
 Complications / Things / Places).
 
 > **Implemented** in the agent layer (`agents/src/features.rs`, catalog in
-> `agents/data/features.ron`). A hex carries at most one feature per category, so up to four
+> `assets/data/features.ron`). A hex carries at most one feature per category, so up to four
 > stack on a tile (a city, its royal court, the catacombs beneath, a wonder nearby). Each
 > kind's *Favoured by* is authored as **suitability terms** — a tile `Signal` read through the
 > same response `Curve` the agent utility scorer uses — combined as a compensated product, so

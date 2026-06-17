@@ -30,7 +30,6 @@ use crate::plan::{Affordance, AffordEffect, Deed, Facts, MarketSnapshot, Need, P
 use crate::{Position, Substrate};
 use bevy_ecs::prelude::*;
 use game_sim::{Coord, SplitMix64, Topology, World as GameWorld};
-use serde::Deserialize;
 use sim::Rng;
 use std::collections::{HashMap, HashSet, VecDeque};
 
@@ -246,55 +245,32 @@ pub(crate) fn regen_affordances(mut affordances: ResMut<WorldAffordances>) {
 }
 
 // --- Global config (knobs only — no per-good/recipe/skill data) ---
+// The config *data* ([`EconConfig`]/[`NeedsConfig`]) lives Bevy-free in the
+// `config` crate; here we re-export it and wrap the two systems read as ECS
+// resources in thin newtypes (so the engine never touches the config types).
 
-/// Global economic behaviour. Per-good prices, per-recipe yields, and per-skill
-/// learning rates all live in the registry; this holds only economy-wide knobs.
-#[derive(Resource, Clone, Debug, Deserialize)]
-pub struct EconConfig {
-    /// Price clamp as a fraction of a good's base price.
-    pub price_floor_frac: f32,
-    pub price_ceil_frac: f32,
-    /// Whole units moved per trade.
-    pub trade_lot: u32,
-    /// How fast a market's `price_basis` chases its real stock each tick (`0..1`):
-    /// `1` = no smoothing (price tracks stock instantly, the old cobweb-prone
-    /// behaviour), smaller = more inertia. Damps synchronized over/under-production.
-    #[serde(default = "default_price_smoothing")]
-    pub price_smoothing: f32,
-}
+pub use config::{EconConfig, NeedsConfig};
 
-fn default_price_smoothing() -> f32 {
-    0.15
-}
+/// ECS-resource handle for the [`EconConfig`] knobs. Derefs to the config, so
+/// systems read `econ.price_floor_frac` exactly as before.
+#[derive(Resource, Clone, Debug)]
+pub struct EconRes(pub EconConfig);
 
-impl Default for EconConfig {
-    fn default() -> Self {
-        Self { price_floor_frac: 0.1, price_ceil_frac: 10.0, trade_lot: 5, price_smoothing: default_price_smoothing() }
+impl std::ops::Deref for EconRes {
+    type Target = EconConfig;
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
-/// Global need behaviour.
-#[derive(Resource, Clone, Debug, Deserialize)]
-pub struct NeedsConfig {
-    pub initial_sustenance: f32,
-    pub initial_rest: f32,
-    pub hunger_rate: f32,
-    pub fatigue_rate: f32,
-    pub rest_recovery: f32,
-    /// Sustenance from grazing the tile — the subsistence floor.
-    pub eat_grass_relief: f32,
-}
+/// ECS-resource handle for the [`NeedsConfig`] knobs.
+#[derive(Resource, Clone, Debug)]
+pub struct NeedsRes(pub NeedsConfig);
 
-impl Default for NeedsConfig {
-    fn default() -> Self {
-        Self {
-            initial_sustenance: 60.0,
-            initial_rest: 60.0,
-            hunger_rate: 2.0,
-            fatigue_rate: 1.5,
-            rest_recovery: 20.0,
-            eat_grass_relief: 9.0,
-        }
+impl std::ops::Deref for NeedsRes {
+    type Target = NeedsConfig;
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
@@ -433,8 +409,8 @@ pub(crate) fn people_plan(
     markets: Query<(&Position, &Market), Without<Npc>>,
     substrate: Res<Substrate>,
     reg: Res<Registry>,
-    econ: Res<EconConfig>,
-    needs_cfg: Res<NeedsConfig>,
+    econ: Res<EconRes>,
+    needs_cfg: Res<NeedsRes>,
     goals: Res<Goals>,
     norms: Res<Norms>,
     move_graph: Res<MoveGraph>,
@@ -618,8 +594,8 @@ pub(crate) fn people_execute(
     mut markets: Query<(Entity, &Position, &mut Market), Without<Npc>>,
     mut substrate: ResMut<Substrate>,
     reg: Res<Registry>,
-    econ: Res<EconConfig>,
-    needs_cfg: Res<NeedsConfig>,
+    econ: Res<EconRes>,
+    needs_cfg: Res<NeedsRes>,
     mut world_affordances: ResMut<WorldAffordances>,
     mut throne: Option<ResMut<Throne>>,
     mut events: ResMut<EventQueue>,
@@ -868,7 +844,7 @@ pub(crate) fn mood_decay(mut people: Query<&mut Mood, With<Npc>>, reg: Res<Regis
 pub(crate) fn people_metabolism(
     mut commands: Commands,
     mut npcs: Query<(Entity, &mut Needs), With<Npc>>,
-    cfg: Res<NeedsConfig>,
+    cfg: Res<NeedsRes>,
     mut throne: Option<ResMut<Throne>>,
 ) {
     for (entity, mut needs) in &mut npcs {
@@ -971,7 +947,7 @@ pub(crate) fn spawn_markets(
 /// the lag that turns a sudden glut or run into a gradual price move instead of a
 /// whipsaw, damping the synchronized boom-bust (cobweb) the price-from-stock rule
 /// is otherwise prone to. Runs after trades settle, so next tick prices the new stock.
-pub(crate) fn smooth_prices(mut markets: Query<&mut Market, Without<Npc>>, econ: Res<EconConfig>) {
+pub(crate) fn smooth_prices(mut markets: Query<&mut Market, Without<Npc>>, econ: Res<EconRes>) {
     let alpha = econ.price_smoothing.clamp(0.0, 1.0);
     for mut m in &mut markets {
         let Market { stock, price_basis, .. } = &mut *m;
@@ -1148,7 +1124,7 @@ mod tests {
         // gap to real stock, so a sudden glut/run moves the price gradually, not in a
         // whipsaw — converging without overshoot.
         let mut world = World::new();
-        world.insert_resource(EconConfig::default()); // smoothing 0.15
+        world.insert_resource(EconRes(EconConfig::default())); // smoothing 0.15
         let e = world.spawn(Market { stock: vec![100], money: 0, price_basis: vec![0.0] }).id();
         let mut sched = Schedule::default();
         sched.add_systems(smooth_prices);

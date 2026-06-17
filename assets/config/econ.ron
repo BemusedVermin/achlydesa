@@ -1,0 +1,6 @@
+(
+    price_floor_frac: 0.1,
+    price_ceil_frac: 10.0,
+    trade_lot: 5,
+    price_smoothing: 0.15,
+)

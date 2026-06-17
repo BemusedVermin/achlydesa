@@ -1,0 +1,18 @@
+(
+    initial_energy: 50.0,
+    metabolism: 0.3,
+    intake: 0.8,
+    eat_rate: 8.0,
+    repro_threshold: 80.0,
+    repro_cost: 40.0,
+    herd_cap: 5,
+    herd_cohesion: 3.0,
+    carn_initial_energy: 60.0,
+    carn_metabolism: 0.55,
+    carn_attack: 0.5,
+    carn_handling: 1.2,
+    carn_energy_per_kill: 18.0,
+    carn_repro_threshold: 170.0,
+    carn_repro_cost: 80.0,
+    carn_prey_refuge: 2,
+)

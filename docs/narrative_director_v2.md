@@ -1,7 +1,7 @@
 # The Narrative Director, v2 — Multi-Thread Drama Manager (implementation design)
 
 > **Status: BUILT (2026-06).** This spec is now implemented in `agents/src/director.rs`
-> + `beats.rs` + `data/beats.ron` + `data/moods.ron`, with the demo
+> + `beats.rs` + `assets/data/beats.ron` + `assets/data/moods.ron`, with the demo
 > (`agents/examples/director_demo.rs`) and tests proving the machinery. The v1 selection
 > core (a single tension arc) has been **replaced** by the thread-driven drama objective
 > below. What shipped vs. what remains game-layer/future is recorded in §10 (added at
@@ -238,7 +238,7 @@ medium — and the one form of vengeance that *breaks* the cycle instead of feed
   **Demiurge myth** as data; broadened **registers** (romance, triumph/acclaim,
   **wonder wired to the Features/`Known` discovery layer**, reunion, bittersweet
   sacrifice, redemption) + the **moods** they need (likely add `awe`, `hope`, `love` to
-  `data/moods.ron`); the **"staged experience"** generalization of the metric (joy
+  `assets/data/moods.ron`); the **"staged experience"** generalization of the metric (joy
   counted, suffering weighted heaviest; internal truth, not shown).
 - **Game layer / future (needs a real player):** the *felt* manipulation; the reveal's
   payoff (layer 3); validating discoverability in playtest (§9.1). Headless, prove the
@@ -254,8 +254,8 @@ medium — and the one form of vengeance that *breaks* the cycle instead of feed
 Evolve the existing files; preserve determinism (seeded `DirectorRng`), the off-by-
 default switch (director-free worlds byte-identical), and the V&V invariants.
 
-1. **Registers + moods + beats.** Add `awe`/`hope`/`love` moods (`data/moods.ron`); add
-   positive/other-register beats to `data/beats.ron` (romance, triumph/acclaim,
+1. **Registers + moods + beats.** Add `awe`/`hope`/`love` moods (`assets/data/moods.ron`); add
+   positive/other-register beats to `assets/data/beats.ron` (romance, triumph/acclaim,
    `a_marvel_revealed` tied to Features/`Known`, reunion, sacrifice, redemption); tag
    every beat with its register + a `stakes` hint. Add any `Effect`/`Role` the new beats
    need (e.g. a `Reveal`/discovery effect; a `Pair`/`Bless` effect; richer roles —
@@ -287,7 +287,7 @@ default switch (director-free worlds byte-identical), and the V&V invariants.
   `Pre{Exists,TraitAtLeast,TraitAtMost,MoodAtLeast,HasGrudge,HoldsThrone,InFaction,
   AtWar,VictimNearby}`, `Effect{Grudge,Sway,Stir,Turn,Decree,War,Disaster,Afflict}`,
   `Beat{id,tags,tension,weight,cast,pre,effects}`, `BeatBook` (RON + `validate(reg)`).
-- `agents/data/beats.ron` — ~23 beats incl. quality-chained (crown→tyrant→revolt;
+- `assets/data/beats.ron` — ~23 beats incl. quality-chained (crown→tyrant→revolt;
   loss→grief→vendetta; succession; war-weariness). All-tragedy/conflict so far — the
   thing §8/#8 broadens.
 - `agents/src/director.rs` — `DirectorConfig` (incl. `impact_floor`), `Director`
@@ -320,7 +320,7 @@ The §8 plan was executed in full. Specifics worth remembering:
 - **Registers & moods.** `Register` (Betrayal, Vengeance, Ambition, Persecution, War,
   Disaster, Loss, Romance, Triumph, Wonder, Reunion, Sacrifice, Redemption, Relief) and
   `Phase` (Setup/Rising/Climax/Fall) added to `beats.rs`; `Beat` gained `register`,
-  `phases`, `stakes`. Moods `awe`/`hope`/`love` added to `data/moods.ron` (rest at 0 →
+  `phases`, `stakes`. Moods `awe`/`hope`/`love` added to `assets/data/moods.ron` (rest at 0 →
   existing seeded worlds byte-identical). New beats: romance (`a_kindred_spirit`,
   `a_courtship_blooms`), triumph (`a_triumph_acclaimed`), wonder (`a_marvel_revealed`
   wired to the `Features`/`Known` discovery layer via the new `Effect::Reveal`; the myth

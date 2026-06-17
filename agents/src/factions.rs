@@ -144,71 +144,18 @@ impl Factions {
     }
 }
 
-/// Faction-turn knobs.
-#[derive(Resource, Clone, Copy, Debug)]
-pub struct FactionConfig {
-    /// Ticks between faction turns — factions act on a slower clock than people.
-    pub period: u64,
-    /// Members a court needs before it counts as a faction at all.
-    pub min_members: usize,
-    /// How far (hexes) a court's pull reaches to recruit.
-    pub reach: i32,
-    /// Most factions one person may belong to at once.
-    pub max_factions: usize,
-    /// Size of an oligarchy's ruling council.
-    pub council_size: usize,
-    /// Fraction of a member's coin its leader levies each faction turn (scaled by the
-    /// government). Paid to a leader personally, so money is conserved — it flows up.
-    pub tax_rate: f32,
-    /// Loyalty lost per unit of effective tax — the resentment tribute breeds.
-    pub tax_pain: f32,
-    /// Loyalty a person rests at (and joins a new faction at).
-    pub loyalty_base: f32,
-    /// Per-turn pull of loyalty back toward baseline.
-    pub loyalty_decay: f32,
-    /// How much pride in a strong bloc (high Force) raises loyalty.
-    pub strength_pride: f32,
-    /// How much loyalty bends a member toward (and, soured, off) its current faction.
-    pub loyalty_inertia: f32,
-    /// Force ratio above which the stronger of two neighbouring factions declares war.
-    pub war_force_ratio: f32,
-    /// Ticks a detained law-breaker is held.
-    pub detain_ticks: u32,
-    /// Force a faction needs to *execute* (not merely detain) a repeat law-breaker.
-    pub execute_force: f32,
-    /// How fast a person's opinion of a leader it serves moves toward how it feels about
-    /// the bloc (its loyalty).
-    pub opinion_gain: f32,
-    /// Opinion lost toward an enemy leader each turn at war.
-    pub war_enmity: f32,
-    /// Per-turn fade of every opinion toward indifference.
-    pub opinion_decay: f32,
-    /// How much opinion of a court's leader bends a person toward (or off) joining it.
-    pub opinion_weight: f32,
-}
+// Faction-turn knobs ([`FactionConfig`]) live Bevy-free in the `config` crate;
+// re-exported here and wrapped in an ECS-resource newtype.
+pub use config::FactionConfig;
 
-impl Default for FactionConfig {
-    fn default() -> Self {
-        Self {
-            period: 20,
-            min_members: 3,
-            reach: 6,
-            max_factions: 2,
-            council_size: 3,
-            tax_rate: 0.05,
-            tax_pain: 1.5,
-            loyalty_base: 0.5,
-            loyalty_decay: 0.1,
-            strength_pride: 0.15,
-            loyalty_inertia: 1.2,
-            war_force_ratio: 2.0,
-            detain_ticks: 30,
-            execute_force: 8.0,
-            opinion_gain: 0.2,
-            war_enmity: 0.25,
-            opinion_decay: 0.05,
-            opinion_weight: 0.6,
-        }
+/// ECS-resource handle for the [`FactionConfig`] knobs. Derefs to the config.
+#[derive(Resource, Clone, Copy, Debug)]
+pub struct FactionRes(pub FactionConfig);
+
+impl std::ops::Deref for FactionRes {
+    type Target = FactionConfig;
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
@@ -312,7 +259,7 @@ pub(crate) fn faction_turn(
     catalog: Option<Res<FeatureCatalog>>,
     features: Option<Res<Features>>,
     reg: Res<Registry>,
-    config: Res<FactionConfig>,
+    config: Res<FactionRes>,
     mut factions: ResMut<Factions>,
     mut npcs: Query<
         (

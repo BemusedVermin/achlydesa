@@ -137,7 +137,7 @@ separate substream), a starting larder, and an endowment of coins. Optional scen
 hooks add ambition, feuds, vassals, and a throne.
 
 ### 3.2 Input data
-All content is authored RON in `agents/data/` and loaded into the `Registry` /
+All content is authored RON in `assets/data/` and loaded into the `Registry` /
 catalogs: `goods`, `recipes`, `skills`, `traits`, `moods`, `predicates`, `verbs`,
 `norms`, `appraisals`, `goals`, and `features` (with their suitability and
 affordances). Adding a good, recipe, goal, norm, or feature is a data edit — no Rust.

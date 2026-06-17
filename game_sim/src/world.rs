@@ -48,8 +48,8 @@
 //! direction-tagged neighbour links from [`crate::grid`].
 
 use crate::grid::{Buffered, Coord, Topology};
-use crate::params::Params;
 use crate::rng::SplitMix64;
+use config::Params;
 use crate::worldgen::{self, Generated};
 use crate::fields::{CrustType, Lithology, Pft};
 use sim::{Rng, Substrate};

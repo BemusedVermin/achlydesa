@@ -6,7 +6,7 @@
 //! city, the royal court that rules from it, the catacombs beneath it, and a
 //! wonder nearby. "Multiple landmarks on one hex," exactly as the design intends.
 //!
-//! Everything here is **authored data** ([`data/features.ron`](../data/features.ron)):
+//! Everything here is **authored data** (`assets/data/features.ron`):
 //! the catalog of feature kinds, each with a category, a [`Discovery`] tier, and a
 //! **suitability** — a list of [`Term`]s that read tile [`Signal`]s through the
 //! same response [`Curve`](crate::ai::Curve) the agent utility scorer uses. Add a
@@ -30,11 +30,11 @@
 use crate::ai::Curve;
 use bevy_ecs::prelude::Resource;
 use game_sim::fields::Pft;
+use config::{Asset, Config};
 use game_sim::{Coord, SplitMix64, Topology, World as GameWorld};
 use serde::Deserialize;
 use sim::Rng;
 use std::collections::VecDeque;
-use std::path::Path;
 
 /// Index of a feature kind in the [`FeatureCatalog`].
 pub type FeatureId = usize;
@@ -247,20 +247,19 @@ pub struct FeatureCatalog {
 }
 
 impl FeatureCatalog {
-    /// The defaults shipped with the crate.
+    /// The defaults shipped with the crate — the bundled content set.
     pub fn bundled() -> Self {
-        Self::from_ron(include_str!("../data/features.ron")).expect("bundled features are valid")
+        Self::load(&Config::bundled()).expect("bundled features are valid")
     }
 
-    /// Load the catalog from `features.ron` in a directory.
-    pub fn load(dir: impl AsRef<Path>) -> Result<Self, FeatureError> {
-        let s = std::fs::read_to_string(dir.as_ref().join("features.ron"))?;
-        Ok(Self::from_ron(&s)?)
+    /// Load the catalog from a [`Config`]'s content source.
+    pub fn load(cfg: &Config) -> Result<Self, FeatureError> {
+        Ok(Self { defs: cfg.load(Asset::Features)? })
     }
 
     /// Parse a catalog from RON text.
-    pub fn from_ron(s: &str) -> Result<Self, ron::error::SpannedError> {
-        Ok(Self { defs: ron::from_str(s)? })
+    pub fn from_ron(s: &str) -> Result<Self, config::ConfigError> {
+        Ok(Self { defs: config::parse(s)? })
     }
 
     pub fn def(&self, id: FeatureId) -> &FeatureDef {
@@ -296,31 +295,14 @@ impl Default for FeatureCatalog {
     }
 }
 
-/// Global placement knobs (no per-feature data — that lives in the catalog).
-#[derive(Resource, Clone, Copy, Debug)]
-pub struct FeatureConfig {
-    /// Per-category multiplier on placement rate (index by [`Category::idx`]).
-    pub density: [f32; Category::COUNT],
-    /// Minimum hexes between communities — the inhibition radius that spaces
-    /// settlements out (anti-clumping). `0` disables spacing.
-    pub community_spacing: u32,
-    /// Hexes over which [`Signal::Remoteness`] saturates to `1`.
-    pub remoteness_scale: f32,
-    /// Exponent biasing the weighted choice toward the best-fitting kind (higher =
-    /// more decisive).
-    pub sharpness: f32,
-}
+// Feature-placement knobs ([`FeatureConfig`]) live Bevy-free in the `config`
+// crate; re-exported here. It's passed to [`place`] by reference (never stored
+// as an ECS resource), so it needs no newtype. Its `density` array is fixed at
+// `FEATURE_CATEGORY_COUNT`, which must equal our [`Category`] count — asserted
+// at compile time below so the two can never drift.
+pub use config::FeatureConfig;
 
-impl Default for FeatureConfig {
-    fn default() -> Self {
-        Self {
-            density: [1.0; Category::COUNT],
-            community_spacing: 3,
-            remoteness_scale: 8.0,
-            sharpness: 3.0,
-        }
-    }
-}
+const _: () = assert!(Category::COUNT == config::tunables::FEATURE_CATEGORY_COUNT);
 
 /// Suitability of a feature here: a compensated product of its terms (mirroring
 /// the IAUS makeup factor in [`ai::score`](crate::ai::score), so feature fit and
@@ -530,29 +512,22 @@ fn fill_remoteness(
 /// Why loading a feature catalog failed.
 #[derive(Debug)]
 pub enum FeatureError {
-    Io(std::io::Error),
-    Ron(ron::error::SpannedError),
+    Config(config::ConfigError),
 }
 
 impl std::fmt::Display for FeatureError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            FeatureError::Io(e) => write!(f, "reading features: {e}"),
-            FeatureError::Ron(e) => write!(f, "parsing features: {e}"),
+            FeatureError::Config(e) => write!(f, "loading features: {e}"),
         }
     }
 }
 
 impl std::error::Error for FeatureError {}
 
-impl From<std::io::Error> for FeatureError {
-    fn from(e: std::io::Error) -> Self {
-        FeatureError::Io(e)
-    }
-}
-impl From<ron::error::SpannedError> for FeatureError {
-    fn from(e: ron::error::SpannedError) -> Self {
-        FeatureError::Ron(e)
+impl From<config::ConfigError> for FeatureError {
+    fn from(e: config::ConfigError) -> Self {
+        FeatureError::Config(e)
     }
 }
 

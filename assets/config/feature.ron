@@ -1,0 +1,6 @@
+(
+    density: (1.0, 1.0, 1.0, 1.0),
+    community_spacing: 3,
+    remoteness_scale: 8.0,
+    sharpness: 3.0,
+)

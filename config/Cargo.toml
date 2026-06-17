@@ -1,0 +1,12 @@
+[package]
+name = "config"
+version = "0.1.0"
+edition = "2024"
+
+# The project's configuration hub. Bevy-free by design — it deals in plain data
+# and serde, never the ECS. It owns the project's serialization format (RON) so
+# no other crate has to.
+[dependencies]
+figment = "0.10"
+ron = "0.12.1"
+serde = { version = "1.0.228", features = ["derive"] }

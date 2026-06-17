@@ -11,9 +11,9 @@
 use crate::data::{MoodId, Registry, TraitId};
 use crate::people::{Mood, Npc, Personality};
 use bevy_ecs::prelude::*;
+use config::{Asset, Config};
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::path::Path;
 
 /// Something significant that happened to an agent, awaiting appraisal.
 #[derive(Clone, Copy, Debug)]
@@ -58,19 +58,24 @@ struct EventEffects {
 pub struct Appraisals(HashMap<String, EventEffects>);
 
 impl Appraisals {
-    /// The defaults shipped with the crate.
+    /// The defaults shipped with the crate — the bundled content set.
     pub fn bundled(reg: &Registry) -> Self {
-        Self::from_ron(include_str!("../data/appraisals.ron"), reg).expect("bundled appraisals are valid")
+        Self::load(&Config::bundled(), reg).expect("bundled appraisals are valid")
     }
 
-    /// Load `appraisals.ron` from a directory, resolving trait names against `reg`.
-    pub fn load(dir: impl AsRef<Path>, reg: &Registry) -> Result<Self, AppraisalError> {
-        Self::from_ron(&std::fs::read_to_string(dir.as_ref().join("appraisals.ron"))?, reg)
+    /// Load the appraisals from a [`Config`]'s content source, resolving trait
+    /// names against `reg`.
+    pub fn load(cfg: &Config, reg: &Registry) -> Result<Self, AppraisalError> {
+        Self::from_defs(cfg.load(Asset::Appraisals)?, reg)
     }
 
     /// Parse and resolve an appraisals document.
     pub fn from_ron(ron: &str, reg: &Registry) -> Result<Self, AppraisalError> {
-        let defs: Vec<AppraisalDef> = ron::from_str(ron)?;
+        Self::from_defs(config::parse(ron)?, reg)
+    }
+
+    /// Resolve already-parsed appraisal definitions against the registry.
+    fn from_defs(defs: Vec<AppraisalDef>, reg: &Registry) -> Result<Self, AppraisalError> {
         let mut map = HashMap::new();
         for d in defs {
             let traits = d
@@ -141,29 +146,22 @@ pub(crate) fn appraise(
 /// Why loading appraisals failed.
 #[derive(Debug)]
 pub enum AppraisalError {
-    Io(std::io::Error),
-    Ron(ron::error::SpannedError),
+    Config(config::ConfigError),
     UnknownTrait(String),
     UnknownMood(String),
 }
 impl std::fmt::Display for AppraisalError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            AppraisalError::Io(e) => write!(f, "reading appraisals: {e}"),
-            AppraisalError::Ron(e) => write!(f, "parsing appraisals: {e}"),
+            AppraisalError::Config(e) => write!(f, "loading appraisals: {e}"),
             AppraisalError::UnknownTrait(n) => write!(f, "appraisal refers to unknown trait '{n}'"),
             AppraisalError::UnknownMood(n) => write!(f, "appraisal refers to unknown mood '{n}'"),
         }
     }
 }
 impl std::error::Error for AppraisalError {}
-impl From<std::io::Error> for AppraisalError {
-    fn from(e: std::io::Error) -> Self {
-        AppraisalError::Io(e)
-    }
-}
-impl From<ron::error::SpannedError> for AppraisalError {
-    fn from(e: ron::error::SpannedError) -> Self {
-        AppraisalError::Ron(e)
+impl From<config::ConfigError> for AppraisalError {
+    fn from(e: config::ConfigError) -> Self {
+        AppraisalError::Config(e)
     }
 }

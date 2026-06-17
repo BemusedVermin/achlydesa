@@ -7,7 +7,7 @@
 //! economy is defined entirely by authored [`data`] (goods and recipes in RON).
 //!
 //! ## Configuration, deliberately separated
-//! - **Authored data** ([`Registry`]) — goods, recipes, skills. Edit `data/*.ron`.
+//! - **Authored data** ([`Registry`]) — goods, recipes, skills. Edit `assets/data/*.ron`.
 //! - **Global knobs** ([`EconConfig`], [`NeedsConfig`], [`FaunaConfig`]) — rates
 //!   and scales that apply to the whole economy, nothing instance-specific.
 //! - **Scenario** ([`Setup`]) — one run: world size, seed, **warm-up**,
@@ -19,7 +19,7 @@
 
 use bevy_ecs::prelude::*;
 use bevy_ecs::schedule::ExecutorKind;
-use game_sim::{Params, SplitMix64, World as GameWorld};
+use game_sim::{SplitMix64, World as GameWorld};
 use sim::Substrate as SubstrateTrait;
 
 pub mod ai;
@@ -177,9 +177,9 @@ impl Default for Setup {
             initial_market_stock: 25,
             market_money: 80_000,
             registry: Registry::bundled(),
-            econ: EconConfig::default(),
-            needs: NeedsConfig::default(),
-            fauna_cfg: FaunaConfig::default(),
+            econ: config::tunables::econ(),
+            needs: config::tunables::needs(),
+            fauna_cfg: config::tunables::fauna(),
             goals: Goals::default(),
             norms: Norms::default(),
             appraisals: Appraisals::default(),
@@ -190,13 +190,13 @@ impl Default for Setup {
             professions_per_agent: 1,
             initial_skill: 0.5,
             features: FeatureCatalog::default(),
-            feature_cfg: FeatureConfig::default(),
-            faction_cfg: FactionConfig::default(),
+            feature_cfg: config::tunables::feature(),
+            faction_cfg: config::tunables::faction(),
             markets_on_settlements: false,
             director: false,
-            director_cfg: DirectorConfig::default(),
+            director_cfg: config::tunables::director(),
             dialogue: false,
-            dialogue_cfg: DialogueConfig::default(),
+            dialogue_cfg: config::tunables::dialogue(),
         }
     }
 }
@@ -218,7 +218,7 @@ impl Simulation {
         // result is identical regardless of how work is split across threads.
         bevy_tasks::ComputeTaskPool::get_or_init(bevy_tasks::TaskPool::default);
 
-        let mut substrate = GameWorld::generate(setup.width, setup.height, Params::default(), setup.seed);
+        let mut substrate = GameWorld::generate(setup.width, setup.height, config::tunables::params(), setup.seed);
         let mut rng = SplitMix64::new(setup.seed ^ 0x9E37_79B9_7F4A_7C15);
         for _ in 0..setup.warmup {
             substrate.evolve(&mut rng);
@@ -300,7 +300,7 @@ impl Simulation {
         } else {
             beats::BeatBook::default()
         };
-        world.insert_resource(director_cfg);
+        world.insert_resource(director::DirectorRes(director_cfg));
         world.insert_resource(beat_book);
         // The director draws its variety from a dedicated, seeded stream so a story is
         // deterministic yet not the same every beat.
@@ -313,7 +313,7 @@ impl Simulation {
         let mut dialogue_cfg = setup.dialogue_cfg;
         dialogue_cfg.enabled = setup.dialogue || dialogue_cfg.enabled;
         let intents = if dialogue_cfg.enabled { dialogue::IntentBook::bundled() } else { dialogue::IntentBook::default() };
-        world.insert_resource(dialogue_cfg);
+        world.insert_resource(dialogue::DialogueRes(dialogue_cfg));
         world.insert_resource(intents);
         world.insert_resource(dialogue::Dialogue::seeded(setup.seed ^ 0xD1A1_706E_0FF1_CE00));
 
@@ -333,11 +333,11 @@ impl Simulation {
         // RNG) so a predator-free world is unchanged and the substrate is unperturbed.
         world.insert_resource(fauna::FaunaRng(SplitMix64::new(setup.seed ^ 0xCA12_0FF5_0FF1_CE00)));
         world.insert_resource(factions::Factions::default());
-        world.insert_resource(setup.faction_cfg);
-        world.insert_resource(setup.fauna_cfg);
+        world.insert_resource(factions::FactionRes(setup.faction_cfg));
+        world.insert_resource(fauna::FaunaRes(setup.fauna_cfg));
         world.insert_resource(setup.registry);
-        world.insert_resource(setup.econ);
-        world.insert_resource(setup.needs);
+        world.insert_resource(people::EconRes(setup.econ));
+        world.insert_resource(people::NeedsRes(setup.needs));
         world.insert_resource(setup.goals);
         world.insert_resource(setup.norms);
         world.insert_resource(setup.appraisals);
@@ -490,7 +490,7 @@ impl Simulation {
     /// and the trait readouts) — through the same ordinary life every NPC lives. The
     /// freedom is a property of the world, never a button.
     pub fn set_director_enabled(&mut self, on: bool) {
-        self.world.resource_mut::<DirectorConfig>().enabled = on;
+        self.world.resource_mut::<director::DirectorRes>().0.enabled = on;
     }
 
     /// Mean of a named trait across the living population — the **traction readout**: the

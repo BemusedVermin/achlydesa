@@ -29,70 +29,18 @@ pub struct Carnivore;
 #[derive(Resource)]
 pub struct FaunaRng(pub SplitMix64);
 
-/// Tunable fauna behaviour (global knobs only).
+// Tunable fauna behaviour ([`FaunaConfig`]) lives Bevy-free in the `config`
+// crate; re-exported here and wrapped in an ECS-resource newtype.
+pub use config::FaunaConfig;
+
+/// ECS-resource handle for the [`FaunaConfig`] knobs. Derefs to the config.
 #[derive(Resource, Clone, Debug)]
-pub struct FaunaConfig {
-    pub initial_energy: f32,
-    pub metabolism: f32,
-    pub intake: f32,
-    pub eat_rate: f32,
-    pub repro_threshold: f32,
-    pub repro_cost: f32,
-    /// Most herbivores that may breed on one tile in a tick — a crowding cap, the
-    /// density-dependent regulation that stops the herd overshooting its forage and
-    /// mass-starving (the boom-bust a pure logistic alone suffers).
-    pub herd_cap: usize,
-    /// How strongly herbivores are drawn to **company** when choosing where to move,
-    /// relative to forage — a herding instinct. It makes scattered animals coalesce
-    /// into moving herds dense enough to graze efficiently *and* to be worth a
-    /// predator's hunt, so prey isn't so thinly spread the trophic loop starves at the
-    /// top. `0` = pure ideal-free dispersal by forage alone.
-    pub herd_cohesion: f32,
+pub struct FaunaRes(pub FaunaConfig);
 
-    // --- Carnivores ---
-    pub carn_initial_energy: f32,
-    pub carn_metabolism: f32,
-    /// Holling type-II **attack rate** `a` and **handling time** `h`: per-tick kills
-    /// are `a·N / (1 + a·h·N)` for `N` prey on the tile — so intake *saturates* as
-    /// prey gets dense (a predator can only process so many), the response that
-    /// stabilises real predator–prey systems where a linear (type-I) one wouldn't.
-    pub carn_attack: f32,
-    pub carn_handling: f32,
-    /// Energy a predator gains per kill.
-    pub carn_energy_per_kill: f32,
-    pub carn_repro_threshold: f32,
-    pub carn_repro_cost: f32,
-    /// Prey on a tile holding fewer than this many are safe — a **spatial refuge**
-    /// (scattered animals hide where a pack can't profitably hunt). It is what stops
-    /// predators chasing the herd to total extinction, so the loop can persist
-    /// instead of collapsing (a known stabiliser against the paradox of enrichment).
-    pub carn_prey_refuge: usize,
-}
-
-impl Default for FaunaConfig {
-    fn default() -> Self {
-        Self {
-            initial_energy: 50.0,
-            metabolism: 0.3,
-            intake: 0.8,
-            eat_rate: 8.0,
-            repro_threshold: 80.0,
-            repro_cost: 40.0,
-            herd_cap: 5,
-            herd_cohesion: 3.0,
-
-            carn_initial_energy: 60.0,
-            // Patient predators: low upkeep so they ride out lean stretches between
-            // kills, moderate attack and slow breeding so a pack tracks the herd
-            // rather than over-culling it and starving (the predator–prey collapse).
-            carn_metabolism: 0.55,
-            carn_attack: 0.5,
-            carn_handling: 1.2,
-            carn_energy_per_kill: 18.0,
-            carn_repro_threshold: 170.0,
-            carn_repro_cost: 80.0,
-            carn_prey_refuge: 2,
-        }
+impl std::ops::Deref for FaunaRes {
+    type Target = FaunaConfig;
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
@@ -107,7 +55,7 @@ impl Default for FaunaConfig {
 pub(crate) fn forage(
     mut fauna: Query<(&mut Position, &mut Energy), With<Herbivore>>,
     mut substrate: ResMut<Substrate>,
-    config: Res<FaunaConfig>,
+    config: Res<FaunaRes>,
     mut rng: ResMut<FaunaRng>,
 ) {
     // Start-of-tick herd density per tile, so cohesion pulls toward where the herd is.
@@ -162,7 +110,7 @@ pub(crate) fn lifecycle(
     mut commands: Commands,
     mut fauna: Query<(Entity, &mut Energy, &Position), With<Herbivore>>,
     substrate: Res<Substrate>,
-    config: Res<FaunaConfig>,
+    config: Res<FaunaRes>,
 ) {
     let topo = substrate.0.topology();
     let mut density: HashMap<usize, usize> = HashMap::new();
@@ -196,7 +144,7 @@ pub(crate) fn hunt(
     mut carnivores: Query<(&mut Position, &mut Energy), With<Carnivore>>,
     herbivores: Query<(Entity, &Position), (With<Herbivore>, Without<Carnivore>)>,
     substrate: Res<Substrate>,
-    config: Res<FaunaConfig>,
+    config: Res<FaunaRes>,
     mut rng: ResMut<FaunaRng>,
 ) {
     let topo = substrate.0.topology();
@@ -247,7 +195,7 @@ pub(crate) fn hunt(
 pub(crate) fn carnivore_lifecycle(
     mut commands: Commands,
     mut carnivores: Query<(Entity, &mut Energy, &Position), With<Carnivore>>,
-    config: Res<FaunaConfig>,
+    config: Res<FaunaRes>,
 ) {
     for (entity, mut energy, position) in &mut carnivores {
         if energy.0 <= 0.0 {

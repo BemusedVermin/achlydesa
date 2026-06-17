@@ -397,7 +397,7 @@ This resolves the discoverability *method*; what remains is empirical calibratio
 ## 9.5 Implementation status (2026-06) — a v2 multi-thread drama manager
 
 The director is built as a **multi-thread drama manager** over the ECS
-(`agents/src/director.rs` + `beats.rs` + `data/beats.ron` + `data/moods.ron`), behind
+(`agents/src/director.rs` + `beats.rs` + `assets/data/beats.ron` + `assets/data/moods.ron`), behind
 `Setup::director`. The first cut was an environmental-hazard generator (fire/predator
 pokes) — it wasn't a *narrative*. v1 followed real drama managers as Façade-style beats on
 a single tension arc; **v2** (the current build; full spec in

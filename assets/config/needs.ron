@@ -1,0 +1,8 @@
+(
+    initial_sustenance: 60.0,
+    initial_rest: 60.0,
+    hunger_rate: 2.0,
+    fatigue_rate: 1.5,
+    rest_recovery: 20.0,
+    eat_grass_relief: 9.0,
+)

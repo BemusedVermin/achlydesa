@@ -16,7 +16,7 @@
 use crate::Substrate;
 use crate::data::Registry;
 use crate::features::Features;
-use crate::people::{EconConfig, Inventory, Market, Npc, Skills, WorldAffordances, price};
+use crate::people::{EconRes, Inventory, Market, Npc, Skills, WorldAffordances, price};
 use bevy_ecs::prelude::*;
 
 /// A read-only macro snapshot of the simulation at one tick.
@@ -103,7 +103,7 @@ impl Census {
         let mut price_band_breaches = 0;
         {
             let reg = world.resource::<Registry>();
-            let econ = world.resource::<EconConfig>();
+            let econ = world.resource::<EconRes>();
             for stock in &market_bases {
                 for (g, &basis) in stock.iter().enumerate() {
                     let p = price(reg, econ, g, basis) as f64;

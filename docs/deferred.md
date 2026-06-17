@@ -11,7 +11,7 @@ Grouped by system. Items marked **(blocks X)** gate something else.
 
 ## Narrative director — v2 multi-thread drama manager built; the player layer deferred
 The capstone is a **multi-thread drama manager** (`agents/src/director.rs` + `beats.rs` +
-`data/beats.ron` + `data/moods.ron`, **v2 2026-06**, behind `Setup::director`). (The first
+`assets/data/beats.ron` + `assets/data/moods.ron`, **v2 2026-06**, behind `Setup::director`). (The first
 cut was an environmental-hazard generator — fire/predator pokes — which wasn't a *narrative*;
 v1 followed real drama managers as Façade-style **beats** on a single tension arc; **v2**
 replaced that selection core with a **thread-driven drama objective**.) `Γ` runs up to **three
