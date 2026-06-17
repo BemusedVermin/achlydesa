@@ -1,0 +1,10 @@
+// Skills NPCs can train. A recipe's `skill` must name one of these (an unknown
+// name is a load error, not a silently-created phantom skill).
+//
+//   name  display / lookup id
+//   gain  proficiency gained each time the skill is used
+//   cap   maximum proficiency
+[
+    (name: "farming", gain: 0.02, cap: 5.0),
+    (name: "baking",  gain: 0.02, cap: 5.0),
+]

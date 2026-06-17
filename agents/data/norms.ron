@@ -1,0 +1,20 @@
+// Social norms — the deontic layer (Versu/Praxis). A norm judges an *act* (a verb,
+// from verbs.ron) as permitted, forbidden, or obliged, and that judgement weighs on
+// the goal's appeal via the `Sanction` input. Empty by default: a world has no
+// taboos unless a scenario authors them here.
+//
+// Each entry:
+//   act       the verb it regulates (e.g. "avenge", "rule")
+//   modality  Forbidden (a taboo) | Permitted (a justification) | Obliged (a duty)
+//   weight    strength of the sanction/pull (default 1.0; ignored for Permitted)
+//   when      the situation it applies in — a relation over the agent's facts, with
+//             subject Me or Foe (omit for "always")
+//   defiance  a personality trait that resists it, so the act's sanction is felt as
+//             weight * (1 - trait) (omit for "inescapable")
+//
+// A Permitted norm in force cancels the prohibitions on its act. Example world where
+// killing is taboo, save against a tyrant, and the vengeful flout the taboo anyway:
+//
+//   (act: "avenge", modality: Forbidden, defiance: Some("vengeance")),
+//   (act: "avenge", modality: Permitted, when: Some(Relation(predicate: "enthroned", subject: Foe, equals: 1))),
+[]

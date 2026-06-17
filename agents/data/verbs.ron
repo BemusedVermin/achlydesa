@@ -1,0 +1,11 @@
+// Verbs — the surface grammar's vocabulary. A verb is a named action whose point
+// is to make a relation hold of its target: a goal can then be written as a verb +
+// a target (`(verb: "avenge", target: Foe)`) instead of a raw relation, reading
+// like a command. Add a verb here (over an existing predicate) and goals can use it.
+//
+//   predicate  the relation the verb sets on its target
+//   value      what it sets it to (1 = true, 0 = false)
+[
+    (name: "rule",   predicate: "enthroned", value: 1),
+    (name: "avenge", predicate: "alive",     value: 0),
+]

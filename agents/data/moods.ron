@@ -1,0 +1,24 @@
+// Moods — transient feelings layered on top of the stable, innate traits. A mood
+// rests at zero, spikes when an event is appraised (see appraisals.ron), and fades
+// back each step at `decay`. A goal's appeal can read it (`Mood("anger")`) so an
+// agent acts on how it feels *now*, on top of who it permanently is.
+//
+//   decay       fraction of the feeling that fades each step (higher = shorter-lived)
+//   opposes     the feeling this one damps when it spikes (you can't be both at once)
+//   shapes      a trait this feeling slowly reshapes when sustained (mood -> character)
+//   shape_rate  how fast it does so, per step, scaled by the mood's level
+[
+    (name: "anger",  decay: 0.08, opposes: Some("calm"),  shapes: Some("vengeance"), shape_rate: 0.02),
+    (name: "calm",   decay: 0.04, opposes: Some("anger")),
+    (name: "joy",    decay: 0.10, opposes: Some("sorrow"), shapes: Some("contentment"), shape_rate: 0.01),
+    (name: "sorrow", decay: 0.05, opposes: Some("joy")),
+    (name: "fear",   decay: 0.06, shapes: Some("caution"), shape_rate: 0.01),
+    // The brighter registers the narrative director stages towards (and then reverses):
+    // wonder, hope, and love. Each rests at zero like any mood and slowly shapes who you
+    // become if it is sustained — awe deepens piety (the seed of the Demiurge myth), hope
+    // emboldens, love makes one sociable. The director grooms these on purpose so that the
+    // fall, when it comes, has something to break.
+    (name: "awe",    decay: 0.07, shapes: Some("piety"),       shape_rate: 0.02),
+    (name: "hope",   decay: 0.07, opposes: Some("fear"),  shapes: Some("ambition"), shape_rate: 0.01),
+    (name: "love",   decay: 0.05, shapes: Some("sociability"), shape_rate: 0.02),
+]

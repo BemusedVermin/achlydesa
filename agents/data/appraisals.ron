@@ -1,0 +1,17 @@
+// How an agent appraises the significant events of its life. Each event has two
+// kinds of effect:
+//   traits  PERSISTENT shifts to innate disposition (opposed traits move the other
+//           way automatically — raising vengeance lowers forgiveness).
+//   moods   TRANSIENT spikes to current feeling, which then fade (see moods.ron) —
+//           and a sustained feeling, in turn, slowly reshapes the matching trait.
+// This is an agent's *values*: author them freely.
+[
+    // Tasting power feeds ambition for good, and brings a flush of joy.
+    (event: "Crowned", traits: [("ambition", 0.05)], moods: [("joy", 0.7)]),
+    // Being cast down stirs hot anger; left to smoulder, anger is what — over a
+    // life of being wronged — hardens into a lasting grudge (anger shapes vengeance).
+    (event: "Deposed", moods: [("anger", 0.9)]),
+    // Crossing a line you knew was forbidden hardens you to it: the first taboo
+    // broken makes the next come easier (vengeance up, and so forgiveness down).
+    (event: "Transgressed", traits: [("vengeance", 0.05)]),
+]

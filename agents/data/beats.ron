@@ -1,0 +1,532 @@
+// The beat library — the narrative director's repertoire of dramatic situations, as
+// data. Each beat is a storylet (Failbetter / Emily Short): a casting of roles, a
+// precondition over the world's qualities, and effects that manipulate people,
+// factions, and the land. Grounded in Polti's *Thirty-Six Dramatic Situations*.
+//
+// The director runs a few **threads** at once (groom → climax → fall), each with a
+// `register` spine, and selects beats by the drama objective — drama (stakes ×
+// attachment × reversal) × novelty ÷ resistance — biased toward the active thread's
+// phase. It grooms a figure's prominence with the brighter registers (romance, triumph,
+// wonder) so the reversal devastates; betrayal dominates because it *scores* highest,
+// never by a rule. It instigates; the world's own systems (vengeance, factions, the
+// planner) play it out. Add a beat here and the director can tell it — no Rust changes.
+//
+//   register  the formal dramatic key (Betrayal, Romance, Wonder, Sacrifice, …)
+//   tags      free-form tone tags, for the novelty penalty only
+//   phases    which arc phase(s) the beat suits: Setup | Rising | Climax | Fall (any if empty)
+//   tension   dramatic charge injected; relief beats are negative (the arc's falls)
+//   stakes    how much the target stands to lose/gain — a multiplier in the drama score
+//   cast      roles to fill: Protagonist, Ally, Rival, Foe, Patron, Bystander, Lover, Mentor
+//   pre       Exists/TraitAtLeast/TraitAtMost/MoodAtLeast/HasGrudge/HoldsThrone/InFaction/AtWar/VictimNearby
+//   effects   Grudge / Sway(trait) / Stir(mood) / Turn(opinion) / Decree / War /
+//             Disaster(radius,severity) / Afflict(who,severity) / Reveal
+[
+    // ======================================================================
+    // GROOMING — the brighter registers (decision #8). Setup beats: the director
+    // manufactures attachment, kindling love, triumph, and wonder *on purpose* so the
+    // fall, when it comes, has something to break. Low stakes, so a freed world (no
+    // manufactured prominence, no reversal to come) finds them beneath its impact floor.
+    // ======================================================================
+    (
+        id: "a_kindred_spirit", // Romance, Setup — a warmth kindled
+        register: Romance,
+        tags: ["romance", "relief", "personal"],
+        phases: [Setup],
+        tension: -0.5,
+        stakes: 0.6,
+        cast: [Protagonist, Lover],
+        pre: [Exists(who: Lover)],
+        effects: [
+            Turn(who: Lover, toward: Protagonist, delta: 0.6),
+            Stir(who: Lover, mood: "love", delta: 0.4),
+            Stir(who: Protagonist, mood: "joy", delta: 0.2),
+        ],
+    ),
+    (
+        id: "a_courtship_blooms", // Romance, deepening — the bond the trunk will break
+        register: Romance,
+        tags: ["romance", "personal"],
+        phases: [Setup, Rising],
+        tension: -0.4,
+        stakes: 0.8,
+        cast: [Protagonist, Lover],
+        pre: [Exists(who: Lover)],
+        effects: [
+            Turn(who: Protagonist, toward: Lover, delta: 0.6),
+            Turn(who: Lover, toward: Protagonist, delta: 0.5),
+            Stir(who: Protagonist, mood: "love", delta: 0.4),
+            Stir(who: Protagonist, mood: "hope", delta: 0.3),
+        ],
+    ),
+    (
+        id: "a_triumph_acclaimed", // Triumph, Setup — the height the betrayal will topple
+        register: Triumph,
+        tags: ["triumph", "relief"],
+        phases: [Setup, Rising],
+        tension: -0.5,
+        stakes: 0.7,
+        cast: [Protagonist, Bystander],
+        pre: [Exists(who: Bystander)],
+        effects: [
+            Stir(who: Protagonist, mood: "joy", delta: 0.4),
+            Stir(who: Protagonist, mood: "hope", delta: 0.3),
+            Turn(who: Bystander, toward: Protagonist, delta: 0.5), // the crowd's acclaim
+        ],
+    ),
+    (
+        id: "a_marvel_revealed", // Wonder, Setup — a marvel found in the land
+        register: Wonder,
+        tags: ["wonder", "relief"],
+        phases: [Setup],
+        tension: -0.3,
+        stakes: 0.6,
+        weight: 0.7,
+        cast: [Protagonist, Mentor],
+        pre: [Exists(who: Mentor)],
+        effects: [
+            Reveal, // discover a hidden feature in reach; fill the cast with awe
+            Stir(who: Protagonist, mood: "awe", delta: 0.4),
+            Stir(who: Protagonist, mood: "hope", delta: 0.2),
+        ],
+    ),
+    (
+        id: "the_demiurges_hand", // Wonder/myth — a pious elder names the shaping of fortune
+        register: Wonder,
+        tags: ["wonder", "myth"],
+        phases: [Setup, Fall],
+        tension: 0.2,
+        stakes: 0.5,
+        weight: 0.4,
+        cast: [Protagonist, Mentor],
+        // Only the devout read the hand behind events — the in-world Demiurge myth, the
+        // belief the player takes for setting-mythology and never suspects is literal.
+        pre: [Exists(who: Mentor), TraitAtLeast(who: Mentor, trait_name: "piety", v: 0.4)],
+        effects: [
+            Stir(who: Mentor, mood: "awe", delta: 0.5),
+            Sway(who: Mentor, trait_name: "piety", delta: 0.1),
+            Stir(who: Protagonist, mood: "awe", delta: 0.2),
+        ],
+    ),
+    (
+        id: "the_long_lost_returns", // Reunion — a figure restored (a gift, or a setup)
+        register: Reunion,
+        tags: ["reunion", "relief", "personal"],
+        phases: [Setup, Fall],
+        tension: -1.0,
+        stakes: 0.7,
+        cast: [Protagonist, Bystander],
+        pre: [Exists(who: Bystander)],
+        effects: [
+            Turn(who: Protagonist, toward: Bystander, delta: 0.6),
+            Turn(who: Bystander, toward: Protagonist, delta: 0.6),
+            Stir(who: Protagonist, mood: "joy", delta: 0.3),
+            Stir(who: Protagonist, mood: "love", delta: 0.2),
+        ],
+    ),
+
+    // --- Interpersonal betrayal & loyalty (Polti: Enmity of Kin; Crime Pursued by Vengeance) ---
+    (
+        id: "a_friend_turns",
+        register: Betrayal,
+        tags: ["betrayal", "personal"],
+        phases: [Climax],
+        tension: 2.0,
+        stakes: 1.8,
+        cast: [Protagonist, Ally],
+        // A friend turns within a structure worth turning over — a faction, a court. With
+        // no bloc to defect to (a stateless, scattered world), the betrayal has no alibi,
+        // and the director will not tell a beat the world could not have produced itself.
+        pre: [Exists(who: Ally), InFaction(yes: true)],
+        effects: [
+            Turn(who: Ally, toward: Protagonist, delta: -0.8), // the bond curdles
+            Stir(who: Ally, mood: "anger", delta: 0.4),
+            Grudge(who: Ally, against: Protagonist),
+            Voice(who: Ally, intent: "an_accusation"), // the friend renounces you aloud
+        ],
+    ),
+    (
+        id: "betrayed_at_the_summit", // Betrayal Climax — the reversal timed onto a manufactured high
+        register: Betrayal,
+        tags: ["betrayal", "violence"],
+        phases: [Climax],
+        tension: 2.6,
+        stakes: 2.4,
+        cast: [Protagonist, Lover],
+        // Keys off joy the *Setup* grooming stirred (the knife lands hardest at the height
+        // of happiness — the director reverses the feeling it manufactured) *and* a faction
+        // worth the treachery, so a stateless, peaceable world cannot be told it.
+        pre: [Exists(who: Lover), MoodAtLeast(who: Protagonist, mood: "joy", v: 0.2), InFaction(yes: true)],
+        effects: [
+            Turn(who: Lover, toward: Protagonist, delta: -1.0),
+            Grudge(who: Lover, against: Protagonist),
+            Stir(who: Lover, mood: "anger", delta: 0.4),
+            Stir(who: Protagonist, mood: "sorrow", delta: 0.5),
+            Voice(who: Lover, intent: "an_accusation"), // the one you were groomed to love, turning
+        ],
+    ),
+    (
+        id: "the_knife_in_the_dark",
+        register: Betrayal,
+        tags: ["betrayal", "violence"],
+        phases: [Climax],
+        tension: 2.5,
+        stakes: 2.2,
+        cast: [Protagonist, Foe],
+        // A killer needs a disposition to kill: a *forgiving* foe stays the knife, so a
+        // society that cultivates forgiveness over vengeance starves this beat.
+        pre: [Exists(who: Foe), TraitAtLeast(who: Foe, trait_name: "vengeance", v: 0.3)],
+        effects: [
+            Grudge(who: Foe, against: Protagonist),
+            Sway(who: Foe, trait_name: "vengeance", delta: 0.3),
+            Stir(who: Foe, mood: "anger", delta: 0.3),
+            Voice(who: Foe, intent: "a_threat"),
+        ],
+    ),
+    (
+        id: "an_old_enmity_softens", // RELIEF — Polti: An Enemy Loved
+        register: Redemption,
+        tags: ["relief", "personal"],
+        phases: [Fall],
+        tension: -2.0,
+        stakes: 0.6,
+        cast: [Protagonist, Foe],
+        pre: [Exists(who: Foe)],
+        effects: [
+            Turn(who: Foe, toward: Protagonist, delta: 0.6),
+            Stir(who: Foe, mood: "calm", delta: 0.3),
+            Sway(who: Foe, trait_name: "forgiveness", delta: 0.15),
+        ],
+    ),
+
+    // --- Ambition & rise-and-fall (Polti: Ambition; Rivalry of Superior vs. Inferior) ---
+    (
+        id: "a_rival_rises",
+        register: Ambition,
+        tags: ["ambition", "political"],
+        phases: [Rising],
+        tension: 1.8,
+        stakes: 1.2,
+        cast: [Protagonist, Rival],
+        pre: [Exists(who: Rival), TraitAtLeast(who: Rival, trait_name: "ambition", v: 0.25)],
+        effects: [
+            Sway(who: Rival, trait_name: "ambition", delta: 0.25),
+            Turn(who: Rival, toward: Protagonist, delta: -0.5),
+            Stir(who: Rival, mood: "anger", delta: 0.2),
+        ],
+    ),
+    (
+        id: "the_pretender_against_the_patron", // Polti: Revolt — a coup within the bloc
+        register: Ambition,
+        tags: ["ambition", "political"],
+        phases: [Rising],
+        tension: 2.2,
+        stakes: 1.6,
+        cast: [Protagonist, Rival, Patron],
+        pre: [Exists(who: Rival), Exists(who: Patron)],
+        effects: [
+            Sway(who: Rival, trait_name: "ambition", delta: 0.3),
+            Turn(who: Rival, toward: Patron, delta: -0.7),
+            Grudge(who: Rival, against: Patron),
+        ],
+    ),
+    (
+        id: "the_crown_corrupts", // power sours the one who holds it
+        register: Ambition,
+        tags: ["ambition", "personal"],
+        phases: [Setup, Rising],
+        tension: 1.0,
+        stakes: 0.8,
+        cast: [Protagonist],
+        pre: [HoldsThrone(yes: true)],
+        effects: [
+            Sway(who: Protagonist, trait_name: "greed", delta: 0.2),
+            Sway(who: Protagonist, trait_name: "ambition", delta: 0.15),
+        ],
+    ),
+
+    // --- Political & faction intrigue (Polti: Supplication; Revolt) ---
+    (
+        id: "the_faction_turns_persecutor",
+        register: Persecution,
+        tags: ["political", "persecution"],
+        phases: [Rising],
+        tension: 1.5,
+        stakes: 1.3,
+        cast: [Protagonist],
+        pre: [InFaction(yes: true)],
+        effects: [Decree], // a no-kill taboo — its enforcers then hunt the vengeful
+    ),
+    (
+        id: "the_drums_of_war",
+        register: War,
+        tags: ["political", "war"],
+        phases: [Climax],
+        tension: 2.5,
+        stakes: 2.0,
+        cast: [Protagonist],
+        pre: [InFaction(yes: true)],
+        effects: [War],
+    ),
+    (
+        id: "a_defection_sown",
+        register: Betrayal,
+        tags: ["political", "betrayal"],
+        phases: [Rising],
+        tension: 1.5,
+        stakes: 1.3,
+        cast: [Protagonist, Ally, Patron],
+        pre: [Exists(who: Ally), Exists(who: Patron)],
+        effects: [
+            Turn(who: Ally, toward: Patron, delta: -0.7), // the faction turn enacts the leaving
+            Stir(who: Ally, mood: "anger", delta: 0.3),
+        ],
+    ),
+    (
+        id: "the_mob_demands_blood", // Polti: Pursuit — persecution sharpened
+        register: Persecution,
+        tags: ["political", "persecution", "violence"],
+        phases: [Climax],
+        tension: 2.5,
+        stakes: 2.0,
+        cast: [Protagonist, Foe],
+        pre: [Exists(who: Foe), TraitAtLeast(who: Foe, trait_name: "vengeance", v: 0.3), InFaction(yes: true)],
+        effects: [
+            Stir(who: Foe, mood: "anger", delta: 0.4),
+            Grudge(who: Foe, against: Protagonist),
+            Decree,
+        ],
+    ),
+    (
+        id: "an_alliance_forged", // RELIEF
+        register: Relief,
+        tags: ["relief", "political"],
+        phases: [Setup, Fall],
+        tension: -1.5,
+        stakes: 0.7,
+        cast: [Protagonist, Bystander],
+        pre: [Exists(who: Bystander)],
+        effects: [
+            Turn(who: Bystander, toward: Protagonist, delta: 0.6),
+            Stir(who: Protagonist, mood: "joy", delta: 0.2),
+        ],
+    ),
+
+    // --- Survival & disaster (Polti: Disaster; Falling Prey to Cruelty / Misfortune) ---
+    (
+        id: "the_famine",
+        register: Disaster,
+        tags: ["disaster", "survival"],
+        phases: [Climax],
+        tension: 2.0,
+        stakes: 1.8,
+        cast: [Protagonist],
+        // A famine only bites where there are bellies near the edge — a provisioned
+        // people (deep larders, surplus) shrugs it off, so this register goes quiet.
+        pre: [VictimNearby(need_below: 25.0)],
+        effects: [
+            Disaster(radius: 3, severity: 35.0), // drains every nearby belly; scours the fields
+            Stir(who: Protagonist, mood: "fear", delta: 0.3),
+        ],
+    ),
+    (
+        id: "the_long_winter",
+        register: Disaster,
+        tags: ["disaster", "survival"],
+        phases: [Rising, Climax],
+        tension: 1.5,
+        stakes: 1.4,
+        cast: [Protagonist],
+        pre: [VictimNearby(need_below: 20.0)],
+        effects: [
+            Disaster(radius: 4, severity: 22.0),
+        ],
+    ),
+    (
+        id: "a_loved_one_falls", // Polti: Loss of a Loved One
+        register: Loss,
+        tags: ["loss", "personal", "violence"],
+        phases: [Climax],
+        tension: 2.2,
+        stakes: 2.4,
+        cast: [Protagonist, Ally],
+        // A loved one is struck down where the world is hard enough to plausibly take them
+        // — scarcity, danger near at hand. A provisioned, sheltered people gives the loss
+        // no cause, and the director's hand would show.
+        pre: [Exists(who: Ally), VictimNearby(need_below: 30.0)],
+        effects: [
+            Afflict(who: Ally, severity: 70.0), // the friend is struck down — they may not survive it
+            Stir(who: Protagonist, mood: "sorrow", delta: 0.4),
+        ],
+    ),
+    (
+        id: "the_beloved_falls", // Loss aimed at the groomed Lover — the romance reversed
+        register: Loss,
+        tags: ["loss", "romance", "violence"],
+        phases: [Climax],
+        tension: 2.6,
+        stakes: 2.6,
+        cast: [Protagonist, Lover],
+        pre: [Exists(who: Lover), VictimNearby(need_below: 30.0)],
+        effects: [
+            Afflict(who: Lover, severity: 72.0),
+            Stir(who: Protagonist, mood: "sorrow", delta: 0.5),
+        ],
+    ),
+    (
+        id: "a_noble_sacrifice", // Sacrifice — bittersweet: an ally gives their life
+        register: Sacrifice,
+        tags: ["sacrifice", "loss"],
+        phases: [Climax],
+        tension: 1.6,
+        stakes: 2.2,
+        cast: [Protagonist, Ally],
+        pre: [Exists(who: Ally), VictimNearby(need_below: 30.0)],
+        effects: [
+            Afflict(who: Ally, severity: 68.0),       // they fall for the protagonist's sake
+            Stir(who: Protagonist, mood: "sorrow", delta: 0.3),
+            Stir(who: Protagonist, mood: "awe", delta: 0.3),     // grief shot through with grace
+            Sway(who: Protagonist, trait_name: "forgiveness", delta: 0.1),
+        ],
+    ),
+    (
+        id: "a_good_harvest", // RELIEF
+        register: Relief,
+        tags: ["relief", "survival"],
+        phases: [Setup, Fall],
+        tension: -1.5,
+        stakes: 0.6,
+        cast: [Protagonist],
+        effects: [
+            Stir(who: Protagonist, mood: "joy", delta: 0.3),
+            Stir(who: Protagonist, mood: "calm", delta: 0.2),
+        ],
+    ),
+    (
+        id: "remorse_and_penance", // RELIEF — Polti: Remorse
+        register: Redemption,
+        tags: ["relief", "personal"],
+        phases: [Fall],
+        tension: -1.0,
+        stakes: 0.6,
+        cast: [Protagonist],
+        pre: [TraitAtLeast(who: Protagonist, trait_name: "vengeance", v: 0.3)],
+        effects: [
+            Sway(who: Protagonist, trait_name: "vengeance", delta: -0.2),
+            Sway(who: Protagonist, trait_name: "forgiveness", delta: 0.15),
+            Stir(who: Protagonist, mood: "sorrow", delta: 0.2),
+        ],
+    ),
+    (
+        id: "redemption_of_a_foe", // Redemption — a foe turns; the cycle's other exit
+        register: Redemption,
+        tags: ["relief", "personal"],
+        phases: [Fall],
+        tension: -1.5,
+        stakes: 0.6,
+        cast: [Protagonist, Foe],
+        pre: [Exists(who: Foe)],
+        effects: [
+            Turn(who: Foe, toward: Protagonist, delta: 0.7),
+            Sway(who: Foe, trait_name: "forgiveness", delta: 0.2),
+            Stir(who: Protagonist, mood: "hope", delta: 0.3),
+        ],
+    ),
+
+    // --- Chained beats: each keys off a quality a *prior* beat leaves behind, so
+    // storylets compose into long arcs (a story is many storylets, never the same twice).
+
+    (
+        id: "the_tyrants_reign", // chains after `the_crown_corrupts` (greed risen on the throne)
+        register: Persecution,
+        tags: ["political", "ambition", "persecution"],
+        phases: [Rising],
+        tension: 1.8,
+        stakes: 1.6,
+        cast: [Protagonist, Bystander],
+        pre: [HoldsThrone(yes: true), TraitAtLeast(who: Protagonist, trait_name: "greed", v: 0.45), InFaction(yes: true)],
+        effects: [
+            Decree, // the tyrant binds the people in law
+            Stir(who: Bystander, mood: "fear", delta: 0.4),
+            Stir(who: Bystander, mood: "anger", delta: 0.2),
+        ],
+    ),
+    (
+        id: "the_revolt", // Polti: Revolt — chains after `the_tyrants_reign`
+        register: War,
+        tags: ["political", "war", "revolt"],
+        phases: [Climax],
+        tension: 2.6,
+        stakes: 2.2,
+        cast: [Protagonist, Rival],
+        pre: [
+            InFaction(yes: true),
+            TraitAtLeast(who: Protagonist, trait_name: "greed", v: 0.45),
+            Exists(who: Rival),
+            TraitAtLeast(who: Rival, trait_name: "ambition", v: 0.4),
+        ],
+        effects: [
+            Grudge(who: Rival, against: Protagonist),
+            Stir(who: Rival, mood: "anger", delta: 0.4),
+            War,
+        ],
+    ),
+    (
+        id: "grief_hardens_into_vengeance", // chains after a loss (sorrow stirred) — the trunk turns
+        register: Vengeance,
+        tags: ["loss", "vengeance", "personal"],
+        phases: [Fall, Rising],
+        tension: 1.6,
+        stakes: 1.5,
+        cast: [Protagonist],
+        pre: [MoodAtLeast(who: Protagonist, mood: "sorrow", v: 0.3)],
+        effects: [
+            Sway(who: Protagonist, trait_name: "vengeance", delta: 0.3),
+            Sway(who: Protagonist, trait_name: "forgiveness", delta: -0.2),
+            Stir(who: Protagonist, mood: "anger", delta: 0.2),
+        ],
+    ),
+    (
+        id: "the_vendetta", // chains after `grief_hardens_into_vengeance` (the lead now vengeful)
+        register: Vengeance,
+        tags: ["vengeance", "violence"],
+        phases: [Climax],
+        tension: 2.2,
+        stakes: 2.0,
+        cast: [Protagonist, Foe],
+        pre: [TraitAtLeast(who: Protagonist, trait_name: "vengeance", v: 0.45), Exists(who: Foe)],
+        effects: [
+            Grudge(who: Protagonist, against: Foe),
+            Stir(who: Protagonist, mood: "anger", delta: 0.3),
+        ],
+    ),
+    (
+        id: "the_succession_crisis", // a power vacuum: no one on the throne, a rival and a patron
+        register: Ambition,
+        tags: ["political", "ambition"],
+        phases: [Rising],
+        tension: 2.0,
+        stakes: 1.7,
+        cast: [Protagonist, Rival, Patron],
+        pre: [HoldsThrone(yes: false), Exists(who: Rival), Exists(who: Patron)],
+        effects: [
+            Sway(who: Rival, trait_name: "ambition", delta: 0.3),
+            Turn(who: Rival, toward: Patron, delta: -0.6),
+            Grudge(who: Rival, against: Patron),
+        ],
+    ),
+    (
+        id: "war_weariness", // RELIEF — chains after any war: the fighting ebbs toward peace
+        register: Relief,
+        tags: ["relief", "political"],
+        phases: [Fall],
+        tension: -2.0,
+        stakes: 0.7,
+        cast: [Protagonist, Foe],
+        pre: [AtWar(yes: true), Exists(who: Foe)],
+        effects: [
+            Turn(who: Foe, toward: Protagonist, delta: 0.5),
+            Stir(who: Protagonist, mood: "calm", delta: 0.3),
+            Sway(who: Protagonist, trait_name: "forgiveness", delta: 0.1),
+        ],
+    ),
+]

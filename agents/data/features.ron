@@ -1,0 +1,275 @@
+// Tile features — the points of interest layered onto the substrate, after WWN's
+// four categories (Community / Court / Ruin / Wilderness). A hex carries at most
+// one feature per category, so a single tile can host a city, its royal court, the
+// catacombs beneath it, and a wonder nearby — "multiple landmarks on one hex".
+//
+// `density` is the base placement rate on a perfectly-suited tile (before the
+// global per-category knob in FeatureConfig). `favoured` is the suitability: each
+// term reads a tile `Signal` through a response `Curve` (the same curve algebra
+// the agents' utility scorer uses), combined as a compensated product. `host`, if
+// set, requires a co-located feature of that category (a court inside a city).
+//
+// Curves are calibrated to the *measured* signal ranges of a warmed world, which
+// are heavily skewed: on land, Fertility (carrying_capacity / biomass_max) sits
+// near 0 for most tiles and only the best ~2% clear ~0.05; SurfaceWater is ~0 for
+// most and tops out under 1; Minerals span 0..~0.6; Elevation/Slope are in metres.
+// So "fertile" thresholds are small with steep logistics. A Linear(m:1, b:0) on a
+// 0/1 signal (Coast/Forest/Grass) is a *requirement*; Linear(m:0.4, b:0.6) a bonus.
+[
+    // --- Communities (settlements) — placed first; suitability is static only ---
+    // The farming hierarchy: the better and wetter the land, the bigger the centre.
+    (
+        name: "thorp", category: Community, discovery: Landmark, density: 0.05,
+        favoured: [
+            (signal: Fertility, curve: Logistic(mid: 0.008, k: 400.0)),
+            (signal: SurfaceWater, curve: Logistic(mid: 0.008, k: 250.0)),
+            (signal: Temperature, curve: Logistic(mid: 2.0, k: 0.2)),
+        ],
+    ),
+    (
+        name: "village", category: Community, discovery: Landmark, density: 0.14,
+        favoured: [
+            (signal: Fertility, curve: Logistic(mid: 0.025, k: 120.0)),
+            (signal: SurfaceWater, curve: Logistic(mid: 0.012, k: 200.0)),
+            (signal: Slope, curve: Linear(m: -0.004, b: 1.0)),
+        ],
+    ),
+    (
+        name: "town", category: Community, discovery: Landmark, density: 0.14,
+        favoured: [
+            (signal: Fertility, curve: Logistic(mid: 0.025, k: 120.0)),
+            (signal: Minerals, curve: Logistic(mid: 0.35, k: 10.0)),
+            (signal: SurfaceWater, curve: Logistic(mid: 0.03, k: 100.0)),
+        ],
+    ),
+    (
+        name: "city", category: Community, discovery: Landmark, density: 0.16,
+        favoured: [
+            (signal: Fertility, curve: Logistic(mid: 0.035, k: 90.0)),
+            (signal: SurfaceWater, curve: Logistic(mid: 0.03, k: 80.0)),
+            (signal: Coast, curve: Linear(m: 0.4, b: 0.6)),
+            (signal: Slope, curve: Linear(m: -0.004, b: 1.0)),
+        ],
+    ),
+    (
+        name: "fishing_village", category: Community, discovery: Landmark, density: 0.06,
+        favoured: [
+            (signal: Coast, curve: Linear(m: 1.0, b: 0.0)),
+            (signal: Temperature, curve: Logistic(mid: 0.0, k: 0.2)),
+        ],
+    ),
+    (
+        name: "mining_camp", category: Community, discovery: Landmark, density: 0.06,
+        favoured: [
+            (signal: Minerals, curve: Logistic(mid: 0.5, k: 14.0)),
+            (signal: Elevation, curve: Logistic(mid: 600.0, k: 0.004)),
+        ],
+    ),
+    (
+        name: "monastery", category: Community, discovery: Landmark, density: 0.04,
+        favoured: [
+            (signal: Elevation, curve: Logistic(mid: 900.0, k: 0.004)),
+            (signal: Fertility, curve: Linear(m: -8.0, b: 1.0)),
+            (signal: Slope, curve: Logistic(mid: 150.0, k: 0.02)),
+        ],
+        // A sanctuary in the heights: a weary traveller rests well here, and it
+        // never runs out (capacity defaults to 0 = inexhaustible).
+        affordances: [(action: "shelter", effect: Relieve(need: Rest, amount: 45))],
+    ),
+    (
+        name: "frontier_fort", category: Community, discovery: Landmark, density: 0.04,
+        favoured: [
+            (signal: Slope, curve: Logistic(mid: 250.0, k: 0.02)),
+            (signal: Elevation, curve: Logistic(mid: 700.0, k: 0.004)),
+            (signal: Minerals, curve: Linear(m: 0.3, b: 0.4)),
+        ],
+    ),
+    (
+        name: "nomad_camp", category: Community, discovery: Hidden, density: 0.03,
+        favoured: [
+            (signal: Grass, curve: Linear(m: 0.7, b: 0.3)),
+            (signal: Fertility, curve: Linear(m: -8.0, b: 1.0)),
+        ],
+    ),
+
+    // --- Courts (powers & factions) — most sit inside a community, so they stack ---
+    (
+        name: "royal_court", category: Court, discovery: Secret, density: 0.6, host: Some(Community),
+        favoured: [
+            (signal: Fertility, curve: Logistic(mid: 0.04, k: 90.0)),
+            (signal: SurfaceWater, curve: Logistic(mid: 0.05, k: 50.0)),
+        ],
+    ),
+    (
+        name: "barons_keep", category: Court, discovery: Landmark, density: 0.03,
+        favoured: [
+            (signal: Slope, curve: Logistic(mid: 200.0, k: 0.02)),
+            (signal: Elevation, curve: Logistic(mid: 600.0, k: 0.004)),
+            (signal: Remoteness, curve: Linear(m: 0.4, b: 0.4)),
+        ],
+    ),
+    (
+        name: "temple", category: Court, discovery: Hidden, density: 0.5, host: Some(Community),
+        favoured: [
+            (signal: Fertility, curve: Constant(0.7)),
+        ],
+    ),
+    (
+        name: "guild", category: Court, discovery: Hidden, density: 0.4, host: Some(Community),
+        favoured: [
+            (signal: Fertility, curve: Logistic(mid: 0.02, k: 120.0)),
+            (signal: Minerals, curve: Linear(m: 0.3, b: 0.4)),
+        ],
+        // A craft guild: apprentice here to learn baking — occupational mobility, the
+        // one way a born calling widens. (Hidden, so you must find the guild first.)
+        affordances: [(action: "apprentice", effect: Teach(skill: "baking"))],
+    ),
+    (
+        name: "thieves_guild", category: Court, discovery: Secret, density: 0.3, host: Some(Community),
+        favoured: [
+            (signal: Fertility, curve: Logistic(mid: 0.03, k: 80.0)),
+        ],
+    ),
+    (
+        name: "druid_circle", category: Court, discovery: Secret, density: 0.06,
+        favoured: [
+            (signal: Forest, curve: Linear(m: 1.0, b: 0.0)),
+            (signal: Remoteness, curve: Logistic(mid: 0.5, k: 8.0)),
+        ],
+    ),
+
+    // --- Ruins (adventure sites) ---
+    (
+        name: "ruined_keep", category: Ruin, discovery: Landmark, density: 0.03,
+        favoured: [
+            (signal: Slope, curve: Logistic(mid: 180.0, k: 0.02)),
+            (signal: Elevation, curve: Logistic(mid: 500.0, k: 0.004)),
+            (signal: Remoteness, curve: Logistic(mid: 0.4, k: 6.0)),
+        ],
+    ),
+    (
+        name: "broken_tower", category: Ruin, discovery: Landmark, density: 0.025,
+        favoured: [
+            (signal: Remoteness, curve: Logistic(mid: 0.55, k: 8.0)),
+            (signal: Elevation, curve: Logistic(mid: 500.0, k: 0.004)),
+        ],
+    ),
+    (
+        name: "sunken_temple", category: Ruin, discovery: Hidden, density: 0.03,
+        favoured: [
+            (signal: SurfaceWater, curve: Logistic(mid: 0.06, k: 40.0)),
+            (signal: Slope, curve: Linear(m: -0.004, b: 1.0)),
+        ],
+    ),
+    (
+        name: "barrow", category: Ruin, discovery: Hidden, density: 0.03,
+        favoured: [
+            (signal: Grass, curve: Linear(m: 0.5, b: 0.5)),
+            (signal: Remoteness, curve: Linear(m: 0.4, b: 0.4)),
+            (signal: Slope, curve: Linear(m: -0.003, b: 0.9)),
+        ],
+    ),
+    (
+        name: "catacombs", category: Ruin, discovery: Secret, density: 0.4, host: Some(Community),
+        favoured: [
+            (signal: Fertility, curve: Constant(0.5)),
+        ],
+    ),
+    (
+        name: "collapsed_mine", category: Ruin, discovery: Hidden, density: 0.04,
+        favoured: [
+            (signal: Minerals, curve: Logistic(mid: 0.45, k: 12.0)),
+            (signal: Elevation, curve: Logistic(mid: 600.0, k: 0.004)),
+        ],
+    ),
+    (
+        name: "ghost_town", category: Ruin, discovery: Landmark, density: 0.02,
+        favoured: [
+            (signal: Fertility, curve: Logistic(mid: 0.015, k: 150.0)),
+            (signal: Remoteness, curve: Logistic(mid: 0.45, k: 6.0)),
+        ],
+    ),
+
+    // --- Wilderness (wonders, lairs, hazards) ---
+    (
+        name: "waterfall", category: Wilderness, discovery: Landmark, density: 0.05,
+        favoured: [
+            (signal: SurfaceWater, curve: Logistic(mid: 0.08, k: 35.0)),
+            (signal: Slope, curve: Logistic(mid: 200.0, k: 0.02)),
+        ],
+    ),
+    (
+        name: "hot_springs", category: Wilderness, discovery: Landmark, density: 0.03,
+        favoured: [
+            (signal: Minerals, curve: Logistic(mid: 0.5, k: 8.0)),
+            (signal: Elevation, curve: Logistic(mid: 800.0, k: 0.004)),
+        ],
+        // A natural spa — bathing here is deeply restful, and inexhaustible.
+        affordances: [(action: "bathe", effect: Relieve(need: Rest, amount: 55))],
+    ),
+    (
+        name: "cave_system", category: Wilderness, discovery: Hidden, density: 0.05,
+        favoured: [
+            (signal: Slope, curve: Logistic(mid: 150.0, k: 0.02)),
+            (signal: Elevation, curve: Logistic(mid: 400.0, k: 0.004)),
+        ],
+        // Shelter out of the weather — but a cave is Hidden, so only someone who has
+        // found it (Known) can plan to rest here.
+        affordances: [(action: "shelter", effect: Relieve(need: Rest, amount: 40))],
+    ),
+    (
+        name: "canyon", category: Wilderness, discovery: Landmark, density: 0.03,
+        favoured: [
+            (signal: SurfaceWater, curve: Logistic(mid: 0.04, k: 50.0)),
+            (signal: Slope, curve: Logistic(mid: 250.0, k: 0.025)),
+        ],
+    ),
+    (
+        name: "lone_peak", category: Wilderness, discovery: Landmark, density: 0.03,
+        favoured: [
+            (signal: Elevation, curve: Logistic(mid: 1400.0, k: 0.004)),
+            (signal: Slope, curve: Logistic(mid: 250.0, k: 0.02)),
+        ],
+    ),
+    (
+        name: "oasis", category: Wilderness, discovery: Landmark, density: 0.03,
+        favoured: [
+            (signal: SurfaceWater, curve: Logistic(mid: 0.02, k: 120.0)),
+            (signal: Aridity, curve: Logistic(mid: 0.85, k: 12.0)),
+        ],
+        // Food and water in the waste: a wanderer can forage here. Depletable, but
+        // the spring replenishes it slowly — a renewable destination, not a one-shot.
+        affordances: [(action: "forage", effect: Relieve(need: Sustenance, amount: 40), capacity: 30, regen: 0.5)],
+    ),
+    (
+        name: "ancient_grove", category: Wilderness, discovery: Landmark, density: 0.06,
+        favoured: [
+            (signal: Forest, curve: Linear(m: 1.0, b: 0.0)),
+            (signal: Remoteness, curve: Linear(m: 0.3, b: 0.5)),
+        ],
+        // Forage the old wood — nuts, roots, game. Rich but slow to recover.
+        affordances: [(action: "forage", effect: Relieve(need: Sustenance, amount: 35), capacity: 40, regen: 0.4)],
+    ),
+    (
+        name: "standing_stones", category: Wilderness, discovery: Landmark, density: 0.035,
+        favoured: [
+            (signal: Grass, curve: Linear(m: 0.7, b: 0.3)),
+            (signal: Slope, curve: Linear(m: -0.004, b: 1.0)),
+            (signal: Remoteness, curve: Linear(m: 0.3, b: 0.5)),
+        ],
+    ),
+    (
+        name: "beast_lair", category: Wilderness, discovery: Hidden, density: 0.04,
+        favoured: [
+            (signal: Remoteness, curve: Logistic(mid: 0.5, k: 8.0)),
+            (signal: Slope, curve: Logistic(mid: 150.0, k: 0.02)),
+        ],
+    ),
+    (
+        name: "bandit_camp", category: Wilderness, discovery: Hidden, density: 0.04,
+        favoured: [
+            (signal: Slope, curve: Logistic(mid: 150.0, k: 0.02)),
+            (signal: Remoteness, curve: Linear(m: -1.0, b: 1.1)),
+        ],
+    ),
+]

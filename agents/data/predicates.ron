@@ -1,0 +1,9 @@
+// Relational predicates — the vocabulary goals are expressed over. A predicate is
+// a relation that holds (or not) of an entity: `enthroned(e)` is true of whoever
+// rules; `alive(e)` of whoever lives. Goals are conditions on these (e.g. "make
+// enthroned(self) true", "make alive(foe) false"); the planner grounds each one to
+// a flat fact slot per agent. Add a predicate here and a goal can name it.
+[
+    "enthroned",
+    "alive",
+]

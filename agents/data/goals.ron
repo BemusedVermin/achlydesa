@@ -1,0 +1,47 @@
+// The agent's goals — each a *target condition* plus how appealing it is to
+// pursue. There is no goal-specific code: the utility AI scores these by how far
+// each is from satisfied (its "deficit") and pursues the most pressing one it can
+// make progress on; GOAP then plans how. Edit/add freely — no Rust changes.
+//
+// A goal is reached by whatever actions exist, so behaviours compose: "stocked"
+// gets food by farming, baking, or buying; "solvent" earns by producing and
+// selling or by hauling. Add a wholly new want (rule a land, avenge a wrong) by
+// adding a fact, an operator that sets it, and a goal entry here — same rails.
+//
+// condition: Sustenance(at_least) | Rest(at_least) | Money(at_least)
+//          | Holding(good: Edible | Named("..."), at_least) | Fact(fact, equals)
+// appeal:    considerations over `Deficit` (0 = satisfied … 1 = far off).
+// curves:    Linear(m, b) | Power(exp) | Logistic(mid, k) | Inverse | Constant(v)
+[
+    // Stay fed: appeal climbs steeply with hunger, so survival outranks comfort
+    // when food runs low (and yields to nothing when it isn't).
+    (
+        name: "sustained",
+        condition: Sustenance(at_least: 70),
+        appeal: [ (input: Deficit, curve: Power(exp: 2.0)) ],
+    ),
+    // Stay rested: same steep shape.
+    (
+        name: "rested",
+        condition: Rest(at_least: 70),
+        appeal: [ (input: Deficit, curve: Power(exp: 2.0)) ],
+    ),
+    // Keep a larder: a standing want to hold a buffer of food, scored on how far
+    // below it the pantry is — not on hunger. This is "grocery shopping": the
+    // agent restocks while perfectly well-fed, and naturally works harder at it
+    // when food is scarce (the gap stays open longer). Gentler than survival, so
+    // it yields the moment real hunger bites.
+    (
+        name: "stocked",
+        condition: Holding(good: Edible, at_least: 15),
+        appeal: [ (input: Deficit, curve: Linear(m: 0.6, b: 0.0)) ],
+    ),
+    // Stay solvent: a standing want to hold savings. This is "financial planning":
+    // the agent earns toward a cushion while fed and stocked, and eases off once it
+    // has one. Gentlest, so survival and provisioning come first.
+    (
+        name: "solvent",
+        condition: Money(at_least: 200),
+        appeal: [ (input: Deficit, curve: Linear(m: 0.5, b: 0.0)) ],
+    ),
+]

@@ -1,0 +1,23 @@
+# Rust build artifacts
+/target
+
+# Cargo.lock IS committed (this workspace ships a binary crate)
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+
+# Empty leftover nested git repos (no history) - set aside, safe to delete
+.git.bak/
+
+# Local research scratch - not part of the project
+# (a third-party paper's extracted text + the throwaway extractor scripts)
+/paper.txt
+/extract_pdf.py
+/extract_pdf2.py
+
+# Scratch screenshots dropped at the workspace root
+/*.png

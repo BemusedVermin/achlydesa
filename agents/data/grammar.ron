@@ -1,0 +1,128 @@
+// The generative grammar — the deterministic surface layer (docs/dialogue.md §4a). A
+// Tracery-style map from symbol -> productions; a production recurses into #another# and
+// fills the #speaker# / #listener# / #referent# slots from the utterance plan. The WORDS
+// are composed from these rules, seeded by the dialogue RNG — never drawn from a phrasebook.
+//
+// Lookup tries "act/affect" (e.g. "accuse/angry") and falls back to the bare act. The
+// #referent# slot is the thing the speaker brings up (a grudge, a remembered exchange).
+{
+    // Stable epithets — a soul is named the same all game (indexed by entity, not the RNG).
+    "name": [
+        "Aldric", "Mira", "Bren", "Saoirse", "Cuthbert", "Yelena", "Tomas", "Idris",
+        "Wren", "Halvard", "Nessa", "Orin", "Perrin", "Quill", "Rhoswen", "Sten",
+        "Tamsin", "Ulric", "Veil", "Wystan", "Alder", "Bryn", "Cael", "Dwen",
+        "Esk", "Fenn", "Gale", "Hale", "Ivo", "Joss", "Kelda", "Lune",
+        "Marek", "Noor", "Osric", "Pike", "Rue", "Sable", "Thane", "Vesna"
+    ],
+
+    "address": [ "Listen,", "You —", "Look at me,", "No.", "Enough." ],
+
+    // --- Greet ---
+    "greet": [
+        "#listener#.",
+        "Well met, #listener#.",
+        "You again, #listener#."
+    ],
+    "greet/warm": [
+        "#listener#! It does me good to see you.",
+        "Ah, #listener# — come, sit with me a while.",
+        "There you are, #listener#. I had hoped you would pass this way."
+    ],
+
+    // --- Accuse (the trunk's voice) ---
+    "accuse": [
+        "You think I have forgotten #referent#, #listener#? I have not.",
+        "#referent#. Say my name knowing what you did, #listener#.",
+        "And you would look me in the eye, #listener#, after #referent#."
+    ],
+    "accuse/angry": [
+        "#address# Not after #referent#, #listener#. Not ever.",
+        "#referent#, #listener# — and still you stand there breathing.",
+        "Do not speak to me of peace. #referent#, #listener#."
+    ],
+    "accuse/grieving": [
+        "I wept, #listener#, while you — #referent#. How do you live with it.",
+        "#referent#. I have nothing left but the memory of it, #listener#."
+    ],
+
+    // --- Threaten ---
+    "threaten": [
+        "Step carefully around me, #listener#.",
+        "There is a reckoning coming, #listener#, and your name is in it.",
+        "Sleep lightly, #listener#."
+    ],
+    "threaten/angry": [
+        "Cross me again, #listener#, and they will not find all of you.",
+        "I have buried better than you, #listener#. Do not tempt me."
+    ],
+
+    // --- Plead ---
+    "plead": [
+        "Please, #listener#. I have nowhere else to turn.",
+        "#listener#, I am begging you — help me.",
+        "I would not ask if I were not desperate, #listener#."
+    ],
+
+    // --- Confide ---
+    "confide": [
+        "I have told no one this, #listener#. Only you.",
+        "Between us, #listener#, and no further:",
+        "I trust you with this, #listener#, as I trust no one else."
+    ],
+
+    // --- Console ---
+    "console": [
+        "I am here, #listener#. You are not alone in this.",
+        "Grief passes, #listener#. Lean on me until it does.",
+        "Let it out, #listener#. I will not look away."
+    ],
+
+    // --- Mourn ---
+    "mourn": [
+        "They are gone, #listener#. Gone, and I am still here.",
+        "I did not think it would hurt like this, #listener#.",
+        "The world is quieter now, #listener#, and colder."
+    ],
+
+    // --- Boast ---
+    "boast": [
+        "Mark me, #listener#. They will know my name.",
+        "I was not made for small things, #listener#.",
+        "Watch what I become, #listener#."
+    ],
+
+    // --- Praise ---
+    "praise": [
+        "They speak true of you, #listener#. You have earned it.",
+        "Few could have done what you did, #listener#.",
+        "There is no shame in standing near you, #listener#."
+    ],
+
+    // --- Reconcile (an exit from the cycle) ---
+    "reconcile": [
+        "Let it lie, #listener#. I am tired of carrying it.",
+        "#referent# is old, #listener#. Let us not die enemies.",
+        "I forgive it, #listener#. Truly. Let us begin again."
+    ],
+
+    // --- Recruit ---
+    "recruit": [
+        "Stand with me, #listener#, and we both rise.",
+        "There is a place at my side, #listener#, if you have the stomach for it.",
+        "Throw in with me, #listener#. You will not regret it."
+    ],
+
+    // --- Gossip ---
+    "gossip": [
+        "You did not hear it from me, #listener#, but —",
+        "They are saying things, #listener#. You should know.",
+        "Word travels, #listener#. Some of it about you."
+    ],
+
+    // --- Deflect ---
+    "deflect": [
+        "I have nothing to say to you, #listener#.",
+        "We are done here, #listener#.",
+        "Save your breath, #listener#."
+    ]
+}

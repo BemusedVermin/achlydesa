@@ -1,0 +1,40 @@
+// Production and craft recipes — the "production" class of action.
+//
+// A recipe owns its economics: whole-unit inputs it consumes, whole-unit outputs
+// it makes, the skill it trains, and the natural resource it draws on. The market
+// only sets prices. Add a trade by adding an entry plus any new goods/skills/it
+// needs — no Rust changes.
+//
+//   inputs/outputs  (good, whole units). Output is scaled by skill, and by the
+//                   resource level if the recipe draws on one, then rounded.
+//   resource        natural resource drawn on: Fertility (crop capacity),
+//                   Vegetation (standing plants), Minerals (ore), Water. None = craft.
+//   min_resource    minimum resource level to attempt
+//   deplete         resource units consumed per attempt (0 = renewable / read-only)
+//   effort          cost in the utility denominator
+[
+    // Farming draws on the land's fertility — climate-renewable, so it doesn't
+    // deplete. (Set resource to Some(Vegetation) with deplete > 0 to make it
+    // literally harvest standing plants instead.)
+    (
+        name: "farm",
+        skill: "farming",
+        inputs: [],
+        outputs: [("grain", 2)],
+        resource: Some(Fertility),
+        min_resource: 0.05,
+        deplete: 0.0,
+        effort: 1.0,
+    ),
+    // Baking is a craft: grain in, bread out, no land needed.
+    (
+        name: "bake",
+        skill: "baking",
+        inputs: [("grain", 2)],
+        outputs: [("bread", 1)],
+        resource: None,
+        min_resource: 0.0,
+        deplete: 0.0,
+        effort: 1.0,
+    ),
+]

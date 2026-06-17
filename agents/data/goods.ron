@@ -1,0 +1,18 @@
+// Tradeable goods.
+//
+// Quantities and prices are whole numbers — you can't own half a loaf. Prices
+// are in coins; base values are scaled so price has integer resolution as stock
+// moves.
+//
+//   name         display / lookup id
+//   base_price   coins per unit when stock sits at `target_stock`
+//   target_stock stock level the price is anchored to (scarcer -> dearer)
+//   nutrition    sustenance restored per unit eaten (0 = inedible; a need meter,
+//                so this one is continuous)
+[
+    // Grain is a raw material — you farm it, but you don't eat it raw. It must be
+    // baked into bread, so a farm -> bake -> eat production chain (and a division
+    // of labour between growing and baking) emerges from people's food goals.
+    (name: "grain", base_price: 10, target_stock: 40, nutrition: 0.0),
+    (name: "bread", base_price: 30, target_stock: 25, nutrition: 45.0),
+]

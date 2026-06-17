@@ -1,0 +1,179 @@
+// Conversational intents — the repertoire of things an NPC might *mean* to say, as data.
+// An intent is a storylet for speech (the RON+Registry idiom of goals/norms/beats): a
+// speech act, the IAUS considerations that make an agent WANT to say it to a given
+// listener (scored by the same `ai::score` that ranks goals), and the social `moves` that
+// saying it makes. Which intent fires is emergent — a product of the speaker's traits,
+// mood, opinion of the listener, and the grudges between them — never a scripted branch.
+//
+//   act      the illocutionary class (Greet/Accuse/Threaten/Plead/Confide/Mourn/...)
+//   tags     register tags; the first is the memory register
+//   appeal   considerations over: Trait/Mood/Sanction + the listener-relative axes
+//            OpinionOf / GrievanceAgainst / SharedHistory / Prominence
+//   moves    Turn(opinion) / Stir(mood) / Sway(trait) / Grudge — over Speaker | Listener
+[
+    // --- Warmth & sociability (the connective tissue) ---
+    (
+        id: "a_greeting",
+        act: Greet,
+        tags: ["warmth"],
+        weight: 0.4,
+        appeal: [
+            (input: OpinionOf,           curve: Linear(m: 0.8, b: 0.1)),
+            (input: Trait("sociability"), curve: Linear(m: 0.6, b: 0.1)),
+        ],
+        moves: [ Turn(who: Listener, toward: Speaker, delta: 0.03) ],
+    ),
+    (
+        id: "a_confidence_shared",
+        act: Confide,
+        tags: ["warmth", "trust"],
+        appeal: [
+            (input: OpinionOf,     curve: Power(exp: 1.5)),
+            (input: SharedHistory, curve: Linear(m: 0.9, b: 0.1)),
+            (input: Trait("sociability"), curve: Linear(m: 0.5, b: 0.2)),
+        ],
+        moves: [
+            Turn(who: Listener, toward: Speaker, delta: 0.08),
+            Stir(who: Speaker, mood: "calm", delta: 0.1),
+        ],
+    ),
+    (
+        id: "an_idle_rumour",
+        act: Gossip,
+        tags: ["rumour"],
+        weight: 0.6,
+        appeal: [
+            (input: Trait("sociability"), curve: Linear(m: 0.7, b: 0.1)),
+            (input: SharedHistory,        curve: Linear(m: 0.6, b: 0.2)),
+        ],
+        moves: [ Turn(who: Listener, toward: Speaker, delta: 0.02) ],
+    ),
+
+    // --- Esteem & ambition ---
+    (
+        id: "a_word_of_praise",
+        act: Praise,
+        tags: ["esteem"],
+        appeal: [
+            (input: OpinionOf,  curve: Linear(m: 0.7, b: 0.0)),
+            (input: Prominence, curve: Linear(m: 0.9, b: 0.1)),
+        ],
+        moves: [ Turn(who: Listener, toward: Speaker, delta: 0.1) ],
+    ),
+    (
+        id: "a_boast",
+        act: Boast,
+        tags: ["esteem", "ambition"],
+        appeal: [
+            (input: Trait("ambition"), curve: Power(exp: 1.3)),
+            (input: Trait("greed"),    curve: Linear(m: 0.5, b: 0.1)),
+            (input: Mood("hope"),      curve: Linear(m: 0.6, b: 0.2)),
+        ],
+        moves: [ Stir(who: Speaker, mood: "joy", delta: 0.08) ],
+    ),
+    (
+        id: "a_call_to_arms",
+        act: Recruit,
+        tags: ["ambition", "faction"],
+        appeal: [
+            (input: Trait("ambition"), curve: Power(exp: 1.4)),
+            (input: Prominence,        curve: Linear(m: 0.6, b: 0.2)),
+            (input: OpinionOf,         curve: Linear(m: 0.5, b: 0.2)),
+        ],
+        moves: [ Turn(who: Listener, toward: Speaker, delta: 0.06) ],
+    ),
+
+    // --- Grievance, anger, the trunk (these surface only when the state warrants) ---
+    (
+        id: "an_accusation",
+        act: Accuse,
+        tags: ["grievance", "betrayal"],
+        weight: 1.3,
+        appeal: [
+            (input: GrievanceAgainst, curve: Linear(m: 1.0, b: 0.0)),
+            (input: Trait("vengeance"), curve: Power(exp: 1.2)),
+            (input: Mood("anger"),      curve: Linear(m: 0.7, b: 0.1)),
+        ],
+        moves: [
+            Turn(who: Listener, toward: Speaker, delta: -0.12),
+            Stir(who: Speaker, mood: "anger", delta: 0.1),
+        ],
+    ),
+    (
+        id: "a_threat",
+        act: Threaten,
+        tags: ["grievance", "violence"],
+        weight: 1.2,
+        appeal: [
+            (input: Trait("vengeance"), curve: Power(exp: 1.3)),
+            (input: OpinionOf,          curve: Inverse),
+            (input: Mood("anger"),      curve: Linear(m: 0.8, b: 0.0)),
+        ],
+        moves: [
+            Stir(who: Listener, mood: "fear", delta: 0.18),
+            Turn(who: Listener, toward: Speaker, delta: -0.08),
+        ],
+    ),
+    (
+        id: "a_cold_dismissal",
+        act: Deflect,
+        tags: ["coldness"],
+        weight: 0.7,
+        appeal: [
+            (input: OpinionOf,        curve: Inverse),
+            (input: Trait("caution"), curve: Linear(m: 0.6, b: 0.1)),
+        ],
+        moves: [ Turn(who: Listener, toward: Speaker, delta: -0.02) ],
+    ),
+
+    // --- Grief & need ---
+    (
+        id: "a_grief_spoken",
+        act: Mourn,
+        tags: ["grief"],
+        appeal: [
+            (input: Mood("sorrow"), curve: Power(exp: 1.2)),
+        ],
+        moves: [ Stir(who: Listener, mood: "sorrow", delta: 0.06) ],
+    ),
+    (
+        id: "a_plea",
+        act: Plead,
+        tags: ["need"],
+        appeal: [
+            (input: Mood("fear"), curve: Power(exp: 1.2)),
+            (input: OpinionOf,    curve: Linear(m: 0.6, b: 0.2)),
+        ],
+        moves: [ Turn(who: Speaker, toward: Listener, delta: 0.05) ],
+    ),
+    (
+        id: "a_consolation",
+        act: Console,
+        tags: ["warmth", "grief"],
+        appeal: [
+            (input: OpinionOf,            curve: Power(exp: 1.2)),
+            (input: Trait("sociability"), curve: Linear(m: 0.6, b: 0.1)),
+        ],
+        moves: [
+            Stir(who: Listener, mood: "hope", delta: 0.1),
+            Stir(who: Listener, mood: "sorrow", delta: -0.06),
+            Turn(who: Listener, toward: Speaker, delta: 0.06),
+        ],
+    ),
+
+    // --- The exits from the cycle (relief) ---
+    (
+        id: "an_overture_of_peace",
+        act: Reconcile,
+        tags: ["mercy"],
+        appeal: [
+            (input: Trait("forgiveness"), curve: Power(exp: 1.2)),
+            (input: SharedHistory,        curve: Linear(m: 0.7, b: 0.1)),
+        ],
+        moves: [
+            Turn(who: Speaker, toward: Listener, delta: 0.15),
+            Turn(who: Listener, toward: Speaker, delta: 0.1),
+            Sway(who: Speaker, trait_name: "vengeance", delta: -0.08),
+        ],
+    ),
+]

@@ -1,0 +1,26 @@
+// Personality — a small set of curated *motives* (after Reiss / CK3): continuous
+// drives an agent carries, that a goal's appeal can read by name. There is no
+// hardwired trait: add one here and reference it from a goal's considerations
+// (`(input: Trait("vengeance"), curve: ...)`).
+//
+// A trait is INNATE — who you are. Unlike a skill it does not grow by doing or
+// decay from disuse. Each agent is born near the `baseline`, varied by `spread`,
+// and a trait changes only through significant life events (see appraisals.ron),
+// whose effect persists. Fast, transient feeling lives in the separate mood layer.
+//
+// Traits may come in opposed pairs: an event that raises one lowers its `opposes`
+// by the same amount (you can't grow more vengeful and more forgiving at once).
+//
+//   baseline  the drive's innate value across the population (0..1)
+//   spread    how far an individual's birth value varies around it (±)
+//   opposes   the trait this one is the opposite of (optional)
+[
+    (name: "ambition",    baseline: 0.20, spread: 0.20, opposes: Some("contentment")),
+    (name: "contentment", baseline: 0.50, spread: 0.20, opposes: Some("ambition")),
+    (name: "vengeance",   baseline: 0.20, spread: 0.15, opposes: Some("forgiveness")),
+    (name: "forgiveness", baseline: 0.45, spread: 0.20, opposes: Some("vengeance")),
+    (name: "greed",       baseline: 0.30, spread: 0.20),
+    (name: "sociability", baseline: 0.50, spread: 0.20),
+    (name: "piety",       baseline: 0.40, spread: 0.20),
+    (name: "caution",     baseline: 0.40, spread: 0.20),
+]
