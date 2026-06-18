@@ -163,6 +163,43 @@ impl Default for DialogueConfig {
     }
 }
 
+/// Knobs for the optional **voice** — the on-device language model that renders the
+/// surface words for the player's focused conversation (`docs/dialogue.md` §4b). This is
+/// plain data describing *what* to load and how to sample; the model itself lives in the
+/// `voice` crate (kept out of the byte-identical sim). Like a graphics setting: when the
+/// model is absent or `enabled` is false, the deterministic grammar surface is used instead,
+/// losing nothing structural. It never affects the simulation — only the rendered words.
+#[derive(Clone, Debug, Serialize, serde::Deserialize)]
+#[serde(default)]
+pub struct VoiceConfig {
+    /// Master switch. When off, the grammar surface is always used.
+    pub enabled: bool,
+    /// HuggingFace repo holding the quantized GGUF weights, and the file within it.
+    pub repo: String,
+    pub gguf_file: String,
+    /// HuggingFace repo to source the `tokenizer.json` from (the base instruct model).
+    pub tokenizer_repo: String,
+    /// Cap on generated tokens per line. Generous enough that a short line reaches its natural
+    /// end-of-turn within the budget rather than being cut off mid-sentence (subword tokens add
+    /// up — "one short sentence" can run past a tight cap).
+    pub max_tokens: usize,
+    /// Sampling temperature; `0.0` means greedy/argmax (fully deterministic per machine).
+    pub temperature: f64,
+}
+
+impl Default for VoiceConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            repo: "Qwen/Qwen2.5-1.5B-Instruct-GGUF".to_string(),
+            gguf_file: "qwen2.5-1.5b-instruct-q4_k_m.gguf".to_string(),
+            tokenizer_repo: "Qwen/Qwen2.5-1.5B-Instruct".to_string(),
+            max_tokens: 128,
+            temperature: 0.7,
+        }
+    }
+}
+
 /// Knobs for the drama manager. Off by default, so a director-free world is unchanged.
 #[derive(Clone, Debug, Serialize, serde::Deserialize)]
 #[serde(default)]
@@ -252,7 +289,11 @@ impl Default for DirectorConfig {
             max_threads: 3,
             trunk_bonus: 2.0,
             phase_match: 1.6,
-            phase_miss: 0.6,
+            // Strong penalty for a beat told out of its arc phase. Kept low so a high-stakes
+            // *climax* beat does not out-score the Rising beats and fire early — which would
+            // lurch the thread Rising → Fall and skip the Climax phase the director needs to
+            // pass through (and time onto a high). Climaxes belong to the climax.
+            phase_miss: 0.3,
             spine_match: 1.4,
             collision_bonus: 1.7,
             collision_chance: 0.5,
@@ -263,7 +304,13 @@ impl Default for DirectorConfig {
             groom_gain: 0.9,
             proto_seed: 0.6,
             prom_cap: 8.0,
-            ripeness_base: 2.0,
+            // The heat a thread banks before it ripens to a climax. Kept low enough that a
+            // thread reaches the **Climax phase** before a high-stakes climax beat would
+            // otherwise fire during its Rising — so the director genuinely passes through
+            // climaxes (and can time them onto highs) rather than lurching Rising → Fall.
+            // Scaled up per the lead's prominence (the most-invested figure gets the longest
+            // burn), so a modest base still yields a slow build for the groomed protagonist.
+            ripeness_base: 1.0,
             ally_threshold: 0.08,
             foe_threshold: -0.08,
             peril: 25.0,
@@ -436,6 +483,10 @@ pub fn fauna() -> FaunaConfig {
 pub fn dialogue() -> DialogueConfig {
     loaded("dialogue.ron")
 }
+/// Voice (SLM) knobs, defaults with optional `assets/config/voice.ron`.
+pub fn voice() -> VoiceConfig {
+    loaded("voice.ron")
+}
 /// Director knobs, defaults with optional `assets/config/director.ron`.
 pub fn director() -> DirectorConfig {
     loaded("director.ron")
@@ -465,6 +516,9 @@ mod tests {
         assert_eq!(faction().period, FactionConfig::default().period);
         assert_eq!(feature().density, FeatureConfig::default().density);
         assert_eq!(params().ticks_per_year, Params::default().ticks_per_year);
+        // Also exercises that the commented voice.ron parses (RON line comments).
+        assert_eq!(voice().repo, VoiceConfig::default().repo);
+        assert_eq!(voice().max_tokens, VoiceConfig::default().max_tokens);
     }
 
     #[test]
@@ -494,6 +548,7 @@ mod tests {
         write(&dir, "needs.ron", &NeedsConfig::default());
         write(&dir, "fauna.ron", &FaunaConfig::default());
         write(&dir, "dialogue.ron", &DialogueConfig::default());
+        write(&dir, "voice.ron", &VoiceConfig::default());
         write(&dir, "director.ron", &DirectorConfig::default());
         write(&dir, "faction.ron", &FactionConfig::default());
         write(&dir, "feature.ron", &FeatureConfig::default());

@@ -1,0 +1,17 @@
+// Voice (on-device dialogue model) configuration.
+//
+// Default is the 1.5B model — fast on CPU. With an NVIDIA GPU + CUDA Toolkit (>= 12.8),
+// build with `cargo run -p app --features cuda --release` (set CUDA_COMPUTE_CAP=120 on an
+// RTX 50-series) and switch repo/gguf_file/tokenizer_repo to a 7B for far richer dialogue:
+//     repo: "Qwen/Qwen2.5-7B-Instruct-GGUF",
+//     gguf_file: "qwen2.5-7b-instruct-q4_k_m.gguf",
+//     tokenizer_repo: "Qwen/Qwen2.5-7B-Instruct",
+// Any Qwen2.5-based GGUF (incl. roleplay finetunes) is a drop-in — same loader.
+(
+    enabled: true,
+    repo: "Qwen/Qwen2.5-1.5B-Instruct-GGUF",
+    gguf_file: "qwen2.5-1.5b-instruct-q4_k_m.gguf",
+    tokenizer_repo: "Qwen/Qwen2.5-1.5B-Instruct",
+    max_tokens: 128,
+    temperature: 0.7,
+)

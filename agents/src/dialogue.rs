@@ -867,36 +867,15 @@ pub fn display_name(world: &World, e: Entity) -> String {
     name_of(&world.resource::<Dialogue>().grammar, e)
 }
 
-/// Enact one utterance immediately — the player-avatar speaking, or any caller that wants
-/// the result now rather than on the next `converse` tick. Applies the intent's moves
-/// (the deterministic social consequence), renders the surface, records the memory for
-/// both souls, logs it, and returns it. Uses the *same* machinery as emergent speech.
-pub fn perform(world: &mut World, speaker: Entity, listener: Entity, intent_id: &str) -> Option<Utterance> {
-    let bi = world.resource::<IntentBook>().0.iter().position(|i| i.id == intent_id)?;
-    let intent = world.resource::<IntentBook>().0[bi].clone();
-    let tick = world.resource::<Substrate>().0.tick();
-
-    // Phase 1 — the speaker's pre-utterance snapshot, turned to words. The speaker may be
-    // the player's avatar, which carries no traits or mood of its own — the player is its
-    // mind. Absent components read as neutral: no fixed motive, an even affect. (The player
-    // is offered the verbs and chooses; the sim never scores what the avatar "wants" to say.)
-    let s_traits = world.get::<Personality>(speaker).map(|p| p.0.clone()).unwrap_or_default();
-    let s_moods = world.get::<Mood>(speaker).map(|m| m.0.clone()).unwrap_or_default();
-    let op_sl = world.get::<Opinion>(speaker).map(|o| o.of(listener)).unwrap_or(0.0);
-    let has_grudge = world.get::<Grievance>(speaker).is_some_and(|g| g.0 == listener);
-    let (affect_word, affect_bucket, motive, speaker_name, listener_name, referent, register) = {
-        let reg = world.resource::<Registry>();
-        let affect = MoodWords::resolve(reg).dominant(&s_moods);
-        let motive = motive_words(reg, &s_traits);
-        let register = intent.tags.first().cloned().unwrap_or_else(|| intent.act.key().to_string());
-        let dlg = world.resource::<Dialogue>();
-        let referent = pick_referent(dlg, speaker, listener, &register, has_grudge);
-        (affect.word, affect.bucket, motive, name_of(&dlg.grammar, speaker), name_of(&dlg.grammar, listener), referent, register)
-    };
-
-    // Phase 2 — apply the moves (the canon consequence; mirrors `converse`).
+/// Apply just the social consequence of a conversational intent — the deterministic [`Move`]s
+/// from `speaker` to `listener` (Turn/Stir/Sway/Grudge), mutating Opinion/Mood/Personality/
+/// Grievance. No surface is rendered or remembered. Shared by [`perform`] and the player path
+/// ([`Simulation::apply_conversational_intent`](crate::Simulation::apply_conversational_intent))
+/// so free-text talk can move the social state through the *same* authored, deterministic
+/// effects. Returns whether a grudge was made.
+pub fn apply_moves(world: &mut World, speaker: Entity, listener: Entity, moves: &[Move]) -> bool {
     let mut made_grudge = false;
-    for mv in &intent.moves {
+    for mv in moves {
         match mv {
             Move::Turn { who, toward, delta } => {
                 let (w, t) = (party(*who, speaker, listener), party(*toward, speaker, listener));
@@ -936,6 +915,38 @@ pub fn perform(world: &mut World, speaker: Entity, listener: Entity, intent_id: 
             }
         }
     }
+    made_grudge
+}
+
+/// Enact one utterance immediately — the player-avatar speaking, or any caller that wants
+/// the result now rather than on the next `converse` tick. Applies the intent's moves
+/// (the deterministic social consequence), renders the surface, records the memory for
+/// both souls, logs it, and returns it. Uses the *same* machinery as emergent speech.
+pub fn perform(world: &mut World, speaker: Entity, listener: Entity, intent_id: &str) -> Option<Utterance> {
+    let bi = world.resource::<IntentBook>().0.iter().position(|i| i.id == intent_id)?;
+    let intent = world.resource::<IntentBook>().0[bi].clone();
+    let tick = world.resource::<Substrate>().0.tick();
+
+    // Phase 1 — the speaker's pre-utterance snapshot, turned to words. The speaker may be
+    // the player's avatar, which carries no traits or mood of its own — the player is its
+    // mind. Absent components read as neutral: no fixed motive, an even affect. (The player
+    // is offered the verbs and chooses; the sim never scores what the avatar "wants" to say.)
+    let s_traits = world.get::<Personality>(speaker).map(|p| p.0.clone()).unwrap_or_default();
+    let s_moods = world.get::<Mood>(speaker).map(|m| m.0.clone()).unwrap_or_default();
+    let op_sl = world.get::<Opinion>(speaker).map(|o| o.of(listener)).unwrap_or(0.0);
+    let has_grudge = world.get::<Grievance>(speaker).is_some_and(|g| g.0 == listener);
+    let (affect_word, affect_bucket, motive, speaker_name, listener_name, referent, register) = {
+        let reg = world.resource::<Registry>();
+        let affect = MoodWords::resolve(reg).dominant(&s_moods);
+        let motive = motive_words(reg, &s_traits);
+        let register = intent.tags.first().cloned().unwrap_or_else(|| intent.act.key().to_string());
+        let dlg = world.resource::<Dialogue>();
+        let referent = pick_referent(dlg, speaker, listener, &register, has_grudge);
+        (affect.word, affect.bucket, motive, name_of(&dlg.grammar, speaker), name_of(&dlg.grammar, listener), referent, register)
+    };
+
+    // Phase 2 — apply the moves (the canon consequence; mirrors `converse`).
+    let made_grudge = apply_moves(world, speaker, listener, &intent.moves);
 
     // Phase 3 — render, remember, log.
     let cap = world.resource::<DialogueRes>().memory_cap;

@@ -8,3 +8,13 @@ agents = { path = "../agents" }
 game_sim = { path = "../game_sim" }
 bevy = "0.18.1"
 hexx = { workspace = true }
+# The optional on-device dialogue voice (SLM). Default-on; build with
+# `--no-default-features` to compile out candle entirely and use the grammar.
+voice = { path = "../voice", optional = true }
+
+[features]
+default = ["voice"]
+voice = ["dep:voice"]
+# GPU inference (NVIDIA). Build with `cargo run -p app --features cuda --release`; set
+# CUDA_COMPUTE_CAP=120 for an RTX 50-series (Blackwell). Needs CUDA Toolkit >= 12.8.
+cuda = ["voice/cuda"]

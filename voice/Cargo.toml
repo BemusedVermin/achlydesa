@@ -1,0 +1,28 @@
+[package]
+name = "voice"
+version = "0.1.0"
+edition = "2024"
+
+# The optional on-device "voice" of the dialogue layer: a small language model
+# that renders the surface words for the player's focused conversation. Kept in
+# its own crate so the heavy `candle` stack and the model FFI never touch the
+# byte-identical sim crates (`agents`/`config`/`game_sim`/`sim`) — only `app`
+# depends on this, behind a feature. See `docs/dialogue.md` §4b.
+[dependencies]
+agents = { path = "../agents" }
+config = { path = "../config" }
+anyhow = "1"
+candle-core = "0.10.2"
+candle-transformers = "0.10.2"
+# `default-features = false` + `fancy-regex` keeps the C `onig` regex engine out —
+# the pure-Rust path is all we need to load a `tokenizer.json` and encode.
+tokenizers = { version = "0.23.1", default-features = false, features = ["fancy-regex"] }
+# Blocking `ureq` backend with pure-Rust `rustls` TLS — no tokio, no OpenSSL.
+hf-hub = { version = "0.5.0", default-features = false, features = ["ureq", "rustls-tls"] }
+
+[features]
+# CPU inference by default (no VRAM contention with the Bevy renderer). GPU is
+# strictly opt-in and forwards to candle's own backends.
+default = []
+cuda = ["candle-core/cuda", "candle-transformers/cuda"]
+metal = ["candle-core/metal", "candle-transformers/metal"]

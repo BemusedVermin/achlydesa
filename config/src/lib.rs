@@ -31,5 +31,5 @@ pub mod tunables;
 pub use assets::{Asset, AssetSource, Bundled, Config, ConfigError, DirSource, InMemory, assets_data_dir, parse};
 pub use params::Params;
 pub use tunables::{
-    DialogueConfig, DirectorConfig, EconConfig, FactionConfig, FeatureConfig, FaunaConfig, NeedsConfig,
+    DialogueConfig, DirectorConfig, EconConfig, FactionConfig, FeatureConfig, FaunaConfig, NeedsConfig, VoiceConfig,
 };
