@@ -95,13 +95,74 @@ beats / 255 staged vs **freed 0**) and tests. What's still deferred:
   and no "seed a thin history, then justify the ruins/courts" (Caves-of-Qud-style) layer —
   both flagged in the ABM review as ways to make exploration richer.
 
+## Player discovery & knowledge
+A **knowledge-gated discovery loop** (Outer-Wilds-style — knowledge *literally* gates progression)
+is being layered onto the player avatar. **Slice 1 is built & tested:** features carry optional
+`requires`/`reveals` lore facts (`assets/data/features.ron`, `#[serde(default)]` → existing content
+untouched); the player holds a `PlayerKnowledge` resource (lore tokens + rumours); a **search** verb
+(`Simulation::player_search`, one tick like *wait*) reveals undiscovered features on the tile whose
+gate the held lore satisfies and harvests the lore they teach (`Features::search_at_index`); a
+**journal** (J) lists places found + lore held; and the Look panel shows a *"you sense something / it
+eludes you"* lure from `find_state`. It is **deterministic — knowledge, not dice, decides** — and
+**off-by-default-identical** (empty until an avatar searches; `the_world_runs_with_no_player` still
+passes). One authored gnostic chain proves it end-to-end (conventicle → names of the seven +
+counter-cosmogony → archon throne / seer's seat → a password of the gate → gate of the seven → the
+way beyond). What's deferred:
+- **Maps & a player economy are unbuilt.** The avatar has no coin purse and there is no
+  cartographer "buy a map" action (reveal a batch of nearby landmarks for coin). Decided: give the
+  avatar an `Inventory` like any NPC; maps/services cost money; earning via exploration/quests is
+  later. **(blocks: place-knowledge from anything but walking/searching)**
+- **No rumours from people.** NPC dialogue does not yet yield place-rumours or lore — the
+  `PlayerKnowledge::rumors` field exists but is never populated, the journal's rumour section is
+  omitted, and the two-stage *rumoured → located* place model is unrealised. This is the
+  player-facing half of the existing "discovery doesn't spread by word of mouth" gap above.
+- **Authored gating is one chain, not broad.** Only the gnostic spine (conventicle/seer/archon/
+  gate) carries `requires`/`reveals`; the cult of forgetting, the seven *distinct* Archons, the
+  ruins of myth, etc. are ungated. The user asked for **broad** authoring — many more chains across
+  `features.ron` — still to do (the mechanism is fully in place; this is content work).
+- **Located-beyond-fog silhouettes are unbuilt.** A place revealed by a (future) map should beckon
+  as a silhouette through the fog before you walk there; today every shown feature is gated on
+  `player_explored`, so map-revealed places can't render ahead of the fog. Needs an authoritative
+  `located` set in the player layer (planned for the maps slice).
+- **"The way beyond" leads nowhere.** Completing the chain grants the `the_way_beyond` lore fact and
+  nothing else — no ending, no state change, no payoff. The ascension/liberation it implies is
+  unbuilt (and would want to tie into the director's freed-world story).
+- **Search is current-tile only.** No searching adjacent tiles, no partial/luck reveals
+  (deliberately — knowledge gates, not dice), no cost beyond the one tick; an empty search still
+  spends the turn.
+- **The player still can't *use* what it finds.** The "full interaction" option (rest at a shrine,
+  forage a grove, learn a craft at a discovered guild) was scoped out of the first pass; feature
+  affordances remain NPC-only for the avatar.
+- **Richer landmark procgen deferred.** The agreed "stronger silhouettes, partial/ruined reveals,
+  breadcrumbs, more variety per category" pass — making landmarks *pull the eye and reward
+  investigation* — is after the loop (slice 5).
+
 ## Ecology & fauna
+The substrate now classifies a tile's biome with the **38-zone Holdridge life-zone** system
+(replacing the old 6-way `Pft`), from running **annual** climate averages (biotemperature +
+annualised precipitation → PET/precip humidity provinces), and the **ecology is organised by
+the biome** — each life zone sets its productivity ceiling, flammability and decomposition.
+Fauna are **biome-specific**: an authored `assets/data/bestiary.ron` roster of species (habitat
+formations, a biotemperature band, size / fecundity / herding, and a body `Form`) that spawn,
+forage and breed in the biomes that suit them, rendered as procedurally-animated low-poly
+creatures (`app/src/fauna_art.rs`). What's deferred:
+- **Calibration is a first pass — done once, at the end.** The world is tuned for "vivid green
+  islands in a harsh, otherworldly waste," but the **wastes can't yet sustain their fauna**
+  (desert/grassland species starve — *Dune* wants its sandworms): they need a **hardiness /
+  low-upkeep adaptation** so sparse biomes still hold life, and **habitat fidelity is loose**
+  (out-of-habitat suitability `0.2` lets creatures drift into richer wrong biomes — likely
+  `0.1`). Creature **mesh sizes & animation amplitudes** are unverified guesses to tune once
+  seen in-app. **(blocks: the final V&V rebaseline + syncing `params.rs` defaults to the
+  calibrated `params.ron`)**
 - **Predator–prey coexistence is empirically tuned, not derived.** The Liebig productivity +
   herd aggregation + spatial refuge + patient-predator parameters were found by experiment to
   give a persistent oscillation; they aren't proven stable across all worlds/seeds, and a very
   harsh world could still collapse a tier.
-- **Only two trophic levels of fauna.** The design doc's **apex/migratory** and **scavenger**
-  tiers are unbuilt (just `Herbivore` + `Carnivore`).
+- **Diet is still two-way; no apex/scavenger tiers.** Species now differentiate *within*
+  `Herbivore` / `Carnivore` (habitat, size, gait), but the design doc's **apex/migratory** and
+  **scavenger** trophic tiers are unbuilt.
+- **Fauna are land-only.** No fish / marine life and no true flyers (drifters hover but stay
+  over land), so the **ocean is lifeless** — pairs with the ocean-traversal gap below.
 - **Soil chemistry is partial.** Q10 decomposition and a soil-carbon→carrying-capacity feedback
   are in, but **C:N stoichiometry** (nutrient release governed by litter C:N, immobilisation in
   cold/wet soils) is not.
@@ -131,6 +192,82 @@ beats / 255 staged vs **freed 0**) and tests. What's still deferred:
 
 ---
 
+# Planned game layers (forward-looking — not yet built)
+
+Unlike the items above (limitations of *shipped* systems), these are whole layers the current
+build is scaffolding *toward*, recorded so the direction is explicit. Several interlock —
+travel costs, roads/rivers, survival, the economy and the world's scale are one connected design.
+
+## A real UI (today's front-end is a debug interface)
+The Bevy shell works but reads as a **developer view** onto the sim — text HUD panels, a colour
+legend, floating labels, a plain text journal. A real UI pass is deferred: proper framing and
+panels, iconography, readable typography, menus, and polished map / journal / inventory / quest
+screens, with clear input affordances. Today's interface is for **inspecting** the simulation,
+not yet for **playing** it.
+
+## Ocean traversal — ship / airship / flight
+The avatar walks land only (`people::MoveGraph` is land-only; ocean tiles block travel), so
+**content across the sea is unreachable**. A vessel layer would open the map: boats / ships for
+water, and later **airships or flight** to cross any terrain. Needs a water (and air) movement
+graph, a vessel the avatar boards (built / bought / found), port features, and gating so the open
+sea is a mid-game unlock rather than a starting affordance. **(blocks: cross-ocean content, a
+complete world map)**
+
+## Roads & rivers
+Worldgen carves rivers (as surface water) and they shape the climate, but they are **neither
+rendered nor used for movement**, and **roads don't exist** (both were skipped in the render
+overhaul). The fuller version: generate a **road network** between settlements (the cheapest
+travel), **render rivers**, and make a river both a **barrier** (needs a ford / bridge / boat) and
+a **route** (fast downstream). Feeds travel costs and trade routes directly.
+
+## Travel costs & world scale
+Every land hex currently costs **one tick to cross**, flat — independent of terrain or slope — on
+a small demo world (48×36). The intended model:
+- **Hex = a day's travel.** Set the hex's in-diameter to the distance one can walk in a day on
+  **forest** (baseline) terrain, so one hex ≈ one day's march on neutral ground; size the world to
+  a continent of meaningful extent at that scale.
+- **Terrain-dependent cost.** Crossing cost scales with the tile's formation / terrain — **roads
+  cheapest**, grassland / open baseline, desert / dense forest / swamp / mountain costlier, **ocean
+  impassable without a vessel**.
+- **Slope / elevation cost.** Cost also depends on the **elevation difference** between adjacent
+  tiles: a gentle rise is cheap, but a severe ascent (e.g. **~1000 m over ~0.2 mi**) demands
+  **specialized gear** (climbing) or is impassable — gating mountain crossings.
+- Feeds the survival layer (time & supplies spent travelling) and the RPG layer (gear unlocks
+  routes). **(blocks: meaningful exploration; the survival / RPG layers)**
+
+## JRPG-style conversation UI + procedural portraits
+Conversation today is a text HUD panel (plus the optional on-device SLM voicing). A standard
+**JRPG dialog window** is deferred — a framed box with the speaker's **name, portrait, and
+typewritten text**. Alongside it, **procedurally-generated character sprites / portraits with
+facial expressions** that reflect the soul's live state: the sim already tracks each person's
+**mood** and **opinion of the player**, which would drive the expression (wary, warm, furious,
+awed). Needs a procedural-face generator (parameterized by the agent's traits / appearance) with a
+mood-keyed expression layer, and the window UI.
+
+## RPG & survival layers (so exploration has stakes)
+Exploration is movement + discovery only — walking A→B costs nothing and changes nothing about the
+avatar. Two complementary layers:
+- **Survival.** Give the avatar **needs** (hunger / fatigue / warmth — NPCs already carry a needs
+  model it could share), drained by travel, time, and the harshness of the biome, restored by rest
+  / forage / supplies. The otherworldly wastes and frozen belts become genuinely dangerous;
+  provisioning matters.
+- **RPG progression.** The avatar gains **capability** over a run (skills / gear / standing) that
+  **unlocks routes** (climbing gear → mountains, a vessel → ocean), improves survival, and gates
+  content — so discovery *rewards* growth. Composes with the **knowledge-gating already built**
+  (knowledge *and* capability gate).
+Both rest on a player **`Inventory` / economy** (already flagged for the maps slice) and the
+travel-cost model.
+
+## A real economic simulation & trade
+The economy is an integer good / money system with markets, price smoothing, and NPC production /
+trade (money conserved; death the only sink). A **real economic simulation** is deferred:
+**supply / demand prices across a trade network**, caravans / shipping moving goods between
+settlements along **roads / rivers / sea**, regional scarcity and specialization, and the **player
+participating** (arbitrage, funding expeditions, running cargo). Ties into roads / rivers (routes),
+travel costs (freight), and the player economy / RPG layer.
+
+---
+
 *Last updated 2026-06. Done since the reviews: smart-object affordances, per-agent discovery,
 learn-a-trade, specialties, price smoothing, V&V harness, ODD doc, the predator layer + Q10 +
 soil-carbon feedback + Liebig (→ coexistence), the full faction system (governance, multi-
@@ -141,4 +278,13 @@ resistance; **manufactured prominence** as attachment; register rotation with em
 dominance; collisions; broadened registers + awe/hope/love moods; `staged(t)` joy + suffering
 alongside `gratuitous(t)`; relentless protagonist re-casting with persistent prominence;
 **no disarm button** — liberation is emergent precondition-starvation behind an impact floor
-*and the deniability rule*, the freed world telling an omnipotent director **0 beats**).*
+*and the deniability rule*, the freed world telling an omnipotent director **0 beats**). Also: the
+playable Bevy front-end (all-procedural natural terrain/props/buildings, compressed relief,
+hover-inspect / right-click-travel, floating labels + legend) and **slice 1 of the knowledge-gated
+discovery loop** (search verb, lore facts with `requires`/`reveals` gates, the discoveries journal,
+the "you sense something" lure, and one authored gnostic chain). And the **biome overhaul**: the
+38-zone **Holdridge life-zone** classifier (replacing `Pft`) from annual climate averages, a
+**biome-organised ecology** (per-life-zone productivity / fire / decomposition), an **otherworldly
+"Dune" calibration** + palette, **biome-specific fauna** (authored `bestiary.ron` species sorted
+into their habitats), and **procedurally-animated low-poly creatures** rendered in the app
+(sine-wave gait). The "Planned game layers" and "Ecology & fauna" sections above hold what remains.*
