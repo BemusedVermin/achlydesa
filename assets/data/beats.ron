@@ -529,4 +529,1042 @@
             Sway(who: Protagonist, trait_name: "forgiveness", delta: 0.1),
         ],
     ),
+
+    // ======================================================================
+    // THE DEMIURGE CYCLE — gnostic myth dramatized as storylets. Dead souls
+    // labour in a counterfeit creation, ruled by a blind god and seven
+    // Archon-jailers, none knowing they have died. The rare soul who begins
+    // to WAKE (gnosis) is hunted; the cult manufactures rapture to keep
+    // the rest dreaming. One Archon, Sabaoth, repents and is exalted. A
+    // soul may learn the passwords and ascend past the seven into the Pleroma
+    // — the fullness that was always the true home.
+    //
+    // Tone: numinous, eerie, elegiac, cruel-under-velvet.
+    // ======================================================================
+
+    // --- GROOMING beats: the cult manufactures devotion and rapture so the reversal breaks more ---
+    (
+        id: "the_temples_rapture", // Romance/grooming — a soul is sweetened in the cult's manufactured bliss
+        register: Romance,
+        tags: ["myth", "rapture", "cult"],
+        phases: [Setup],
+        tension: -0.6,
+        stakes: 0.6,
+        cast: [Protagonist, Mentor],
+        // Low stakes — a well-fed, faction-free world ignores the cult's offer. The devout
+        // Mentor is the conduit; without a pious elder the rapture has no mouth.
+        pre: [Exists(who: Mentor), TraitAtLeast(who: Mentor, trait_name: "piety", v: 0.4)],
+        effects: [
+            Sway(who: Protagonist, trait_name: "devotion", delta: 0.2),
+            Sway(who: Protagonist, trait_name: "oblivion", delta: 0.15),
+            Stir(who: Protagonist, mood: "rapture", delta: 0.4),
+            Stir(who: Protagonist, mood: "joy", delta: 0.2),
+        ],
+    ),
+    (
+        id: "acclaimed_in_the_temple", // Triumph grooming — the crowd lifts the protagonist in the cult's light
+        register: Triumph,
+        tags: ["myth", "cult", "triumph"],
+        phases: [Setup],
+        tension: -0.5,
+        stakes: 0.7,
+        cast: [Protagonist, Bystander, Mentor],
+        // The temple acclaim sets up the reversal: the louder the hosanna,
+        // the harder the heresy charge lands later.
+        pre: [Exists(who: Bystander), Exists(who: Mentor), TraitAtLeast(who: Mentor, trait_name: "piety", v: 0.35)],
+        effects: [
+            Stir(who: Protagonist, mood: "joy", delta: 0.3),
+            Stir(who: Protagonist, mood: "rapture", delta: 0.2),
+            Sway(who: Protagonist, trait_name: "devotion", delta: 0.15),
+            Turn(who: Bystander, toward: Protagonist, delta: 0.4),
+        ],
+    ),
+
+    // --- WONDER/MYTH beats: glimpses of the true light and the hidden cosmology ---
+    (
+        id: "the_mentor_names_the_seven", // Wonder/myth — the Archon-jailers given their names and faces
+        register: Wonder,
+        tags: ["myth", "wonder", "archon"],
+        phases: [Setup, Rising],
+        tension: 0.3,
+        stakes: 0.5,
+        weight: 0.5,
+        cast: [Protagonist, Mentor],
+        // A pious elder recites the seven beast-faced rulers — Athoth, Eloaiou,
+        // Astaphaios, Yao, Sabaoth, Adonin, Sabbede — as holy names. The protagonist
+        // hears them instead as the bars of a cage.
+        pre: [Exists(who: Mentor), TraitAtLeast(who: Mentor, trait_name: "piety", v: 0.45)],
+        effects: [
+            Stir(who: Protagonist, mood: "awe", delta: 0.35),
+            Stir(who: Protagonist, mood: "dread", delta: 0.2),
+            Sway(who: Protagonist, trait_name: "gnosis", delta: 0.12),
+            Sway(who: Mentor, trait_name: "piety", delta: 0.1),
+        ],
+    ),
+    (
+        id: "the_cup_cracks", // Wonder — the cup of forgetfulness fails; a memory returns
+        register: Wonder,
+        tags: ["myth", "wonder", "gnosis", "longing"],
+        phases: [Setup, Fall],
+        tension: -0.2,
+        stakes: 0.6,
+        weight: 0.7,
+        cast: [Protagonist],
+        // The antimimon pneuma — the counterfeit spirit poured into the soul at the
+        // false creation — stutters. A fragment of the soul's true life before the
+        // purgatory surfaces. Sorrow and longing together: the hallmark of beginning
+        // to wake.
+        pre: [TraitAtLeast(who: Protagonist, trait_name: "gnosis", v: 0.1)],
+        effects: [
+            Stir(who: Protagonist, mood: "longing", delta: 0.4),
+            Stir(who: Protagonist, mood: "sorrow", delta: 0.2),
+            Sway(who: Protagonist, trait_name: "gnosis", delta: 0.15),
+            Sway(who: Protagonist, trait_name: "oblivion", delta: -0.2),
+        ],
+    ),
+    (
+        id: "a_crack_in_the_false_sky", // Wonder — a soul sees beyond the Demiurge's vault
+        register: Wonder,
+        tags: ["myth", "wonder", "gnosis"],
+        phases: [Setup, Fall],
+        tension: 0.2,
+        stakes: 0.5,
+        weight: 0.6,
+        cast: [Protagonist, Mentor],
+        // The Pleroma bleeds through a seam in the counterfeit sky — only the wakeful
+        // notice. Requires a pious Mentor who unwittingly names the above as divine.
+        pre: [Exists(who: Mentor), TraitAtLeast(who: Mentor, trait_name: "piety", v: 0.3)],
+        effects: [
+            Reveal,
+            Stir(who: Protagonist, mood: "awe", delta: 0.4),
+            Stir(who: Protagonist, mood: "longing", delta: 0.3),
+            Sway(who: Protagonist, trait_name: "gnosis", delta: 0.1),
+        ],
+    ),
+    (
+        id: "the_hidden_seal_found", // Wonder — a password-sigil surfaces; the ascent becomes thinkable
+        register: Wonder,
+        tags: ["myth", "wonder", "gnosis", "ascent"],
+        phases: [Rising, Fall],
+        tension: 0.1,
+        stakes: 0.6,
+        weight: 0.6,
+        cast: [Protagonist, Mentor],
+        // The Sethian traditions hid passwords in the world itself — inscribed on
+        // doorposts, carved beneath market stalls. A soul with nascent gnosis reads
+        // what the oblivious walk past. The Mentor cannot tell them what they found.
+        pre: [
+            Exists(who: Mentor),
+            TraitAtLeast(who: Protagonist, trait_name: "gnosis", v: 0.2),
+        ],
+        effects: [
+            Reveal,
+            Stir(who: Protagonist, mood: "awe", delta: 0.3),
+            Stir(who: Protagonist, mood: "hope", delta: 0.3),
+            Sway(who: Protagonist, trait_name: "gnosis", delta: 0.15),
+        ],
+    ),
+
+    // --- BETRAYAL/PERSECUTION: the heretic hunted ---
+    (
+        id: "the_cult_names_a_heretic", // Persecution — a waking soul is denounced by the faithful
+        register: Persecution,
+        tags: ["myth", "persecution", "cult", "gnosis"],
+        // Climax-only: a denunciation is a *reversal*, fired when the thread has ripened,
+        // never told early in the Rising (which would skip the climax the collision needs).
+        phases: [Climax],
+        tension: 1.8,
+        stakes: 1.6,
+        cast: [Protagonist, Ally, Mentor],
+        // The Law of the Demiurge permits the heretic's blood. An Ally — kindled
+        // during grooming — turns accusor under the Mentor's hand. Gated on a
+        // faction (the cult needs a body to enforce the decree) and on the
+        // Protagonist beginning to wake.
+        pre: [
+            Exists(who: Ally),
+            Exists(who: Mentor),
+            InFaction(yes: true),
+            TraitAtLeast(who: Protagonist, trait_name: "gnosis", v: 0.15),
+        ],
+        effects: [
+            Voice(who: Ally, intent: "an_accusation"),
+            Grudge(who: Ally, against: Protagonist),
+            Turn(who: Ally, toward: Protagonist, delta: -0.7),
+            Stir(who: Protagonist, mood: "dread", delta: 0.4),
+            Stir(who: Ally, mood: "anger", delta: 0.3),
+            Decree,
+        ],
+    ),
+    (
+        id: "the_archons_arm_falls", // Betrayal Climax — the Mentor revealed as an Archon's instrument
+        register: Betrayal,
+        tags: ["myth", "betrayal", "archon", "cult"],
+        phases: [Climax],
+        tension: 2.4,
+        stakes: 2.2,
+        cast: [Protagonist, Mentor],
+        // The most trusted elder is the jailer's hand — piety was the mask of heimarmene.
+        // The knife lands at the height of devotion stirred (rapture the grooming built).
+        // Gated on a faction and a vengeful Foe (the cult's enforcer-arm).
+        pre: [
+            Exists(who: Mentor),
+            MoodAtLeast(who: Protagonist, mood: "rapture", v: 0.2),
+            InFaction(yes: true),
+            TraitAtLeast(who: Mentor, trait_name: "piety", v: 0.5),
+        ],
+        effects: [
+            Turn(who: Mentor, toward: Protagonist, delta: -0.9),
+            Grudge(who: Mentor, against: Protagonist),
+            Voice(who: Mentor, intent: "an_accusation"),
+            Stir(who: Protagonist, mood: "dread", delta: 0.4),
+            Stir(who: Protagonist, mood: "sorrow", delta: 0.3),
+            Stir(who: Mentor, mood: "anger", delta: 0.3),
+        ],
+    ),
+    (
+        id: "rapture_curdles_to_despair", // Betrayal/Loss — the cult's gift turns poison
+        register: Betrayal,
+        tags: ["myth", "cult", "betrayal", "loss"],
+        phases: [Climax],
+        tension: 2.0,
+        stakes: 1.8,
+        cast: [Protagonist, Foe],
+        // Chains after rapture-grooming: the same ecstasy manufactured by the false
+        // temple becomes the vehicle of despair when the soul sees the cage it was
+        // singing in. Gated on a vengeful Foe (the cult's arm) and a faction.
+        pre: [
+            Exists(who: Foe),
+            MoodAtLeast(who: Protagonist, mood: "rapture", v: 0.15),
+            InFaction(yes: true),
+            TraitAtLeast(who: Foe, trait_name: "vengeance", v: 0.3),
+        ],
+        effects: [
+            Stir(who: Protagonist, mood: "despair", delta: 0.5),
+            Stir(who: Protagonist, mood: "rapture", delta: -0.4),
+            Sway(who: Protagonist, trait_name: "oblivion", delta: -0.2),
+            Sway(who: Protagonist, trait_name: "gnosis", delta: 0.1),
+            Voice(who: Foe, intent: "a_threat"),
+        ],
+    ),
+
+    // --- LOSS/DISASTER: the wheel of fate (heimarmene) ---
+    (
+        id: "the_wheel_of_fate_turns", // Disaster — an Archon's heimarmene falls like weather
+        register: Disaster,
+        tags: ["myth", "disaster", "archon", "fate"],
+        phases: [Climax],
+        tension: 2.0,
+        stakes: 1.8,
+        cast: [Protagonist, Bystander],
+        // Heimarmene: the prison-grid of the seven, grinding like celestial machinery.
+        // The faithful call it Providence; the waking call it the wheel. Gated on
+        // need — the wheel only breaks what is already near breaking.
+        pre: [
+            Exists(who: Bystander),
+            VictimNearby(need_below: 28.0),
+        ],
+        effects: [
+            Disaster(radius: 3, severity: 30.0),
+            Stir(who: Protagonist, mood: "dread", delta: 0.3),
+            Stir(who: Bystander, mood: "fear", delta: 0.4),
+            Sway(who: Protagonist, trait_name: "gnosis", delta: 0.05),
+        ],
+    ),
+    (
+        id: "the_beloved_drinks_and_forgets", // Loss — a dear soul swallows the cup of oblivion
+        register: Loss,
+        tags: ["myth", "loss", "oblivion", "longing"],
+        phases: [Climax],
+        tension: 2.3,
+        stakes: 2.4,
+        cast: [Protagonist, Lover],
+        // Worse than death: the Lover is afflicted not with violence but with a deeper
+        // oblivion — they look on the Protagonist and feel nothing, all recognition
+        // erased by the purgatory's cup. Gated on scarcity (the cup is taken when the
+        // soul is at its weakest) and a pre-existing bond.
+        pre: [
+            Exists(who: Lover),
+            VictimNearby(need_below: 30.0),
+        ],
+        effects: [
+            Afflict(who: Lover, severity: 60.0),
+            Turn(who: Lover, toward: Protagonist, delta: -0.8),
+            Stir(who: Protagonist, mood: "sorrow", delta: 0.5),
+            Stir(who: Protagonist, mood: "longing", delta: 0.4),
+            Sway(who: Protagonist, trait_name: "gnosis", delta: 0.08),
+        ],
+    ),
+
+    // --- VENGEANCE/AMBITION: an Archon-cult wars; grief over the forgotten hardens ---
+    (
+        id: "grief_for_the_forgotten", // Vengeance — sorrow over a soul lost to oblivion hardens
+        register: Vengeance,
+        tags: ["myth", "vengeance", "longing", "loss"],
+        phases: [Fall, Rising],
+        tension: 1.5,
+        stakes: 1.4,
+        cast: [Protagonist],
+        // Chains after `the_beloved_drinks_and_forgets`: the sorrow of unrecognition
+        // distils into defiant rage at the architects of forgetting. The Archons are
+        // named in the heart even if unnamed aloud.
+        pre: [
+            MoodAtLeast(who: Protagonist, mood: "longing", v: 0.3),
+            MoodAtLeast(who: Protagonist, mood: "sorrow", v: 0.25),
+        ],
+        effects: [
+            Sway(who: Protagonist, trait_name: "vengeance", delta: 0.25),
+            Sway(who: Protagonist, trait_name: "defiance", delta: 0.2),
+            Stir(who: Protagonist, mood: "anger", delta: 0.3),
+            Stir(who: Protagonist, mood: "longing", delta: -0.1),
+        ],
+    ),
+    (
+        id: "the_archon_cult_goes_to_war", // War — a faction that worships one of the seven turns on a rival cult
+        register: War,
+        tags: ["myth", "war", "archon", "cult", "political"],
+        phases: [Climax],
+        tension: 2.5,
+        stakes: 2.0,
+        cast: [Protagonist, Rival, Patron],
+        // Each Archon holds a quality-title (Jealousy, Wealth, Lordship) and their
+        // cults clash for supremacy. Gated on both a faction and a rival ambitious
+        // enough to light the powder — a stateless world has no powder to light.
+        pre: [
+            InFaction(yes: true),
+            Exists(who: Rival),
+            Exists(who: Patron),
+            TraitAtLeast(who: Rival, trait_name: "ambition", v: 0.4),
+        ],
+        effects: [
+            War,
+            Grudge(who: Rival, against: Protagonist),
+            Stir(who: Rival, mood: "anger", delta: 0.4),
+            Stir(who: Protagonist, mood: "fear", delta: 0.2),
+        ],
+    ),
+    (
+        id: "the_pretender_to_the_false_throne", // Ambition — a soul seeks the Demiurge's seat for itself
+        register: Ambition,
+        tags: ["myth", "ambition", "archon", "political"],
+        phases: [Rising],
+        tension: 2.1,
+        stakes: 1.7,
+        cast: [Protagonist, Rival],
+        // The Demiurge's boast — "I am god, and there is no other beside me" — inspires
+        // imitation in the ambitious. A rival seeks to supplant not a lord but a cosmos.
+        // Gated on a rival with ambition and the presence of a throne to seize.
+        pre: [
+            Exists(who: Rival),
+            HoldsThrone(yes: true),
+            TraitAtLeast(who: Rival, trait_name: "ambition", v: 0.45),
+        ],
+        effects: [
+            Sway(who: Rival, trait_name: "ambition", delta: 0.3),
+            Turn(who: Rival, toward: Protagonist, delta: -0.6),
+            Grudge(who: Rival, against: Protagonist),
+            Stir(who: Rival, mood: "anger", delta: 0.3),
+        ],
+    ),
+
+    // --- REDEMPTION/RELIEF: Sabaoth repents; the ascent; enmity dissolves in shared remembrance ---
+    (
+        id: "sabaoths_repentance", // Redemption — one of the seven turns against the Demiurge; chains a Fall
+        register: Redemption,
+        tags: ["myth", "redemption", "archon", "defiance"],
+        phases: [Fall],
+        tension: -1.8,
+        stakes: 0.7,
+        cast: [Protagonist, Foe],
+        // Sabaoth condemned his father, the lion-faced one, and was exalted by Sophia
+        // to a throne with Zoe ("Life") at his right hand. Here the Foe — cast as the
+        // Archon-figure — turns, condemns the false order, and is "exalted" in the
+        // protagonist's eyes. A Fall beat: the director's arc releases pressure.
+        pre: [Exists(who: Foe), HasGrudge(who: Foe, yes: true)],
+        effects: [
+            Turn(who: Foe, toward: Protagonist, delta: 0.8),
+            Sway(who: Foe, trait_name: "forgiveness", delta: 0.25),
+            Sway(who: Foe, trait_name: "defiance", delta: 0.2),
+            Stir(who: Foe, mood: "hope", delta: 0.4),
+            Stir(who: Protagonist, mood: "awe", delta: 0.3),
+            Stir(who: Protagonist, mood: "hope", delta: 0.3),
+        ],
+    ),
+    (
+        id: "two_souls_remember_they_are_dead", // Redemption/Relief — old enmity dissolves in shared gnosis
+        register: Redemption,
+        tags: ["myth", "relief", "gnosis", "reunion"],
+        phases: [Fall],
+        tension: -2.0,
+        stakes: 0.6,
+        cast: [Protagonist, Foe],
+        // Two souls who were enemies discover together that the grudge — the faction,
+        // the insult, the throne — belongs to a world that was never real. What remains
+        // is the longing for the Pleroma. The enmity has no more purchase.
+        pre: [
+            Exists(who: Foe),
+            TraitAtLeast(who: Protagonist, trait_name: "gnosis", v: 0.25),
+        ],
+        effects: [
+            Turn(who: Foe, toward: Protagonist, delta: 0.7),
+            Turn(who: Protagonist, toward: Foe, delta: 0.5),
+            Stir(who: Protagonist, mood: "longing", delta: 0.3),
+            Stir(who: Foe, mood: "longing", delta: 0.3),
+            Sway(who: Protagonist, trait_name: "forgiveness", delta: 0.2),
+            Sway(who: Foe, trait_name: "forgiveness", delta: 0.2),
+        ],
+    ),
+    (
+        id: "the_soul_ascends_past_the_seven", // Triumph/Wonder — a soul speaks the passwords and rises
+        register: Triumph,
+        tags: ["myth", "wonder", "gnosis", "ascent", "triumph"],
+        phases: [Fall],
+        tension: -2.0,
+        stakes: 0.8,
+        cast: [Protagonist, Mentor],
+        // The passwords found in `the_hidden_seal_found` are spoken at each gate.
+        // The Archons demand justification; the soul answers and passes. This is the
+        // arc's true resolution — not victory over the world but exit from it.
+        // Low stakes keep it below the impact floor in a well-fed, faction-free world;
+        // high gnosis required so it chains after a full waking arc.
+        pre: [
+            Exists(who: Mentor),
+            TraitAtLeast(who: Protagonist, trait_name: "gnosis", v: 0.4),
+        ],
+        effects: [
+            Reveal,
+            Stir(who: Protagonist, mood: "awe", delta: 0.5),
+            Stir(who: Protagonist, mood: "hope", delta: 0.4),
+            Stir(who: Protagonist, mood: "longing", delta: -0.3),
+            Sway(who: Protagonist, trait_name: "gnosis", delta: 0.2),
+            Sway(who: Protagonist, trait_name: "oblivion", delta: -0.3),
+        ],
+    ),
+
+    // ======================================================================
+    // === MORE OF THE WORLD'S DRAMA ===
+    // New beats flooding the library — trunk-heavy, cross-register, Demiurge-
+    // drenched. Dark high-stakes beats all gated; bright/relief beats lightly
+    // gated or open. Chains annotated where they key off prior beats.
+    // ======================================================================
+
+    // --- BETRAYAL (trunk) ---
+
+    (
+        id: "the_confidant_sells_a_secret", // Betrayal Climax — a trusted ear sells what it heard
+        register: Betrayal,
+        tags: ["betrayal", "personal", "political"],
+        phases: [Climax],
+        tension: 2.3,
+        stakes: 2.0,
+        cast: [Protagonist, Ally, Foe],
+        // A confidant can only betray where the secret is worth selling — a faction
+        // gives it currency. A grudge in the Foe is the buyer's motive: the secret
+        // becomes a weapon.
+        pre: [
+            Exists(who: Ally),
+            Exists(who: Foe),
+            InFaction(yes: true),
+            HasGrudge(who: Foe, yes: true),
+        ],
+        effects: [
+            Grudge(who: Ally, against: Protagonist),
+            Turn(who: Ally, toward: Protagonist, delta: -0.7),
+            Stir(who: Protagonist, mood: "dread", delta: 0.3),
+            Stir(who: Protagonist, mood: "anger", delta: 0.2),
+            Voice(who: Ally, intent: "an_accusation"),
+        ],
+    ),
+    (
+        id: "the_sworn_brother_defects", // Betrayal Climax — a blood-oath brother crosses to the enemy
+        register: Betrayal,
+        tags: ["betrayal", "political", "violence"],
+        phases: [Climax],
+        tension: 2.5,
+        stakes: 2.2,
+        cast: [Protagonist, Ally, Patron],
+        // The defection only stings where there is a bloc worth joining. The Ally
+        // carries a grudge that was never spoken; the Patron is the new lord.
+        pre: [
+            Exists(who: Ally),
+            Exists(who: Patron),
+            InFaction(yes: true),
+            HasGrudge(who: Ally, yes: true),
+        ],
+        effects: [
+            Turn(who: Ally, toward: Protagonist, delta: -0.9),
+            Turn(who: Ally, toward: Patron, delta: 0.6),
+            Grudge(who: Ally, against: Protagonist),
+            Stir(who: Protagonist, mood: "anger", delta: 0.3),
+            Stir(who: Protagonist, mood: "sorrow", delta: 0.3),
+            Voice(who: Ally, intent: "a_threat"),
+        ],
+    ),
+    (
+        id: "the_wanderer_betrayed", // Betrayal Climax — a wanderer's open trust turned against them
+        register: Betrayal,
+        tags: ["betrayal", "personal", "wanderlust"],
+        phases: [Climax],
+        tension: 2.1,
+        stakes: 1.9,
+        cast: [Protagonist, Foe],
+        // A soul who trusted the road too freely is turned upon. The Foe's vengeance
+        // is the engine; without that disposition the stranger's door stays open.
+        pre: [
+            Exists(who: Foe),
+            TraitAtLeast(who: Foe, trait_name: "vengeance", v: 0.3),
+            TraitAtLeast(who: Protagonist, trait_name: "wanderlust", v: 0.2),
+        ],
+        effects: [
+            Grudge(who: Foe, against: Protagonist),
+            Sway(who: Foe, trait_name: "vengeance", delta: 0.2),
+            Stir(who: Protagonist, mood: "fear", delta: 0.3),
+            Stir(who: Protagonist, mood: "anger", delta: 0.2),
+            Voice(who: Foe, intent: "a_threat"),
+        ],
+    ),
+    (
+        id: "the_avenger_becomes_the_betrayed", // Betrayal Climax — chains after the_vendetta; the hunter hunted
+        register: Betrayal,
+        tags: ["betrayal", "vengeance", "irony"],
+        phases: [Climax],
+        tension: 2.4,
+        stakes: 2.1,
+        cast: [Protagonist, Rival],
+        // The protagonist, deep in a vendetta, discovers the Rival has prepared a
+        // counter-trap. The vengeance consumed all caution. Gated on the protagonist's
+        // own high vengeance — the trap only springs once they committed to the hunt.
+        pre: [
+            Exists(who: Rival),
+            TraitAtLeast(who: Protagonist, trait_name: "vengeance", v: 0.45),
+            InFaction(yes: true),
+        ],
+        effects: [
+            Turn(who: Rival, toward: Protagonist, delta: -0.8),
+            Grudge(who: Rival, against: Protagonist),
+            Stir(who: Protagonist, mood: "dread", delta: 0.4),
+            Stir(who: Protagonist, mood: "anger", delta: 0.3),
+            Voice(who: Rival, intent: "an_accusation"),
+        ],
+    ),
+    (
+        id: "the_envious_rival_poisons_a_name", // Betrayal Rising — a rival's envy erodes the protagonist's standing
+        register: Betrayal,
+        tags: ["betrayal", "political", "envy"],
+        phases: [Rising],
+        tension: 1.6,
+        stakes: 1.4,
+        cast: [Protagonist, Rival, Bystander],
+        // A rival with a grudge poisons the crowd's ear before the formal strike.
+        // This is the grooming-in-reverse: the Bystander's warmth (built in Setup)
+        // is quietly eroded. Gated on faction (the rumour needs a social body) and
+        // a Rival carrying vengeance.
+        pre: [
+            Exists(who: Rival),
+            Exists(who: Bystander),
+            InFaction(yes: true),
+            TraitAtLeast(who: Rival, trait_name: "vengeance", v: 0.25),
+        ],
+        effects: [
+            Turn(who: Bystander, toward: Protagonist, delta: -0.5),
+            Turn(who: Rival, toward: Protagonist, delta: -0.4),
+            Stir(who: Rival, mood: "envy", delta: 0.3),
+            Sway(who: Rival, trait_name: "vengeance", delta: 0.15),
+        ],
+    ),
+
+    // --- VENGEANCE (trunk) ---
+
+    (
+        id: "the_oath_over_a_grave", // Vengeance Setup/Rising — grief crystallises into sworn vengeance
+        register: Vengeance,
+        tags: ["vengeance", "loss", "personal"],
+        phases: [Setup, Rising],
+        tension: 1.4,
+        stakes: 1.3,
+        cast: [Protagonist, Foe],
+        // The oath is spoken where the mood supports it: deep sorrow after a loss.
+        // Chains after `a_loved_one_falls` or `the_beloved_falls`. A foe must exist
+        // to swear against — an empty wilderness offers nothing to hate.
+        pre: [
+            Exists(who: Foe),
+            MoodAtLeast(who: Protagonist, mood: "sorrow", v: 0.35),
+        ],
+        effects: [
+            Sway(who: Protagonist, trait_name: "vengeance", delta: 0.35),
+            Sway(who: Protagonist, trait_name: "forgiveness", delta: -0.25),
+            Grudge(who: Protagonist, against: Foe),
+            Stir(who: Protagonist, mood: "anger", delta: 0.3),
+        ],
+    ),
+    (
+        id: "the_blood_price_demanded", // Vengeance Climax — the oath cashes out in a confrontation
+        register: Vengeance,
+        tags: ["vengeance", "violence", "political"],
+        phases: [Climax],
+        tension: 2.3,
+        stakes: 2.1,
+        cast: [Protagonist, Foe],
+        // The protagonist, oath-sworn, confronts the foe directly. Requires the
+        // protagonist's vengeance to have ripened (chains after `the_oath_over_a_grave`
+        // or `grief_hardens_into_vengeance`) and a grudge established.
+        pre: [
+            Exists(who: Foe),
+            TraitAtLeast(who: Protagonist, trait_name: "vengeance", v: 0.4),
+            HasGrudge(who: Protagonist, yes: true),
+        ],
+        effects: [
+            Stir(who: Protagonist, mood: "anger", delta: 0.4),
+            Stir(who: Foe, mood: "fear", delta: 0.3),
+            Afflict(who: Foe, severity: 55.0),
+            Voice(who: Protagonist, intent: "a_threat"),
+        ],
+    ),
+
+    // --- AMBITION ---
+
+    (
+        id: "the_usurpers_whisper", // Ambition Rising — a rival courts the throne from the shadows
+        register: Ambition,
+        tags: ["ambition", "political", "cult"],
+        phases: [Rising],
+        tension: 1.9,
+        stakes: 1.5,
+        cast: [Protagonist, Rival, Patron],
+        // The whisper campaign begins: a rival with ambition grooms the Patron away
+        // from the throne-holder. Gated on throne and rival ambition — a stateless
+        // world has nothing to whisper for.
+        pre: [
+            Exists(who: Rival),
+            Exists(who: Patron),
+            HoldsThrone(yes: true),
+            TraitAtLeast(who: Rival, trait_name: "ambition", v: 0.35),
+        ],
+        effects: [
+            Sway(who: Rival, trait_name: "ambition", delta: 0.2),
+            Turn(who: Patron, toward: Protagonist, delta: -0.4),
+            Turn(who: Rival, toward: Patron, delta: 0.4),
+            Stir(who: Protagonist, mood: "foreboding", delta: 0.3),
+        ],
+    ),
+    (
+        id: "the_gnosis_hunters_purge", // Persecution Climax — the curious are rounded up by the zealous
+        register: Persecution,
+        tags: ["myth", "persecution", "gnosis", "cult"],
+        phases: [Climax],
+        tension: 2.2,
+        stakes: 1.9,
+        cast: [Protagonist, Rival, Bystander],
+        // A soul too curious (high gnosis) draws the eyes of the zeal-drunk Rival
+        // who serves the Archon-order. The purge targets all who ask forbidden questions.
+        // Gated on faction (requires an institutional arm) and a zealous Rival.
+        pre: [
+            Exists(who: Rival),
+            Exists(who: Bystander),
+            InFaction(yes: true),
+            TraitAtLeast(who: Rival, trait_name: "zeal", v: 0.35),
+            TraitAtLeast(who: Protagonist, trait_name: "gnosis", v: 0.15),
+        ],
+        effects: [
+            Decree,
+            Grudge(who: Rival, against: Protagonist),
+            Stir(who: Protagonist, mood: "dread", delta: 0.4),
+            Stir(who: Bystander, mood: "fear", delta: 0.3),
+            Voice(who: Rival, intent: "an_accusation"),
+        ],
+    ),
+    (
+        id: "the_cult_schism", // Ambition/Persecution Rising — a doctrine dispute splits the faithful
+        register: Ambition,
+        tags: ["myth", "cult", "political", "schism"],
+        phases: [Rising],
+        tension: 1.7,
+        stakes: 1.4,
+        cast: [Protagonist, Rival, Mentor],
+        // An ambitious Rival claims the Mentor's interpretation is false; the
+        // congregation fractures. Seeds a Grudge that may blossom into war.
+        pre: [
+            Exists(who: Rival),
+            Exists(who: Mentor),
+            InFaction(yes: true),
+            TraitAtLeast(who: Rival, trait_name: "ambition", v: 0.3),
+            TraitAtLeast(who: Mentor, trait_name: "piety", v: 0.4),
+        ],
+        effects: [
+            Grudge(who: Rival, against: Mentor),
+            Turn(who: Rival, toward: Protagonist, delta: -0.4),
+            Stir(who: Protagonist, mood: "foreboding", delta: 0.2),
+            Stir(who: Mentor, mood: "anger", delta: 0.25),
+            Sway(who: Rival, trait_name: "ambition", delta: 0.2),
+        ],
+    ),
+    (
+        id: "the_tyrant_brands_dissenters", // Persecution Climax — the throne-holder marks the disobedient
+        register: Persecution,
+        tags: ["political", "persecution", "cruelty"],
+        phases: [Climax],
+        tension: 2.3,
+        stakes: 2.0,
+        cast: [Protagonist, Bystander],
+        // Chains after `the_crown_corrupts` / `the_tyrants_reign`: cruelty risen in the
+        // seat of power enacts a formal branding of dissent. Gated on throne, faction,
+        // and the protagonist's own cruelty risen high enough to strike.
+        pre: [
+            HoldsThrone(yes: true),
+            InFaction(yes: true),
+            TraitAtLeast(who: Protagonist, trait_name: "cruelty", v: 0.35),
+            Exists(who: Bystander),
+        ],
+        effects: [
+            Decree,
+            Stir(who: Bystander, mood: "fear", delta: 0.4),
+            Stir(who: Bystander, mood: "anger", delta: 0.2),
+            Stir(who: Protagonist, mood: "contempt", delta: 0.3),
+            Sway(who: Protagonist, trait_name: "cruelty", delta: 0.15),
+        ],
+    ),
+
+    // --- WAR ---
+
+    (
+        id: "the_border_raid", // War Rising — a faction tests the line before open war is declared
+        register: War,
+        tags: ["war", "political", "violence"],
+        phases: [Rising],
+        tension: 1.8,
+        stakes: 1.5,
+        cast: [Protagonist, Rival],
+        // A provocation short of full war: the Rival, hungry and ambitious, probes the
+        // border. Gated on faction and rival ambition. Seeds the grudge that tips into
+        // `the_drums_of_war`.
+        pre: [
+            Exists(who: Rival),
+            InFaction(yes: true),
+            TraitAtLeast(who: Rival, trait_name: "ambition", v: 0.3),
+        ],
+        effects: [
+            Grudge(who: Rival, against: Protagonist),
+            Stir(who: Protagonist, mood: "anger", delta: 0.3),
+            Stir(who: Rival, mood: "restlessness", delta: 0.3),
+            Sway(who: Rival, trait_name: "ambition", delta: 0.15),
+        ],
+    ),
+
+    // --- DISASTER / LOSS ---
+
+    (
+        id: "the_contagion_of_forgetting", // Disaster Climax — mass oblivion spreads like sickness
+        register: Disaster,
+        tags: ["myth", "disaster", "oblivion", "archon"],
+        phases: [Climax],
+        tension: 2.1,
+        stakes: 1.9,
+        cast: [Protagonist, Bystander],
+        // The Archon of forgetfulness exhales across the quarter; souls lose names,
+        // trades, faces. Gated on scarcity — the cup of oblivion takes root in already-
+        // weakened ground.
+        pre: [
+            Exists(who: Bystander),
+            VictimNearby(need_below: 28.0),
+        ],
+        effects: [
+            Disaster(radius: 3, severity: 28.0),
+            Stir(who: Protagonist, mood: "dread", delta: 0.35),
+            Stir(who: Bystander, mood: "despair", delta: 0.3),
+            Sway(who: Bystander, trait_name: "oblivion", delta: 0.2),
+        ],
+    ),
+    (
+        id: "the_flood_drowns_a_quarter", // Disaster Climax — waters rise and a neighbourhood is lost
+        register: Disaster,
+        tags: ["disaster", "survival", "violence"],
+        phases: [Climax],
+        tension: 2.2,
+        stakes: 2.0,
+        cast: [Protagonist, Bystander],
+        // The false world's weather is the Archons' mood. Gated on near-need — the flood
+        // only breaks souls already thin.
+        pre: [
+            Exists(who: Bystander),
+            VictimNearby(need_below: 25.0),
+        ],
+        effects: [
+            Disaster(radius: 4, severity: 36.0),
+            Stir(who: Protagonist, mood: "fear", delta: 0.3),
+            Stir(who: Bystander, mood: "sorrow", delta: 0.4),
+        ],
+    ),
+    (
+        id: "the_spirit_famine", // Disaster Rising — the land yields nothing; hope dries with the earth
+        register: Disaster,
+        tags: ["disaster", "survival", "myth"],
+        phases: [Rising],
+        tension: 1.6,
+        stakes: 1.5,
+        cast: [Protagonist],
+        // Not bread but meaning: the Demiurge withholds the small consolations.
+        // Gated on scarcity already present — chains into full famine.
+        pre: [VictimNearby(need_below: 30.0)],
+        effects: [
+            Stir(who: Protagonist, mood: "despair", delta: 0.3),
+            Stir(who: Protagonist, mood: "longing", delta: 0.2),
+            Sway(who: Protagonist, trait_name: "contentment", delta: -0.2),
+        ],
+    ),
+    (
+        id: "a_child_of_the_dead_is_taken", // Loss Climax — the most vulnerable soul is claimed
+        register: Loss,
+        tags: ["loss", "personal", "myth"],
+        phases: [Climax],
+        tension: 2.4,
+        stakes: 2.3,
+        cast: [Protagonist, Ally, Foe],
+        // In the purgatory even the young die again. The most defenceless is taken
+        // by the Foe who serves the wheel of fate. Only possible where the world is
+        // already cruel and hungry.
+        pre: [
+            Exists(who: Ally),
+            Exists(who: Foe),
+            VictimNearby(need_below: 30.0),
+            TraitAtLeast(who: Foe, trait_name: "cruelty", v: 0.3),
+        ],
+        effects: [
+            Afflict(who: Ally, severity: 65.0),
+            Grudge(who: Protagonist, against: Foe),
+            Stir(who: Protagonist, mood: "sorrow", delta: 0.5),
+            Stir(who: Protagonist, mood: "anger", delta: 0.3),
+        ],
+    ),
+
+    // --- SACRIFICE ---
+
+    (
+        id: "the_guide_leads_souls_out", // Sacrifice Climax — a guide gives their life at the threshold
+        register: Sacrifice,
+        tags: ["myth", "sacrifice", "gnosis", "ascent"],
+        phases: [Climax],
+        tension: 1.8,
+        stakes: 2.0,
+        cast: [Protagonist, Mentor],
+        // A Mentor who knows the way past the seven chooses to spend themselves at the
+        // final gate so others can pass. Requires gnosis in both and a dangerous world.
+        pre: [
+            Exists(who: Mentor),
+            VictimNearby(need_below: 30.0),
+            TraitAtLeast(who: Mentor, trait_name: "compassion", v: 0.35),
+            TraitAtLeast(who: Protagonist, trait_name: "gnosis", v: 0.2),
+        ],
+        effects: [
+            Afflict(who: Mentor, severity: 72.0),
+            Stir(who: Protagonist, mood: "sorrow", delta: 0.4),
+            Stir(who: Protagonist, mood: "awe", delta: 0.4),
+            Sway(who: Protagonist, trait_name: "gnosis", delta: 0.15),
+            Sway(who: Protagonist, trait_name: "devotion", delta: 0.1),
+        ],
+    ),
+    (
+        id: "a_shield_of_flesh", // Sacrifice Climax — an ally steps in front of the killing blow
+        register: Sacrifice,
+        tags: ["sacrifice", "personal", "violence"],
+        phases: [Climax],
+        tension: 1.7,
+        stakes: 1.9,
+        cast: [Protagonist, Ally, Foe],
+        // The Ally's compassion outweighs their self-regard. Gated on a vengeful Foe
+        // (there must be a blow to intercept) and scarcity.
+        pre: [
+            Exists(who: Ally),
+            Exists(who: Foe),
+            VictimNearby(need_below: 30.0),
+            TraitAtLeast(who: Foe, trait_name: "vengeance", v: 0.3),
+        ],
+        effects: [
+            Afflict(who: Ally, severity: 62.0),
+            Stir(who: Protagonist, mood: "sorrow", delta: 0.35),
+            Stir(who: Protagonist, mood: "guilt", delta: 0.3),
+            Turn(who: Protagonist, toward: Ally, delta: 0.5),
+        ],
+    ),
+
+    // --- ROMANCE / REUNION / WONDER (bright, grooming, light-gated) ---
+
+    (
+        id: "a_kindness_between_strangers", // Romance Setup — an unexpected warmth in the grey waste
+        register: Romance,
+        tags: ["romance", "relief", "wanderlust"],
+        phases: [Setup],
+        tension: -0.6,
+        stakes: 0.5,
+        cast: [Protagonist, Bystander],
+        pre: [Exists(who: Bystander)],
+        effects: [
+            Turn(who: Bystander, toward: Protagonist, delta: 0.5),
+            Stir(who: Protagonist, mood: "gratitude", delta: 0.4),
+            Stir(who: Protagonist, mood: "hope", delta: 0.2),
+        ],
+    ),
+    (
+        id: "the_wanderer_finds_a_kindred", // Reunion Setup — two rootless souls recognise one another
+        register: Reunion,
+        tags: ["reunion", "wanderlust", "relief"],
+        phases: [Setup, Fall],
+        tension: -0.8,
+        stakes: 0.5,
+        cast: [Protagonist, Bystander],
+        pre: [
+            Exists(who: Bystander),
+            TraitAtLeast(who: Protagonist, trait_name: "wanderlust", v: 0.2),
+        ],
+        effects: [
+            Turn(who: Protagonist, toward: Bystander, delta: 0.6),
+            Turn(who: Bystander, toward: Protagonist, delta: 0.5),
+            Stir(who: Protagonist, mood: "joy", delta: 0.3),
+            Stir(who: Protagonist, mood: "nostalgia", delta: 0.2),
+        ],
+    ),
+    (
+        id: "a_marvel_in_the_waste", // Wonder Setup — a hidden feature surfaces in the ashen plain
+        register: Wonder,
+        tags: ["wonder", "myth", "gnosis"],
+        phases: [Setup, Fall],
+        tension: -0.3,
+        stakes: 0.5,
+        weight: 0.8,
+        cast: [Protagonist],
+        // Open: wonder needs only a protagonist willing to look. The Reveal
+        // surfaces a hidden world-feature, brightening the purgatory's grey.
+        pre: [TraitAtLeast(who: Protagonist, trait_name: "curiosity", v: 0.2)],
+        effects: [
+            Reveal,
+            Stir(who: Protagonist, mood: "awe", delta: 0.5),
+            Stir(who: Protagonist, mood: "hope", delta: 0.2),
+            Sway(who: Protagonist, trait_name: "curiosity", delta: 0.1),
+        ],
+    ),
+    (
+        id: "a_name_remembered", // Wonder/Relief Fall — a soul remembers its own name against the forgetting
+        register: Wonder,
+        tags: ["myth", "wonder", "gnosis", "relief"],
+        phases: [Fall],
+        tension: -0.5,
+        stakes: 0.6,
+        weight: 0.8,
+        cast: [Protagonist],
+        // Chains after any beat that raised gnosis: the oblivion begins to thin and
+        // one word — the self's true name — returns. Small. Enough.
+        pre: [TraitAtLeast(who: Protagonist, trait_name: "gnosis", v: 0.1)],
+        effects: [
+            Stir(who: Protagonist, mood: "longing", delta: 0.3),
+            Stir(who: Protagonist, mood: "hope", delta: 0.3),
+            Sway(who: Protagonist, trait_name: "gnosis", delta: 0.1),
+            Sway(who: Protagonist, trait_name: "oblivion", delta: -0.15),
+        ],
+    ),
+    (
+        id: "two_enemies_at_the_threshold", // Reunion Fall — enemies recognise each other as dead
+        register: Reunion,
+        tags: ["reunion", "myth", "relief", "gnosis"],
+        phases: [Fall],
+        tension: -1.2,
+        stakes: 0.6,
+        cast: [Protagonist, Foe],
+        // Two souls who quarrelled over the false world's prizes suddenly see the
+        // truth beneath the enmity: both are dead. The quarrel becomes absurd.
+        // Chains after the Demiurge cycle's revelations. No faction required.
+        pre: [
+            Exists(who: Foe),
+            TraitAtLeast(who: Protagonist, trait_name: "gnosis", v: 0.2),
+        ],
+        effects: [
+            Turn(who: Foe, toward: Protagonist, delta: 0.6),
+            Turn(who: Protagonist, toward: Foe, delta: 0.5),
+            Stir(who: Protagonist, mood: "nostalgia", delta: 0.3),
+            Stir(who: Foe, mood: "nostalgia", delta: 0.3),
+            Sway(who: Protagonist, trait_name: "forgiveness", delta: 0.2),
+        ],
+    ),
+    (
+        id: "the_festival_of_false_light", // Triumph/Relief Setup — the Demiurge's cult stages a celebration
+        register: Triumph,
+        tags: ["myth", "cult", "relief", "triumph"],
+        phases: [Setup],
+        tension: -0.4,
+        stakes: 0.6,
+        cast: [Protagonist, Bystander, Mentor],
+        // A manufactured celebration — bread and spectacle from the jailer's hand.
+        // Seeds attachment in the Bystander so the reversal has something to break.
+        pre: [Exists(who: Bystander), Exists(who: Mentor)],
+        effects: [
+            Stir(who: Protagonist, mood: "joy", delta: 0.3),
+            Stir(who: Bystander, mood: "joy", delta: 0.3),
+            Turn(who: Bystander, toward: Protagonist, delta: 0.3),
+            Sway(who: Protagonist, trait_name: "devotion", delta: 0.1),
+        ],
+    ),
+    (
+        id: "a_feud_cooled_by_shared_loss", // Redemption Fall — grief creates an unexpected bridge
+        register: Redemption,
+        tags: ["relief", "personal", "loss"],
+        phases: [Fall],
+        tension: -1.3,
+        stakes: 0.6,
+        cast: [Protagonist, Rival],
+        // Two rivals discover they mourn the same soul. The grief is louder than the
+        // enmity. Chains after any loss beat that stirred sorrow in both.
+        pre: [
+            Exists(who: Rival),
+            MoodAtLeast(who: Protagonist, mood: "sorrow", v: 0.25),
+        ],
+        effects: [
+            Turn(who: Rival, toward: Protagonist, delta: 0.5),
+            Stir(who: Protagonist, mood: "gratitude", delta: 0.3),
+            Stir(who: Rival, mood: "calm", delta: 0.3),
+            Sway(who: Protagonist, trait_name: "forgiveness", delta: 0.15),
+            Sway(who: Rival, trait_name: "forgiveness", delta: 0.15),
+        ],
+    ),
+    (
+        id: "the_mentors_quiet_wisdom", // Wonder Setup — a curious mind is gently opened
+        register: Wonder,
+        tags: ["wonder", "personal", "curiosity"],
+        phases: [Setup],
+        tension: -0.3,
+        stakes: 0.5,
+        weight: 0.7,
+        cast: [Protagonist, Mentor],
+        // A mentor who cultivates curiosity passes a fragment of wonder on.
+        // Grooming beat: seeds awe so the reversal has a height to fall from.
+        pre: [
+            Exists(who: Mentor),
+            TraitAtLeast(who: Mentor, trait_name: "curiosity", v: 0.2),
+        ],
+        effects: [
+            Stir(who: Protagonist, mood: "awe", delta: 0.35),
+            Stir(who: Protagonist, mood: "calm", delta: 0.2),
+            Sway(who: Protagonist, trait_name: "curiosity", delta: 0.15),
+            Sway(who: Protagonist, trait_name: "gnosis", delta: 0.05),
+        ],
+    ),
+    (
+        id: "a_soul_forgives_the_unseen_hand", // Redemption Fall — a soul accepts the purgatory's cruelty without collapsing
+        register: Redemption,
+        tags: ["myth", "relief", "redemption", "gnosis"],
+        phases: [Fall],
+        tension: -1.5,
+        stakes: 0.6,
+        cast: [Protagonist],
+        // Not blind devotion but clear-eyed acceptance — the soul sees the Demiurge's
+        // hand and chooses not to be destroyed by hatred of it. Chains after a gnosis
+        // arc; the forgiveness is *lucid*, not oblivious.
+        pre: [
+            TraitAtLeast(who: Protagonist, trait_name: "gnosis", v: 0.25),
+            TraitAtLeast(who: Protagonist, trait_name: "forgiveness", v: 0.2),
+        ],
+        effects: [
+            Sway(who: Protagonist, trait_name: "forgiveness", delta: 0.2),
+            Sway(who: Protagonist, trait_name: "vengeance", delta: -0.15),
+            Stir(who: Protagonist, mood: "calm", delta: 0.4),
+            Stir(who: Protagonist, mood: "elation", delta: 0.2),
+            Stir(who: Protagonist, mood: "longing", delta: -0.2),
+        ],
+    ),
 ]

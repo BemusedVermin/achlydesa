@@ -272,4 +272,747 @@
             (signal: Remoteness, curve: Linear(m: -1.0, b: 1.1)),
         ],
     ),
+
+    // === The landmarks of the purgatory: the cult, the seven, the wells of forgetting ===
+
+    // --- Communities of the fog-bound dead ---
+
+    // A town submerged in mist and low memory — its settlers neither alive nor truly
+    // dead, clinging to the shore of forgetting. Low fertility keeps it marginal.
+    (
+        name: "mist_drowned_town", category: Community, discovery: Landmark, density: 0.04,
+        favoured: [
+            (signal: SurfaceWater, curve: Logistic(mid: 0.015, k: 180.0)),
+            (signal: Aridity, curve: Linear(m: -0.5, b: 0.8)),
+            (signal: Fertility, curve: Logistic(mid: 0.01, k: 300.0)),
+        ],
+    ),
+    // A waystation on the pilgrim road — souls walking toward the Demiurge's great
+    // temple are offered shelter here by the cult's wardens. Inexhaustible rest.
+    (
+        name: "pilgrim_waystation", category: Community, discovery: Landmark, density: 0.05,
+        favoured: [
+            (signal: Grass, curve: Linear(m: 0.5, b: 0.5)),
+            (signal: Slope, curve: Linear(m: -0.003, b: 0.9)),
+            (signal: Fertility, curve: Logistic(mid: 0.012, k: 200.0)),
+        ],
+        affordances: [(action: "shelter", effect: Relieve(need: Rest, amount: 50))],
+    ),
+    // A charnel-town of the forsaken dead — too wretched to be settled, too haunted
+    // to be abandoned. Aridity and isolation define it; fertility is near nothing.
+    (
+        name: "lazaret", category: Community, discovery: Hidden, density: 0.025,
+        favoured: [
+            (signal: Aridity, curve: Logistic(mid: 0.7, k: 10.0)),
+            (signal: Remoteness, curve: Logistic(mid: 0.55, k: 7.0)),
+            (signal: Fertility, curve: Logistic(mid: 0.006, k: 350.0)),
+        ],
+    ),
+
+    // --- Courts of the cult and the seven ---
+
+    // The seat of the Demiurge's worship: a blind eye carved above the door, altars
+    // running with false gold. Found inside any settlement large enough to serve it.
+    // The cult teaches weaving — the shroud-work of the dead.
+    (
+        name: "temple_of_the_demiurge", category: Court, discovery: Landmark, density: 0.45,
+        host: Some(Community),
+        favoured: [
+            (signal: Fertility, curve: Constant(0.6)),
+        ],
+        affordances: [(action: "apprentice", effect: Teach(skill: "weaving"))],
+    ),
+    // Throne of one of the seven Archons — Athoth, Eloaiou, Astaphaios, Yao, Sabaoth,
+    // Adonin, Sabbede — a beast-faced jailer anchored to high, remote ground. Secret:
+    // the Archon reveals itself only to those who seek.
+    (
+        name: "archon_throne", category: Court, discovery: Secret, density: 0.02,
+        favoured: [
+            (signal: Elevation, curve: Logistic(mid: 900.0, k: 0.004)),
+            (signal: Remoteness, curve: Logistic(mid: 0.65, k: 9.0)),
+            (signal: Slope, curve: Logistic(mid: 220.0, k: 0.02)),
+        ],
+    ),
+    // A hidden order that administers the cup of forgetfulness — embedded in towns,
+    // masked as a hospice. The souls who pass through remember nothing after.
+    (
+        name: "cult_of_forgetting", category: Court, discovery: Secret, density: 0.25,
+        host: Some(Community),
+        favoured: [
+            (signal: Fertility, curve: Logistic(mid: 0.02, k: 130.0)),
+            (signal: SurfaceWater, curve: Logistic(mid: 0.01, k: 200.0)),
+        ],
+    ),
+    // A seer's seat: a blind oracle who speaks the Archons' riddles and the passwords
+    // of fate. The seers do not free — they test. Found hidden at elevation.
+    (
+        name: "seers_seat", category: Court, discovery: Hidden, density: 0.04,
+        favoured: [
+            (signal: Elevation, curve: Logistic(mid: 700.0, k: 0.004)),
+            (signal: Remoteness, curve: Logistic(mid: 0.45, k: 7.0)),
+            (signal: Slope, curve: Logistic(mid: 160.0, k: 0.02)),
+        ],
+    ),
+
+    // --- Ruins of myth and the failed ascent ---
+
+    // A vault of bones beneath the community — the cult stores the unnamed dead here,
+    // sealed with wax and the Demiurge's sigil. Secret: you must know what to look for.
+    (
+        name: "ossuary", category: Ruin, discovery: Secret, density: 0.35,
+        host: Some(Community),
+        favoured: [
+            (signal: Fertility, curve: Constant(0.5)),
+        ],
+    ),
+    // A ruined archway where souls once tried to speak the seven passwords and ascend.
+    // Most failed; the gate is broken. Remote, hidden in the wastes.
+    (
+        name: "gate_of_the_seven", category: Ruin, discovery: Hidden, density: 0.015,
+        favoured: [
+            (signal: Remoteness, curve: Logistic(mid: 0.65, k: 9.0)),
+            (signal: Aridity, curve: Logistic(mid: 0.6, k: 10.0)),
+            (signal: Elevation, curve: Logistic(mid: 500.0, k: 0.004)),
+        ],
+    ),
+    // A forgotten shrine to a power the Archons swallowed — cracked stone, a hollow
+    // face, offerings that never decay. Grass flats, half-buried.
+    (
+        name: "forgotten_shrine", category: Ruin, discovery: Hidden, density: 0.03,
+        favoured: [
+            (signal: Grass, curve: Linear(m: 0.6, b: 0.4)),
+            (signal: Remoteness, curve: Linear(m: 0.35, b: 0.45)),
+            (signal: Slope, curve: Linear(m: -0.004, b: 1.0)),
+        ],
+    ),
+    // A reliquary half-swallowed by water — sacred objects of the old world, submerged
+    // and slowly dissolving. Found where water pools in flat ground.
+    (
+        name: "drowned_reliquary", category: Ruin, discovery: Hidden, density: 0.025,
+        favoured: [
+            (signal: SurfaceWater, curve: Logistic(mid: 0.05, k: 45.0)),
+            (signal: Slope, curve: Linear(m: -0.004, b: 1.0)),
+            (signal: Remoteness, curve: Linear(m: 0.3, b: 0.5)),
+        ],
+    ),
+    // A toppled idol of the lion-faced god — the Demiurge's own boast, pulled down by
+    // someone who knew better. Its face is still turned toward the false heaven.
+    (
+        name: "pillar_of_the_boast", category: Ruin, discovery: Landmark, density: 0.018,
+        favoured: [
+            (signal: Remoteness, curve: Logistic(mid: 0.6, k: 8.0)),
+            (signal: Aridity, curve: Logistic(mid: 0.75, k: 10.0)),
+            (signal: Slope, curve: Linear(m: -0.003, b: 0.9)),
+        ],
+    ),
+
+    // --- Wilderness of the purgatory: wonders, hazards, and sacred wounds ---
+
+    // A spring whose water makes the drinker forget — the false rest of oblivion.
+    // Drinking relieves the burden of memory (modelled as Rest). Depletable but
+    // the forgetting seeps back up; slow regen. Found where aridity meets water.
+    (
+        name: "well_of_lethe", category: Wilderness, discovery: Hidden, density: 0.025,
+        favoured: [
+            (signal: SurfaceWater, curve: Logistic(mid: 0.03, k: 80.0)),
+            (signal: Aridity, curve: Logistic(mid: 0.65, k: 11.0)),
+        ],
+        affordances: [(action: "drink", effect: Relieve(need: Rest, amount: 60), capacity: 20, regen: 0.3)],
+    ),
+    // Where the veil between this world and the Pleroma has split — a wound of true
+    // light, utterly remote. The director reveals it; no soul finds it by accident.
+    // No affordance: it does not serve the simulation, it calls to it.
+    (
+        name: "rift_of_the_pleroma", category: Wilderness, discovery: Secret, density: 0.006,
+        favoured: [
+            (signal: Remoteness, curve: Logistic(mid: 0.8, k: 12.0)),
+            (signal: Elevation, curve: Logistic(mid: 1100.0, k: 0.004)),
+            (signal: Slope, curve: Logistic(mid: 200.0, k: 0.02)),
+        ],
+    ),
+    // A forest of ash — trees dead so long their bark has gone white. Foraging yields
+    // little, slowly. The grove is a quiet horror: every tree is a memory.
+    (
+        name: "grove_of_ash", category: Wilderness, discovery: Landmark, density: 0.04,
+        favoured: [
+            (signal: Forest, curve: Linear(m: 1.0, b: 0.0)),
+            (signal: Aridity, curve: Logistic(mid: 0.55, k: 9.0)),
+            (signal: Remoteness, curve: Linear(m: 0.3, b: 0.4)),
+        ],
+        affordances: [(action: "forage", effect: Relieve(need: Sustenance, amount: 20), capacity: 15, regen: 0.2)],
+    ),
+    // A flat mirror of standing water — fog never lifts from it. Faces of the drowned
+    // appear in its surface. Dangerous stillness.
+    (
+        name: "mirror_marsh", category: Wilderness, discovery: Landmark, density: 0.03,
+        favoured: [
+            (signal: SurfaceWater, curve: Logistic(mid: 0.06, k: 40.0)),
+            (signal: Slope, curve: Linear(m: -0.004, b: 1.0)),
+            (signal: Aridity, curve: Linear(m: -0.4, b: 0.8)),
+        ],
+    ),
+    // Stones that ring like struck bone when the wind passes — the drowned choir of
+    // souls who never reached the gate. Remote uplands, flat enough for the stones.
+    (
+        name: "choir_of_the_drowned", category: Wilderness, discovery: Hidden, density: 0.02,
+        favoured: [
+            (signal: Grass, curve: Linear(m: 0.6, b: 0.3)),
+            (signal: Remoteness, curve: Logistic(mid: 0.55, k: 8.0)),
+            (signal: Slope, curve: Linear(m: -0.003, b: 0.9)),
+        ],
+    ),
+    // A lone flame on a high rock — no fire is fed, yet it burns. The Archons' pilots
+    // use it to keep souls from straying off the grid of heimarmene.
+    (
+        name: "pale_beacon", category: Wilderness, discovery: Landmark, density: 0.02,
+        favoured: [
+            (signal: Elevation, curve: Logistic(mid: 1000.0, k: 0.004)),
+            (signal: Remoteness, curve: Logistic(mid: 0.6, k: 8.0)),
+            (signal: Slope, curve: Logistic(mid: 180.0, k: 0.02)),
+        ],
+    ),
+
+    // === A wider world: more waypoints, more terrain ===
+
+    // --- Communities: new settlements of the fog-bound dead ---
+
+    // A handful of hovels scraped from a salt flat — settlers who could go no further
+    // and stopped. The crust glitters, the air tastes of brine. Low fertility, arid.
+    (
+        name: "salt_flat_hamlet", category: Community, discovery: Landmark, density: 0.04,
+        favoured: [
+            (signal: Aridity, curve: Logistic(mid: 0.7, k: 10.0)),
+            (signal: Slope, curve: Linear(m: -0.003, b: 0.9)),
+            (signal: Fertility, curve: Logistic(mid: 0.007, k: 320.0)),
+        ],
+    ),
+    // Refugees from a failed ascent who clustered in a gulch — tents and lean-tos,
+    // the ash-smell of defeat. Hidden: not on any cult map.
+    (
+        name: "refugee_camp", category: Community, discovery: Hidden, density: 0.035,
+        favoured: [
+            (signal: Remoteness, curve: Logistic(mid: 0.45, k: 7.0)),
+            (signal: Slope, curve: Logistic(mid: 100.0, k: 0.018)),
+            (signal: Fertility, curve: Logistic(mid: 0.009, k: 260.0)),
+        ],
+        affordances: [(action: "shelter", effect: Relieve(need: Rest, amount: 35))],
+    ),
+    // A walled leper-colony kept at the cult's margin — the afflicted dead who retain
+    // some faint memory of sickness, isolated on the fringe of a community.
+    (
+        name: "leper_colony", category: Community, discovery: Hidden, density: 0.03,
+        host: Some(Community),
+        favoured: [
+            (signal: Aridity, curve: Logistic(mid: 0.5, k: 8.0)),
+            (signal: Fertility, curve: Logistic(mid: 0.01, k: 220.0)),
+        ],
+    ),
+    // Dwellings notched into a sea-cliff — the dead who remember the sea cling here,
+    // watching fog-water for shapes that never arrive. Coast is a hard requirement.
+    (
+        name: "cliff_roost", category: Community, discovery: Landmark, density: 0.04,
+        favoured: [
+            (signal: Coast, curve: Linear(m: 1.0, b: 0.0)),
+            (signal: Slope, curve: Logistic(mid: 200.0, k: 0.02)),
+            (signal: Fertility, curve: Logistic(mid: 0.008, k: 280.0)),
+        ],
+        affordances: [(action: "shelter", effect: Relieve(need: Rest, amount: 30))],
+    ),
+    // Stilted platforms above a brackish fen — the soil is black and sick, but the
+    // reed-beds give weaving-fibre and the community persists. Low flat water.
+    (
+        name: "fen_village", category: Community, discovery: Landmark, density: 0.04,
+        favoured: [
+            (signal: SurfaceWater, curve: Logistic(mid: 0.02, k: 140.0)),
+            (signal: Slope, curve: Linear(m: -0.003, b: 0.9)),
+            (signal: Fertility, curve: Logistic(mid: 0.01, k: 250.0)),
+        ],
+        affordances: [(action: "gather", effect: Yield(good: "reed-fibre", units: 2, skill: Some("weaving")))],
+    ),
+    // A roving market that appears in the mist: stalls of shrouds and veils, traders
+    // who will not name where they came from. Favours the in-between — moderate
+    // fertility, grass roads, not too remote. Hidden until you stumble into it.
+    (
+        name: "mist_market", category: Community, discovery: Hidden, density: 0.03,
+        favoured: [
+            (signal: Grass, curve: Linear(m: 0.6, b: 0.4)),
+            (signal: Fertility, curve: Logistic(mid: 0.015, k: 160.0)),
+            (signal: Remoteness, curve: Linear(m: -0.5, b: 0.8)),
+        ],
+        affordances: [(action: "trade", effect: Yield(good: "shroud", units: 1, skill: None))],
+    ),
+    // A town grown up entirely around the cult's great pilgrim road — inns, altars,
+    // soul-catchers. Grass flat, easy slope. Gives grain for the journey.
+    (
+        name: "pilgrim_town", category: Community, discovery: Landmark, density: 0.05,
+        favoured: [
+            (signal: Grass, curve: Linear(m: 0.5, b: 0.5)),
+            (signal: Fertility, curve: Logistic(mid: 0.02, k: 140.0)),
+            (signal: Slope, curve: Linear(m: -0.003, b: 0.9)),
+        ],
+        affordances: [(action: "provision", effect: Yield(good: "grain", units: 3, skill: None))],
+    ),
+    // A low quarter of a settlement that has slid into the water table — perpetually
+    // flooded, the dead wade between doorways. Needs the tiniest surface water hint.
+    (
+        name: "drowned_quarter", category: Community, discovery: Hidden, density: 0.03,
+        host: Some(Community),
+        favoured: [
+            (signal: SurfaceWater, curve: Logistic(mid: 0.01, k: 200.0)),
+            (signal: Slope, curve: Linear(m: -0.004, b: 1.0)),
+            (signal: Fertility, curve: Logistic(mid: 0.01, k: 200.0)),
+        ],
+    ),
+
+    // --- Courts: powers of the cult, the seven, and the hidden gnostics ---
+
+    // The high temple of the Demiurge's regional bishop — larger and more terrible than
+    // the common cult-house. Teaches weaving still, but the room smells of false gold.
+    (
+        name: "high_temple", category: Court, discovery: Landmark, density: 0.35,
+        host: Some(Community),
+        favoured: [
+            (signal: Fertility, curve: Logistic(mid: 0.025, k: 110.0)),
+            (signal: SurfaceWater, curve: Logistic(mid: 0.01, k: 190.0)),
+        ],
+        affordances: [(action: "apprentice", effect: Teach(skill: "weaving"))],
+    ),
+    // A bone-and-iron treasury of an Archon's relics — teeth of the lion-faced god,
+    // iron rings, sealed jars. Inside a settlement, but secret: the cult hides it.
+    (
+        name: "archon_reliquary", category: Court, discovery: Secret, density: 0.2,
+        host: Some(Community),
+        favoured: [
+            (signal: Fertility, curve: Constant(0.5)),
+        ],
+    ),
+    // A hall where inquisitors of the Demiurge sift the souls for gnosis-traces and
+    // extinguish them. Found in settlements of any size; Hidden.
+    (
+        name: "inquisitors_hall", category: Court, discovery: Hidden, density: 0.3,
+        host: Some(Community),
+        favoured: [
+            (signal: Fertility, curve: Logistic(mid: 0.018, k: 150.0)),
+            (signal: Remoteness, curve: Linear(m: -0.4, b: 0.8)),
+        ],
+    ),
+    // A wandering mendicant order that shelters in the cult's shadow — they give bread
+    // without asking questions. They teach baking: the one honest trade.
+    (
+        name: "mendicant_order", category: Court, discovery: Hidden, density: 0.25,
+        host: Some(Community),
+        favoured: [
+            (signal: Fertility, curve: Logistic(mid: 0.015, k: 160.0)),
+            (signal: Grass, curve: Linear(m: 0.4, b: 0.5)),
+        ],
+        affordances: [(action: "apprentice", effect: Teach(skill: "baking"))],
+    ),
+    // A scriptorium where cult clerks copy the false cosmogony onto shroud-cloth — the
+    // text of a prison called a revelation. Hidden inside communities.
+    (
+        name: "scriptorium", category: Court, discovery: Hidden, density: 0.2,
+        host: Some(Community),
+        favoured: [
+            (signal: Fertility, curve: Logistic(mid: 0.02, k: 130.0)),
+            (signal: SurfaceWater, curve: Logistic(mid: 0.01, k: 180.0)),
+        ],
+        affordances: [(action: "copy", effect: Yield(good: "shroud", units: 1, skill: Some("weaving")))],
+    ),
+    // A cult almshouse — bread given freely, names taken carefully. Relieve Sustenance.
+    (
+        name: "almshouse", category: Court, discovery: Landmark, density: 0.4,
+        host: Some(Community),
+        favoured: [
+            (signal: Fertility, curve: Logistic(mid: 0.018, k: 160.0)),
+            (signal: Slope, curve: Linear(m: -0.003, b: 0.9)),
+        ],
+        affordances: [(action: "beg", effect: Relieve(need: Sustenance, amount: 30))],
+    ),
+    // The assayer's guild: they weigh ore against the Archon's standard and teach
+    // the craft of delving. Inside any mineral-rich community.
+    (
+        name: "assayers_guild", category: Court, discovery: Hidden, density: 0.25,
+        host: Some(Community),
+        favoured: [
+            (signal: Minerals, curve: Logistic(mid: 0.3, k: 12.0)),
+            (signal: Fertility, curve: Logistic(mid: 0.015, k: 150.0)),
+        ],
+        affordances: [(action: "apprentice", effect: Teach(skill: "delving"))],
+    ),
+    // Weavers' hall: the looms of the dead, where shrouds are made and the trade is
+    // taught to those who stay. Inside communities; visible.
+    (
+        name: "weavers_hall", category: Court, discovery: Landmark, density: 0.35,
+        host: Some(Community),
+        favoured: [
+            (signal: Fertility, curve: Logistic(mid: 0.02, k: 130.0)),
+            (signal: Grass, curve: Linear(m: 0.4, b: 0.5)),
+        ],
+        affordances: [(action: "apprentice", effect: Teach(skill: "weaving"))],
+    ),
+    // A secret gnostic conventicle — survivors who know the Archons' names and meet
+    // at midnight to share the counter-cosmogony. The hardest find.
+    (
+        name: "gnostic_conventicle", category: Court, discovery: Secret, density: 0.12,
+        host: Some(Community),
+        favoured: [
+            (signal: Fertility, curve: Logistic(mid: 0.015, k: 160.0)),
+            (signal: Remoteness, curve: Linear(m: 0.3, b: 0.4)),
+        ],
+    ),
+    // A warlord's redoubt on a high, isolated crag — no settlement beneath it; this
+    // power stands alone, taxing the passes.
+    (
+        name: "warlords_redoubt", category: Court, discovery: Landmark, density: 0.02,
+        favoured: [
+            (signal: Elevation, curve: Logistic(mid: 800.0, k: 0.004)),
+            (signal: Slope, curve: Logistic(mid: 230.0, k: 0.02)),
+            (signal: Remoteness, curve: Logistic(mid: 0.6, k: 9.0)),
+        ],
+    ),
+
+    // --- Ruins: the wreckage of the false world and the failed ---
+
+    // A toppled triumphal arch — once marked a victory of the Demiurge's armies,
+    // now just a door to nowhere, on the flat waste.
+    (
+        name: "toppled_arch", category: Ruin, discovery: Landmark, density: 0.025,
+        favoured: [
+            (signal: Aridity, curve: Logistic(mid: 0.6, k: 9.0)),
+            (signal: Slope, curve: Linear(m: -0.003, b: 0.9)),
+            (signal: Remoteness, curve: Linear(m: 0.35, b: 0.45)),
+        ],
+    ),
+    // A cathedral that sank — the spire still protrudes. Those who enter hear the
+    // Demiurge's old sermons played back by the water.
+    (
+        name: "sunken_cathedral", category: Ruin, discovery: Landmark, density: 0.018,
+        favoured: [
+            (signal: SurfaceWater, curve: Logistic(mid: 0.04, k: 55.0)),
+            (signal: Slope, curve: Linear(m: -0.004, b: 1.0)),
+            (signal: Remoteness, curve: Logistic(mid: 0.4, k: 6.0)),
+        ],
+    ),
+    // A field of bones arranged in rows — the unnamed dead of a culling, exposed to
+    // the sky. Grass flatlands; terrible and quiet.
+    (
+        name: "bone_orchard", category: Ruin, discovery: Landmark, density: 0.025,
+        favoured: [
+            (signal: Grass, curve: Linear(m: 0.7, b: 0.3)),
+            (signal: Slope, curve: Linear(m: -0.003, b: 0.9)),
+            (signal: Remoteness, curve: Logistic(mid: 0.45, k: 6.0)),
+        ],
+    ),
+    // A wood where the dead were hanged for knowing too much — the trees grew around
+    // the ropes. Forest; hidden because the cult scrubs its maps.
+    (
+        name: "hanged_wood", category: Ruin, discovery: Hidden, density: 0.025,
+        favoured: [
+            (signal: Forest, curve: Linear(m: 1.0, b: 0.0)),
+            (signal: Remoteness, curve: Logistic(mid: 0.5, k: 7.0)),
+            (signal: Slope, curve: Linear(m: -0.003, b: 0.9)),
+        ],
+    ),
+    // Columns of white salt that were once people — or the Archons say so. Arid flats.
+    (
+        name: "salt_pillars", category: Ruin, discovery: Landmark, density: 0.022,
+        favoured: [
+            (signal: Aridity, curve: Logistic(mid: 0.75, k: 10.0)),
+            (signal: Slope, curve: Linear(m: -0.004, b: 1.0)),
+            (signal: Remoteness, curve: Linear(m: 0.3, b: 0.5)),
+        ],
+    ),
+    // A buried vault beneath a community — sealed with mortar, contents unknown.
+    // Secret: it requires knowing where to dig.
+    (
+        name: "buried_vault", category: Ruin, discovery: Secret, density: 0.3,
+        host: Some(Community),
+        favoured: [
+            (signal: Fertility, curve: Constant(0.5)),
+        ],
+        affordances: [(action: "excavate", effect: Yield(good: "ore", units: 2, skill: Some("delving")))],
+    ),
+    // A great aqueduct the dead kept running for no one — now collapsed in three spans,
+    // only the arch-stubs remain. Follows elevation and slope.
+    (
+        name: "collapsed_aqueduct", category: Ruin, discovery: Landmark, density: 0.02,
+        favoured: [
+            (signal: Elevation, curve: Logistic(mid: 400.0, k: 0.004)),
+            (signal: Slope, curve: Logistic(mid: 120.0, k: 0.018)),
+            (signal: Remoteness, curve: Linear(m: 0.3, b: 0.4)),
+        ],
+    ),
+    // A plague-pit of the old world — the Archons' first culling, mass-burial on flat
+    // ground near a former settlement. Hidden; the cult denies it exists.
+    (
+        name: "plague_pit", category: Ruin, discovery: Hidden, density: 0.025,
+        favoured: [
+            (signal: Slope, curve: Linear(m: -0.004, b: 1.0)),
+            (signal: Fertility, curve: Logistic(mid: 0.01, k: 230.0)),
+            (signal: Remoteness, curve: Logistic(mid: 0.4, k: 6.0)),
+        ],
+    ),
+    // A lighthouse on a headland, dark for an age — its lens is shattered, its keeper
+    // gone. Tells the coast that help was once promised. Coast is a requirement.
+    (
+        name: "ruined_lighthouse", category: Ruin, discovery: Landmark, density: 0.025,
+        favoured: [
+            (signal: Coast, curve: Linear(m: 1.0, b: 0.0)),
+            (signal: Elevation, curve: Logistic(mid: 60.0, k: 0.012)),
+            (signal: Remoteness, curve: Linear(m: 0.3, b: 0.5)),
+        ],
+    ),
+    // A monument whose inscription has been ground off — by weather or by the cult's
+    // order-keepers. The stone remains: the meaning does not. Arid, flat, remote.
+    (
+        name: "effaced_monument", category: Ruin, discovery: Landmark, density: 0.02,
+        favoured: [
+            (signal: Aridity, curve: Logistic(mid: 0.65, k: 9.0)),
+            (signal: Slope, curve: Linear(m: -0.004, b: 1.0)),
+            (signal: Remoteness, curve: Logistic(mid: 0.5, k: 7.0)),
+        ],
+    ),
+    // The dry shaft of the old cult's sacred well — before the Demiurge changed the
+    // rite, this was where the dead drank to remember. Now it gives only dust.
+    (
+        name: "dry_well_of_the_old_cult", category: Ruin, discovery: Hidden, density: 0.022,
+        favoured: [
+            (signal: Aridity, curve: Logistic(mid: 0.7, k: 10.0)),
+            (signal: Remoteness, curve: Logistic(mid: 0.5, k: 7.0)),
+            (signal: Slope, curve: Linear(m: -0.003, b: 0.9)),
+        ],
+    ),
+    // An earthwork serpent coiling through the grass — very old, purpose unknown. Visible
+    // from above; on remote grassland.
+    (
+        name: "serpent_mound", category: Ruin, discovery: Landmark, density: 0.018,
+        favoured: [
+            (signal: Grass, curve: Linear(m: 1.0, b: 0.0)),
+            (signal: Remoteness, curve: Logistic(mid: 0.55, k: 8.0)),
+            (signal: Slope, curve: Linear(m: -0.003, b: 0.9)),
+        ],
+    ),
+    // A bowl of fused sand — something fell here, or was called down. The glass is
+    // black and warm, even on cold days. Remote, arid, flat.
+    (
+        name: "glass_crater", category: Ruin, discovery: Landmark, density: 0.012,
+        favoured: [
+            (signal: Aridity, curve: Logistic(mid: 0.6, k: 9.0)),
+            (signal: Remoteness, curve: Logistic(mid: 0.6, k: 8.0)),
+            (signal: Slope, curve: Linear(m: -0.004, b: 1.0)),
+        ],
+    ),
+
+    // --- Wilderness / Terrain: the land itself as hazard, marvel, and resource ---
+
+    // Dunes of fine grey ash — the exhalation of the false heaven, settled over
+    // decades. Arid, remote, and utterly flat. Foraging yields almost nothing.
+    (
+        name: "ash_dunes", category: Wilderness, discovery: Landmark, density: 0.05,
+        favoured: [
+            (signal: Aridity, curve: Logistic(mid: 0.8, k: 11.0)),
+            (signal: Slope, curve: Linear(m: -0.004, b: 1.0)),
+            (signal: Remoteness, curve: Linear(m: 0.3, b: 0.5)),
+        ],
+    ),
+    // Black tar bleeding from the ground — flammable, slow, and it smells of the
+    // underworld's underworld. Minerals indicate the seam below.
+    (
+        name: "tar_seep", category: Wilderness, discovery: Landmark, density: 0.03,
+        favoured: [
+            (signal: Minerals, curve: Logistic(mid: 0.4, k: 11.0)),
+            (signal: Slope, curve: Linear(m: -0.003, b: 0.9)),
+            (signal: Aridity, curve: Linear(m: 0.3, b: 0.4)),
+        ],
+    ),
+    // A field of geysers — boiling columns at irregular intervals. Mineral-rich
+    // high ground. No shelter; no forage. Just the noise and the scalding.
+    (
+        name: "geyser_field", category: Wilderness, discovery: Landmark, density: 0.025,
+        favoured: [
+            (signal: Minerals, curve: Logistic(mid: 0.45, k: 12.0)),
+            (signal: Elevation, curve: Logistic(mid: 700.0, k: 0.004)),
+            (signal: Slope, curve: Logistic(mid: 100.0, k: 0.015)),
+        ],
+    ),
+    // A lake that never drains, ringed by fog — the water is the colour of spoiled
+    // milk and utterly still. Low flat land with surface water.
+    (
+        name: "fog_lake", category: Wilderness, discovery: Landmark, density: 0.03,
+        favoured: [
+            (signal: SurfaceWater, curve: Logistic(mid: 0.05, k: 50.0)),
+            (signal: Slope, curve: Linear(m: -0.004, b: 1.0)),
+            (signal: Aridity, curve: Linear(m: -0.5, b: 0.8)),
+        ],
+        affordances: [(action: "drink", effect: Relieve(need: Sustenance, amount: 25), capacity: 50, regen: 0.6)],
+    ),
+    // A forest where every tree has turned to stone — bark-texture in grey rock, leaves
+    // permanent mid-fall. Forest tile, but nothing lives.
+    (
+        name: "petrified_forest", category: Wilderness, discovery: Landmark, density: 0.025,
+        favoured: [
+            (signal: Forest, curve: Linear(m: 1.0, b: 0.0)),
+            (signal: Remoteness, curve: Logistic(mid: 0.45, k: 7.0)),
+            (signal: Aridity, curve: Logistic(mid: 0.5, k: 8.0)),
+        ],
+    ),
+    // A gorge that produces a constant subsonic moan when the wind crosses it — souls
+    // nearby feel an unease they cannot name. High slope, elevated.
+    (
+        name: "screaming_gorge", category: Wilderness, discovery: Landmark, density: 0.025,
+        favoured: [
+            (signal: Slope, curve: Logistic(mid: 280.0, k: 0.022)),
+            (signal: Elevation, curve: Logistic(mid: 600.0, k: 0.004)),
+            (signal: Remoteness, curve: Linear(m: 0.3, b: 0.4)),
+        ],
+    ),
+    // A natural causeway of hexagonal basalt columns leading into the sea — may be
+    // a road, may be geology, may be both. Coast is a requirement.
+    (
+        name: "basalt_causeway", category: Wilderness, discovery: Landmark, density: 0.03,
+        favoured: [
+            (signal: Coast, curve: Linear(m: 1.0, b: 0.0)),
+            (signal: Slope, curve: Logistic(mid: 50.0, k: 0.025)),
+            (signal: Minerals, curve: Linear(m: 0.4, b: 0.3)),
+        ],
+    ),
+    // A sinkhole in the plain — the ground opened and took something with it.
+    // Moderate slope signal detects edge relief; aridity suggests it formed by dissolution.
+    (
+        name: "sinkhole", category: Wilderness, discovery: Hidden, density: 0.035,
+        favoured: [
+            (signal: Aridity, curve: Logistic(mid: 0.55, k: 9.0)),
+            (signal: Slope, curve: Logistic(mid: 80.0, k: 0.02)),
+            (signal: Minerals, curve: Linear(m: 0.3, b: 0.4)),
+        ],
+    ),
+    // A mere of standing water in the deep waste, lit from below by no source the
+    // living could name. The aurora plays in its surface. A secret wonder, very rare.
+    (
+        name: "aurora_mere", category: Wilderness, discovery: Secret, density: 0.006,
+        favoured: [
+            (signal: SurfaceWater, curve: Logistic(mid: 0.03, k: 80.0)),
+            (signal: Remoteness, curve: Logistic(mid: 0.75, k: 11.0)),
+            (signal: Slope, curve: Linear(m: -0.004, b: 1.0)),
+        ],
+    ),
+    // A marsh of salt grass and reed — low, flat, edged by brine. Foraging yields
+    // reed-fibre and a little food. Depletable but the marsh grows back.
+    (
+        name: "salt_marsh", category: Wilderness, discovery: Landmark, density: 0.04,
+        favoured: [
+            (signal: SurfaceWater, curve: Logistic(mid: 0.02, k: 130.0)),
+            (signal: Slope, curve: Linear(m: -0.004, b: 1.0)),
+            (signal: Aridity, curve: Logistic(mid: 0.4, k: 8.0)),
+        ],
+        affordances: [
+            (action: "forage", effect: Relieve(need: Sustenance, amount: 25), capacity: 35, regen: 0.4),
+            (action: "cut_reeds", effect: Yield(good: "reed-fibre", units: 2, skill: Some("weaving")), capacity: 20, regen: 0.3),
+        ],
+    ),
+    // A grove of pale moths rather than moths in a grove — the moths are the grove.
+    // Foraging here finds something edible and slightly luminous. Forest tile.
+    (
+        name: "moth_grove", category: Wilderness, discovery: Hidden, density: 0.03,
+        favoured: [
+            (signal: Forest, curve: Linear(m: 1.0, b: 0.0)),
+            (signal: Remoteness, curve: Logistic(mid: 0.45, k: 7.0)),
+            (signal: Aridity, curve: Linear(m: -0.4, b: 0.8)),
+        ],
+        affordances: [(action: "forage", effect: Relieve(need: Sustenance, amount: 30), capacity: 25, regen: 0.35)],
+    ),
+    // A flat-topped mesa where thunder gathers — the Archons use it for signalling.
+    // High elevation, significant slope on the flanks, harsh.
+    (
+        name: "thunder_mesa", category: Wilderness, discovery: Landmark, density: 0.022,
+        favoured: [
+            (signal: Elevation, curve: Logistic(mid: 1100.0, k: 0.004)),
+            (signal: Slope, curve: Logistic(mid: 260.0, k: 0.022)),
+            (signal: Remoteness, curve: Linear(m: 0.35, b: 0.4)),
+        ],
+    ),
+    // A spring of quicksilver (or something like it) seeping from the rock — mineral
+    // trace reveals it. Useful to smelters, dangerous to touch.
+    (
+        name: "quicksilver_spring", category: Wilderness, discovery: Hidden, density: 0.025,
+        favoured: [
+            (signal: Minerals, curve: Logistic(mid: 0.5, k: 12.0)),
+            (signal: Elevation, curve: Logistic(mid: 500.0, k: 0.004)),
+            (signal: Slope, curve: Logistic(mid: 100.0, k: 0.018)),
+        ],
+        affordances: [(action: "collect", effect: Yield(good: "ore", units: 1, skill: Some("delving")), capacity: 15, regen: 0.25)],
+    ),
+    // Grass scoured to dust by constant wind — nothing grows; the ground hums.
+    // Aridity combined with the grass signal (tiles that once had grass).
+    (
+        name: "wind_scoured_barren", category: Wilderness, discovery: Landmark, density: 0.04,
+        favoured: [
+            (signal: Aridity, curve: Logistic(mid: 0.75, k: 10.0)),
+            (signal: Grass, curve: Linear(m: 0.6, b: 0.3)),
+            (signal: Slope, curve: Linear(m: -0.003, b: 0.9)),
+        ],
+    ),
+    // A causeway now under a hand's-breadth of seawater at every tide — the road still
+    // runs, the stones still hold, but walking it is wrong in a way hard to name.
+    (
+        name: "drowned_causeway", category: Wilderness, discovery: Landmark, density: 0.025,
+        favoured: [
+            (signal: Coast, curve: Linear(m: 1.0, b: 0.0)),
+            (signal: Slope, curve: Linear(m: -0.004, b: 1.0)),
+            (signal: SurfaceWater, curve: Logistic(mid: 0.015, k: 160.0)),
+        ],
+    ),
+    // A great flat pan of mineral-crust that reflects the sky perfectly when wet —
+    // a mirror an hour across. Arid flat, a thin film of water below the surface.
+    (
+        name: "mirror_pan", category: Wilderness, discovery: Landmark, density: 0.02,
+        favoured: [
+            (signal: Aridity, curve: Logistic(mid: 0.8, k: 11.0)),
+            (signal: Slope, curve: Linear(m: -0.004, b: 1.0)),
+            (signal: Minerals, curve: Linear(m: 0.3, b: 0.4)),
+        ],
+    ),
+    // A ridge of iron-rich rock that pulls at compasses and makes the blood feel thick —
+    // the Archons planted it to confuse wayfarers. Minerals + slope.
+    (
+        name: "lodestone_ridge", category: Wilderness, discovery: Landmark, density: 0.03,
+        favoured: [
+            (signal: Minerals, curve: Logistic(mid: 0.45, k: 12.0)),
+            (signal: Slope, curve: Logistic(mid: 150.0, k: 0.02)),
+            (signal: Remoteness, curve: Linear(m: 0.3, b: 0.4)),
+        ],
+        affordances: [(action: "mine", effect: Yield(good: "ore", units: 2, skill: Some("delving")), capacity: 30, regen: 0.2)],
+    ),
+    // A pale strand of crushed bone-white shell — the coast's own way of marking
+    // the dead. Coast is a requirement; low, flat.
+    (
+        name: "pale_strand", category: Wilderness, discovery: Landmark, density: 0.04,
+        favoured: [
+            (signal: Coast, curve: Linear(m: 1.0, b: 0.0)),
+            (signal: Slope, curve: Linear(m: -0.004, b: 1.0)),
+            (signal: Aridity, curve: Linear(m: 0.3, b: 0.5)),
+        ],
+        affordances: [(action: "shelter", effect: Relieve(need: Rest, amount: 20))],
+    ),
+    // A hollow in old forest where fungi grow in rings — not the eating kind, but the
+    // seeing kind. Low foraging value; what you see may cost more than it feeds.
+    (
+        name: "fungal_hollow", category: Wilderness, discovery: Hidden, density: 0.035,
+        favoured: [
+            (signal: Forest, curve: Linear(m: 1.0, b: 0.0)),
+            (signal: SurfaceWater, curve: Logistic(mid: 0.01, k: 200.0)),
+            (signal: Remoteness, curve: Logistic(mid: 0.4, k: 6.0)),
+        ],
+        affordances: [(action: "forage", effect: Relieve(need: Sustenance, amount: 15), capacity: 20, regen: 0.3)],
+    ),
+    // A field of black glass — what struck the ground here left a scar the size of a
+    // village. Extremely remote, arid flat. No affordance: it defies use.
+    (
+        name: "meteor_glass_field", category: Wilderness, discovery: Landmark, density: 0.012,
+        favoured: [
+            (signal: Remoteness, curve: Logistic(mid: 0.7, k: 10.0)),
+            (signal: Aridity, curve: Logistic(mid: 0.7, k: 10.0)),
+            (signal: Slope, curve: Linear(m: -0.004, b: 1.0)),
+        ],
+    ),
 ]
