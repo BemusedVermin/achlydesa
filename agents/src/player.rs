@@ -12,7 +12,7 @@
 //! [`Simulation::spawn_player`](crate::Simulation::spawn_player) is called, and
 //! [`player_travel`] early-returns until then — so a world with no player is byte-identical.
 
-use crate::features::{Discovery, FeatureCatalog, Features};
+use crate::features::{Discovery, FeatureCatalog, FeatureId, Features, FindState};
 use crate::people::{Known, MoveGraph, Npc};
 use crate::{Position, Substrate};
 use bevy_ecs::prelude::*;
@@ -22,6 +22,42 @@ use std::collections::{HashMap, HashSet, VecDeque};
 /// Marks the avatar the human controls. Not an [`Npc`], so the AI never touches it.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Player;
+
+/// **What the player knows.** The heart of knowledge-gated discovery: a growing set of *lore*
+/// facts (names, passwords — the keys that open gates) and *rumours* (places heard-of but not
+/// yet pinpointed). Lives as a resource alongside [`PlayerState`]; empty and inert until an
+/// avatar is spawned and goes looking, so a world with no player stays byte-identical.
+#[derive(Resource, Default)]
+pub struct PlayerKnowledge {
+    /// Lore tokens held. A feature is found/entered only once its [`requires`](crate::FeatureDef::requires)
+    /// are all in here.
+    pub lore: HashSet<String>,
+    /// Places the player has heard of but not located — journal hints, not yet on the map.
+    pub rumors: Vec<Rumor>,
+}
+
+/// A place the player has heard tell of but cannot yet point to on the map.
+#[derive(Clone, Debug)]
+pub struct Rumor {
+    /// A short line naming what was heard of (the feature kind, prettified by the view layer).
+    pub subject: String,
+    /// The tile it refers to, if the source knew it — locating it later resolves the rumour.
+    pub target: Option<Coord>,
+}
+
+/// What a player's `search` turned up: the names of features newly found, and the lore those
+/// places taught — for the front-end to announce and log.
+#[derive(Default, Clone, Debug)]
+pub struct SearchOutcome {
+    pub found: Vec<String>,
+    pub lore_gained: Vec<String>,
+}
+
+impl SearchOutcome {
+    pub fn is_empty(&self) -> bool {
+        self.found.is_empty()
+    }
+}
 
 /// The avatar's travel orders and the map it has uncovered. One player; lives as a
 /// resource (no singleton component), absent-avatar by default.
@@ -329,4 +365,53 @@ pub(crate) fn player_travel(
             break;
         }
     }
+}
+
+/// **Search where the avatar stands.** Reveal every undiscovered feature here whose knowledge
+/// gate the player satisfies, harvest the lore those places teach, and mark the tile visited.
+/// Deterministic — knowledge, not luck, decides what is found. Returns what turned up (empty if
+/// there is no avatar, or nothing the player can yet find here).
+pub(crate) fn search(world: &mut World) -> SearchOutcome {
+    let mut out = SearchOutcome::default();
+    let Some(avatar) = world.resource::<PlayerState>().avatar else { return out };
+    let Some(at) = world.get::<Position>(avatar).map(|p| p.0) else { return out };
+    let i = world.resource::<Substrate>().0.topology().index_of(at);
+    let lore = world.resource::<PlayerKnowledge>().lore.clone();
+
+    let found: Vec<FeatureId> = world.resource_scope::<Features, _>(|w, mut feat| {
+        let cat = w.resource::<FeatureCatalog>();
+        feat.search_at_index(cat, i, &lore)
+    });
+    if found.is_empty() {
+        return out;
+    }
+    if let Some(mut k) = world.get_mut::<Known>(avatar) {
+        k.0.insert(i); // a searched tile is a visited tile
+    }
+    // Collect names + taught lore while borrowing the catalog, then fold into knowledge.
+    let reveals: Vec<String> = {
+        let cat = world.resource::<FeatureCatalog>();
+        for kind in &found {
+            out.found.push(cat.def(*kind).name.clone());
+        }
+        found.iter().flat_map(|k| cat.def(*k).reveals.iter().cloned()).collect()
+    };
+    let mut kn = world.resource_mut::<PlayerKnowledge>();
+    for r in reveals {
+        if kn.lore.insert(r.clone()) {
+            out.lore_gained.push(r);
+        }
+    }
+    out
+}
+
+/// Whether searching the avatar's current tile would find anything, given the lore it holds.
+pub(crate) fn find_state(world: &World) -> FindState {
+    let Some(avatar) = world.resource::<PlayerState>().avatar else { return FindState::Nothing };
+    let Some(at) = world.get::<Position>(avatar).map(|p| p.0) else { return FindState::Nothing };
+    let i = world.resource::<Substrate>().0.topology().index_of(at);
+    let (Some(feat), Some(cat)) = (world.get_resource::<Features>(), world.get_resource::<FeatureCatalog>()) else {
+        return FindState::Nothing;
+    };
+    feat.find_state_at_index(cat, i, &world.resource::<PlayerKnowledge>().lore)
 }

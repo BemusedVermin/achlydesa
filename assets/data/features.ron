@@ -332,6 +332,10 @@
             (signal: Remoteness, curve: Logistic(mid: 0.65, k: 9.0)),
             (signal: Slope, curve: Logistic(mid: 220.0, k: 0.02)),
         ],
+        // You cannot stand before an Archon until you know the names of all seven (the gnostic
+        // conventicles teach them); facing it, you wrest a password of the gate.
+        requires: ["the_names_of_the_seven"],
+        reveals: ["a_password_of_the_gate"],
     ),
     // A hidden order that administers the cup of forgetfulness — embedded in towns,
     // masked as a hospice. The souls who pass through remember nothing after.
@@ -352,6 +356,9 @@
             (signal: Remoteness, curve: Logistic(mid: 0.45, k: 7.0)),
             (signal: Slope, curve: Logistic(mid: 160.0, k: 0.02)),
         ],
+        // The blind seer speaks a password of fate to any who find the seat — the gentler road
+        // to the gate (you need not face an Archon for it).
+        reveals: ["a_password_of_the_gate"],
     ),
 
     // --- Ruins of myth and the failed ascent ---
@@ -374,6 +381,10 @@
             (signal: Aridity, curve: Logistic(mid: 0.6, k: 10.0)),
             (signal: Elevation, curve: Logistic(mid: 500.0, k: 0.004)),
         ],
+        // The gate opens only to one who holds a password AND the counter-cosmogony the
+        // conventicles keep — the knowledge the Demiurge built this prison to forbid.
+        requires: ["a_password_of_the_gate", "the_counter_cosmogony"],
+        reveals: ["the_way_beyond"],
     ),
     // A forgotten shrine to a power the Archons swallowed — cracked stone, a hollow
     // face, offerings that never decay. Grass flats, half-buried.
@@ -659,6 +670,9 @@
             (signal: Fertility, curve: Logistic(mid: 0.015, k: 160.0)),
             (signal: Remoteness, curve: Linear(m: 0.3, b: 0.4)),
         ],
+        // The entry to the whole chain: the survivors share the counter-cosmogony and the names
+        // of the seven — the gnosis the rest of the world is built to keep from you.
+        reveals: ["the_counter_cosmogony", "the_names_of_the_seven"],
     ),
     // A warlord's redoubt on a high, isolated crag — no settlement beneath it; this
     // power stands alone, taxing the passes.

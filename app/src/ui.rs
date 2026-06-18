@@ -1,0 +1,390 @@
+//! The exploration UI: a tile you can hover (outline + cursor tooltip), left-click to inspect
+//! (a detail panel), and right-click to travel to; floating names over discovered settlements;
+//! and a standing legend. All of it reads the sim — it never writes — and is dark to the fog of
+//! war (only explored tiles pick, only discovered features label).
+
+use crate::layout::{tile_top, tile_world};
+use crate::mesh::MeshBuf;
+use crate::{CamRig, Game};
+use agents::{Category, Coord, Simulation, Terrain};
+use bevy::prelude::*;
+use std::f32::consts::{FRAC_PI_3, FRAC_PI_6};
+
+const LABEL_POOL: usize = 28;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum RingKind {
+    Hover,
+    Select,
+}
+#[derive(Component)]
+pub struct Ring(pub RingKind);
+#[derive(Component)]
+pub struct TooltipText;
+#[derive(Component)]
+pub struct InspectText;
+#[derive(Component)]
+pub struct MapLabel;
+#[derive(Component)]
+pub struct JournalText;
+
+// ── Setup: the highlight rings and the screen panels ──────────────────────────────────────────
+
+/// A flat hex border ring (white verts; the material tints it), to lay over a tile.
+fn ring_mesh() -> Mesh {
+    let mut b = MeshBuf::default();
+    let at = |k: usize, r: f32| {
+        let a = FRAC_PI_6 + FRAC_PI_3 * k as f32;
+        Vec3::new(a.cos() * r, 0.0, a.sin() * r)
+    };
+    let (ro, ri) = (1.05, 0.84);
+    for k in 0..6 {
+        b.quad(at(k, ro), at(k + 1, ro), at(k + 1, ri), at(k, ri), [1.0, 1.0, 1.0]);
+    }
+    b.into_mesh()
+}
+
+pub fn setup_ui(commands: &mut Commands, meshes: &mut Assets<Mesh>, materials: &mut Assets<StandardMaterial>) {
+    // Highlight rings (unlit + two-sided via cull_mode None, so winding never hides them).
+    let ring = meshes.add(ring_mesh());
+    let mut ring_mat = |rgba: Color| {
+        materials.add(StandardMaterial { base_color: rgba, unlit: true, cull_mode: None, ..default() })
+    };
+    commands.spawn((
+        Ring(RingKind::Hover),
+        Mesh3d(ring.clone()),
+        MeshMaterial3d(ring_mat(Color::srgb(0.55, 0.9, 1.0))),
+        Transform::IDENTITY,
+        Visibility::Hidden,
+    ));
+    commands.spawn((
+        Ring(RingKind::Select),
+        Mesh3d(ring),
+        MeshMaterial3d(ring_mat(Color::srgb(1.0, 0.82, 0.32))),
+        Transform::IDENTITY,
+        Visibility::Hidden,
+    ));
+
+    let bg = || BackgroundColor(Color::srgba(0.04, 0.05, 0.08, 0.84));
+    let pale = || TextColor(Color::srgb(0.88, 0.91, 0.95));
+
+    // Legend — top-right.
+    commands.spawn((
+        Node { position_type: PositionType::Absolute, right: Val::Px(12.0), top: Val::Px(12.0), padding: UiRect::all(Val::Px(8.0)), max_width: Val::Px(220.0), ..default() },
+        bg(),
+        Text::new(LEGEND),
+        TextFont { font_size: 12.0, ..default() },
+        TextColor(Color::srgb(0.74, 0.78, 0.84)),
+    ));
+
+    // Inspect panel — right side, under the legend.
+    commands.spawn((
+        InspectText,
+        Node { position_type: PositionType::Absolute, right: Val::Px(12.0), top: Val::Px(260.0), padding: UiRect::all(Val::Px(8.0)), max_width: Val::Px(260.0), ..default() },
+        bg(),
+        Text::new(""),
+        TextFont { font_size: 13.0, ..default() },
+        pale(),
+    ));
+
+    // Cursor tooltip — floats, moved each frame.
+    commands.spawn((
+        TooltipText,
+        Node { position_type: PositionType::Absolute, left: Val::Px(0.0), top: Val::Px(0.0), padding: UiRect::axes(Val::Px(7.0), Val::Px(3.0)), max_width: Val::Px(240.0), ..default() },
+        bg(),
+        Text::new(""),
+        TextFont { font_size: 12.0, ..default() },
+        pale(),
+        Visibility::Hidden,
+    ));
+
+    // Discoveries journal — a toggled panel (J), centre-left, hidden until opened.
+    commands.spawn((
+        JournalText,
+        Node {
+            position_type: PositionType::Absolute,
+            left: Val::Px(12.0),
+            top: Val::Px(120.0),
+            padding: UiRect::all(Val::Px(10.0)),
+            max_width: Val::Px(360.0),
+            ..default()
+        },
+        BackgroundColor(Color::srgba(0.03, 0.04, 0.07, 0.92)),
+        Text::new(""),
+        TextFont { font_size: 13.0, ..default() },
+        pale(),
+        Visibility::Hidden,
+    ));
+
+    // Floating-label pool — reused across discovered settlements.
+    for _ in 0..LABEL_POOL {
+        commands.spawn((
+            MapLabel,
+            Node { position_type: PositionType::Absolute, left: Val::Px(0.0), top: Val::Px(0.0), ..default() },
+            Text::new(""),
+            TextFont { font_size: 12.0, ..default() },
+            TextColor(Color::srgb(0.93, 0.90, 0.78)),
+            Visibility::Hidden,
+        ));
+    }
+}
+
+const LEGEND: &str = "\u{2014} The land \u{2014}\nrocks: heights & peaks\ntrees: woods & scrub\nhouses: a settlement\nkeep/temple: a court\nbroken stones: a ruin\n\n\u{2014} Controls \u{2014}\nhover: look\nL-click: inspect\nR-click: travel\nSpace: wait   T: speak\nA/D/W/S: camera   scroll: zoom";
+
+// ── Picking and the click model ───────────────────────────────────────────────────────────────
+
+/// The explored tile under the cursor — the one whose **top-centre projects nearest the cursor
+/// on screen**. Comparing in screen space (rather than on the flat sea-level plane) makes the
+/// pick correct for raised tiles at any camera angle, so what you click is what you get.
+fn pick_tile(window: &Window, cam: &Camera, cam_tf: &GlobalTransform, sim: &Simulation) -> Option<Coord> {
+    let cursor = window.cursor_position()?;
+    let gw = sim.substrate();
+    sim.player_explored()
+        .into_iter()
+        .filter_map(|c| {
+            let w = tile_world(c.col, c.row);
+            let world = Vec3::new(w.x, tile_top(gw, c), w.y);
+            cam.world_to_viewport(cam_tf, world).ok().map(|p| (c, p.distance_squared(cursor)))
+        })
+        .min_by(|a, b| a.1.total_cmp(&b.1))
+        .map(|(c, _)| c)
+}
+
+/// Hover-pick every frame; left-click selects a tile to inspect, right-click travels to it.
+pub fn tile_interact(mouse: Res<ButtonInput<MouseButton>>, windows: Query<&Window>, cams: Query<(&Camera, &GlobalTransform), With<CamRig>>, mut game: NonSendMut<Game>) {
+    if game.convo.is_some() {
+        game.hovered = None;
+        return;
+    }
+    let Ok(window) = windows.single() else { return };
+    let Ok((cam, cam_tf)) = cams.single() else { return };
+    let hovered = pick_tile(window, cam, cam_tf, &game.sim);
+    game.hovered = hovered;
+    let Some(c) = hovered else { return };
+    let g = &mut *game;
+    if mouse.just_pressed(MouseButton::Left) {
+        g.selected = Some(c);
+    }
+    if mouse.just_pressed(MouseButton::Right) {
+        g.status = if g.sim.player_travel_to(c) { format!("Setting out for ({}, {}).", c.col, c.row) } else { "No path leads there on foot.".into() };
+    }
+}
+
+// ── The overlays ─────────────────────────────────────────────────────────────────────────────
+
+/// Lay the hover/select rings on their tiles (or hide them).
+pub fn update_highlights(game: NonSend<Game>, mut q: Query<(&Ring, &mut Transform, &mut Visibility)>) {
+    let gw = game.sim.substrate();
+    for (ring, mut tf, mut vis) in &mut q {
+        let coord = match ring.0 {
+            RingKind::Hover => game.hovered,
+            RingKind::Select => game.selected,
+        };
+        if let Some(c) = coord {
+            let w = tile_world(c.col, c.row);
+            tf.translation = Vec3::new(w.x, tile_top(gw, c) + 0.05, w.y);
+            *vis = Visibility::Visible;
+        } else {
+            *vis = Visibility::Hidden;
+        }
+    }
+}
+
+/// Follow the cursor with a quick read of the hovered tile.
+pub fn update_tooltip(windows: Query<&Window>, game: NonSend<Game>, mut q: Query<(&mut Node, &mut Text, &mut Visibility), With<TooltipText>>) {
+    let Ok((mut node, mut text, mut vis)) = q.single_mut() else { return };
+    let cursor = windows.single().ok().and_then(|w| w.cursor_position());
+    match (game.hovered, cursor) {
+        (Some(c), Some(cur)) if game.convo.is_none() => {
+            node.left = Val::Px(cur.x + 16.0);
+            node.top = Val::Px(cur.y + 16.0);
+            text.0 = tooltip_text(&game.sim, c);
+            *vis = Visibility::Visible;
+        }
+        _ => {
+            text.0.clear();
+            *vis = Visibility::Hidden;
+        }
+    }
+}
+
+/// The detail panel for the selected tile (or a hint when nothing is selected).
+pub fn update_inspect(game: NonSend<Game>, mut q: Query<&mut Text, With<InspectText>>) {
+    let Ok(mut text) = q.single_mut() else { return };
+    text.0 = match game.selected {
+        Some(c) => detail_text(&game.sim, c),
+        None => "Left-click a tile to inspect it.\nRight-click to travel there.".into(),
+    };
+}
+
+/// Project a name over each discovered settlement, nearest the avatar first, reusing the pool.
+pub fn update_labels(game: NonSend<Game>, cams: Query<(&Camera, &GlobalTransform), With<CamRig>>, mut q: Query<(&mut Node, &mut Text, &mut Visibility), With<MapLabel>>) {
+    let Ok((cam, cam_tf)) = cams.single() else { return };
+    let sim = &game.sim;
+    let mut labels = gather_labels(sim);
+    let ap = tile_world(game.avatar_pos.col, game.avatar_pos.row);
+    labels.sort_by(|a, b| {
+        let da = (tile_world(a.0.col, a.0.row) - ap).length_squared();
+        let db = (tile_world(b.0.col, b.0.row) - ap).length_squared();
+        da.total_cmp(&db)
+    });
+    let gw = sim.substrate();
+    let mut iter = labels.into_iter();
+    for (mut node, mut text, mut vis) in &mut q {
+        loop {
+            match iter.next() {
+                Some((c, name)) => {
+                    let w = tile_world(c.col, c.row);
+                    let world = Vec3::new(w.x, tile_top(gw, c) + 1.4, w.y);
+                    if let Ok(p) = cam.world_to_viewport(cam_tf, world) {
+                        node.left = Val::Px(p.x - 36.0);
+                        node.top = Val::Px(p.y - 8.0);
+                        text.0 = name;
+                        *vis = Visibility::Visible;
+                        break;
+                    }
+                    // Behind the camera — skip this one, try the next.
+                }
+                None => {
+                    *vis = Visibility::Hidden;
+                    break;
+                }
+            }
+        }
+    }
+}
+
+/// The discoveries journal — the Outer-Wilds ship-log: every place found (grouped) and every
+/// lore fact held. Refreshed each frame while open.
+pub fn update_journal(game: NonSend<Game>, mut q: Query<(&mut Text, &mut Visibility), With<JournalText>>) {
+    let Ok((mut text, mut vis)) = q.single_mut() else { return };
+    if !game.journal_open {
+        *vis = Visibility::Hidden;
+        return;
+    }
+    text.0 = journal_text(&game.sim);
+    *vis = Visibility::Visible;
+}
+
+fn journal_text(sim: &Simulation) -> String {
+    let cat = sim.feature_catalog();
+    // Discovered features on explored tiles, grouped by category.
+    let mut groups: [Vec<String>; 4] = [Vec::new(), Vec::new(), Vec::new(), Vec::new()];
+    for c in sim.player_explored() {
+        for f in sim.features_at(c) {
+            if f.discovered {
+                groups[cat.def(f.kind).category.idx()].push(pretty(&cat.def(f.kind).name));
+            }
+        }
+    }
+    for g in &mut groups {
+        g.sort();
+        g.dedup();
+    }
+    let total: usize = groups.iter().map(Vec::len).sum();
+    let mut s = format!("\u{2550}\u{2550} Journal \u{2550}\u{2550}\n\nPlaces found: {total}\n");
+    for (i, g) in groups.iter().enumerate() {
+        if !g.is_empty() {
+            s.push_str(&format!("  {}: {}\n", ["Settlements", "Courts", "Ruins", "Wonders"][i], g.join(", ")));
+        }
+    }
+    let lore = sim.player_lore();
+    s.push_str(&format!("\nLore known: {}\n", lore.len()));
+    if lore.is_empty() {
+        s.push_str("  (you know nothing yet \u{2014} search ruins, ask the living, read the stones)\n");
+    } else {
+        for l in &lore {
+            s.push_str(&format!("  \u{2022} {}\n", pretty(l)));
+        }
+    }
+    s.push_str("\n(press J to close)");
+    s
+}
+
+// ── Reading the sim into words ────────────────────────────────────────────────────────────────
+
+/// Discovered settlements **on tiles the player has actually uncovered** — a landmark's
+/// `discovered` flag is set world-wide at gen, so we must intersect with the explored set or
+/// names float over tiles still under the fog. (Mirrors how `feature_art` gates its buildings.)
+fn gather_labels(sim: &Simulation) -> Vec<(Coord, String)> {
+    let cat = sim.feature_catalog();
+    let mut out = Vec::new();
+    for c in sim.player_explored() {
+        for f in sim.features_at(c) {
+            if f.discovered && cat.def(f.kind).category == Category::Community {
+                out.push((c, pretty(&cat.def(f.kind).name)));
+            }
+        }
+    }
+    out
+}
+
+fn tooltip_text(sim: &Simulation, c: Coord) -> String {
+    let gw = sim.substrate();
+    let sea = gw.params().sea_level;
+    let terrain = Terrain::of(gw.elevation(c), sea);
+    let mut s = format!("({}, {})  {}", c.col, c.row, terrain.name());
+    let feats = discovered_features(sim, c);
+    if !feats.is_empty() {
+        s.push_str("\n");
+        s.push_str(&feats.join("\n"));
+    }
+    s
+}
+
+fn detail_text(sim: &Simulation, c: Coord) -> String {
+    let gw = sim.substrate();
+    let sea = gw.params().sea_level;
+    let elev = gw.elevation(c);
+    let terrain = Terrain::of(elev, sea);
+    let mut s = format!(
+        "({}, {})\n{}   {:.0} m\nground: {}\nfertile {:.2}   water {:.2}",
+        c.col,
+        c.row,
+        terrain.name(),
+        (elev - sea).max(0.0),
+        gw.biome(c).name(),
+        gw.carrying_capacity(c).clamp(0.0, 1.0),
+        gw.surface_water(c),
+    );
+    let feats = discovered_features(sim, c);
+    if feats.is_empty() {
+        s.push_str("\n\n(no landmarks here)");
+    } else {
+        s.push_str("\n\nhere:\n");
+        s.push_str(&feats.join("\n"));
+    }
+    s
+}
+
+fn discovered_features(sim: &Simulation, c: Coord) -> Vec<String> {
+    let cat = sim.feature_catalog();
+    sim.features_at(c)
+        .iter()
+        .filter(|f| f.discovered)
+        .map(|f| format!("  {} ({})", pretty(cat.name(f.kind)), category_word(cat.def(f.kind).category)))
+        .collect()
+}
+
+fn category_word(cat: Category) -> &'static str {
+    match cat {
+        Category::Community => "settlement",
+        Category::Court => "court",
+        Category::Ruin => "ruin",
+        Category::Wilderness => "wonder",
+    }
+}
+
+/// "mist_drowned_town" / "password_of_yao" → "Mist Drowned Town" / "Password Of Yao".
+pub fn pretty(s: &str) -> String {
+    s.split('_')
+        .map(|w| {
+            let mut ch = w.chars();
+            match ch.next() {
+                Some(f) => f.to_uppercase().collect::<String>() + ch.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}

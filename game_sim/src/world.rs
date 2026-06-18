@@ -51,7 +51,7 @@ use crate::grid::{Buffered, Coord, Topology};
 use crate::rng::SplitMix64;
 use config::Params;
 use crate::worldgen::{self, Generated};
-use crate::fields::{CrustType, Lithology, Pft};
+use crate::fields::{Belt, Biome, CrustType, Formation, Lithology};
 use sim::{Rng, Substrate};
 
 /// A read-only snapshot of one tile, returned to (future) actors as the
@@ -119,8 +119,14 @@ pub struct World {
     soil_carbon: Vec<f32>,
     /// Plant-available soil nutrients (local).
     soil_nutrients: Vec<f32>,
-    /// Dominant plant functional type (derived classification).
-    pft: Vec<Pft>,
+    /// Running mean **annual biotemperature** (°C, clamped to 0..30) — the slow
+    /// climate memory the Holdridge belt is read from. An EMA, not an instant.
+    bio_temp: Vec<f32>,
+    /// Running **annualised precipitation** total (model units) — the slow
+    /// moisture memory feeding the PET/precipitation humidity province. An EMA.
+    annual_precip: Vec<f32>,
+    /// Dominant biome — the tile's Holdridge life zone (derived classification).
+    biome: Vec<Biome>,
 
     // --- disturbance (Φ) ---
     /// Fire intensity — biomass burned this tick. >0 means actively burning;
@@ -161,7 +167,9 @@ impl World {
             litter: vec![0.0; len],
             soil_carbon: vec![0.0; len],
             soil_nutrients: vec![soil_init; len],
-            pft: vec![Pft::Barren; len],
+            bio_temp: vec![0.0; len],
+            annual_precip: vec![0.0; len],
+            biome: vec![Biome::Water; len],
             fire: Buffered::filled(0.0, len),
             // Seeded at the neutral reflectance so the seeded temperature carries
             // no albedo offset; real albedo is computed below.
@@ -317,8 +325,21 @@ impl World {
         self.soil_nutrients[self.topo.index_of(c)]
     }
 
-    pub fn pft(&self, c: Coord) -> Pft {
-        self.pft[self.topo.index_of(c)]
+    /// The tile's biome — its Holdridge life zone (or `Water` below sea level).
+    pub fn biome(&self, c: Coord) -> Biome {
+        self.biome[self.topo.index_of(c)]
+    }
+
+    /// Running mean annual biotemperature (°C) — the slow climate average the
+    /// biome's belt is classified from.
+    pub fn biotemperature(&self, c: Coord) -> f32 {
+        self.bio_temp[self.topo.index_of(c)]
+    }
+
+    /// Running annualised precipitation total (model units) — the slow moisture
+    /// average the biome's humidity province is classified from.
+    pub fn annual_precipitation(&self, c: Coord) -> f32 {
+        self.annual_precip[self.topo.index_of(c)]
     }
 
     /// Fire intensity (biomass burned this tick); 0 if not burning.
@@ -566,6 +587,7 @@ impl World {
             let elevation = &self.elevation;
             let soil_n = &self.soil_nutrients;
             let soil_c = &self.soil_carbon;
+            let biome = &self.biome;
             let cc = &mut self.carrying_capacity;
             let npp = &mut self.npp;
             let litter = &mut self.litter;
@@ -574,15 +596,20 @@ impl World {
             for i in 0..n {
                 let land = elevation[i] >= p.sea_level;
                 let moisture = moisture_index(p, water[i], precip[i]);
-                let g = growth_suitability(p, temp[i], moisture, insol[i], land);
+                // Instantaneous suitability still gates the growth *rate* — the
+                // channel through which droughts and the seasons bite.
+                let suit = growth_suitability(p, temp[i], moisture, insol[i], land);
                 let nutrient = soil_n[i] / (soil_n[i] + p.nutrient_half);
                 // Rich soil carbon lifts the ceiling — the slow soil→fertility memory.
                 let carbon = 1.0 + p.carbon_fertility * soil_c[i] / (soil_c[i] + p.carbon_half);
-                let k = (p.biomass_max * g * nutrient * carbon).max(0.0);
+                // The biome sets the productivity ceiling; soil fertility scales it.
+                // Climate no longer caps the ceiling directly — it does so *through*
+                // the biome it has been distilled into.
+                let k = (p.biomass_max * biome[i].profile(p).productivity * nutrient * carbon).max(0.0);
                 cc[i] = k;
 
                 let production =
-                    p.plant_growth * g * (plant_old[i] + p.plant_seed) * (1.0 - plant_old[i] / k.max(1e-3));
+                    p.plant_growth * suit * (plant_old[i] + p.plant_seed) * (1.0 - plant_old[i] / k.max(1e-3));
                 npp[i] = production;
 
                 let plant_death = plant_old[i] * p.plant_mortality;
@@ -603,12 +630,15 @@ impl World {
         let water = self.surface_water.front();
         let precip = &self.precipitation;
         let npp = &self.npp;
+        let biome = &self.biome;
         let litter = &mut self.litter;
         let soil_c = &mut self.soil_carbon;
         let soil_n = &mut self.soil_nutrients;
         for i in 0..n {
             let moisture = moisture_index(p, water[i], precip[i]);
-            let activity = decomposition_activity(p, temp[i], moisture);
+            // The biome modulates decomposition: cold tundra locks litter into slow
+            // peat, warm wet forest turns it over fast.
+            let activity = decomposition_activity(p, temp[i], moisture) * biome[i].profile(p).decay;
             let decomposed = (litter[i] * p.decomposition * activity).clamp(0.0, litter[i]);
             litter[i] -= decomposed;
 
@@ -621,44 +651,67 @@ impl World {
         }
     }
 
-    /// Classify each tile's dominant plant type from its current climate.
-    fn update_pft(&mut self) {
+    /// Fold this tick's weather into the slow **annual climate averages** the
+    /// biome is classified from: an exponential moving average of biotemperature
+    /// (temperature clamped to the 0..30 °C growth window) and of annualised
+    /// precipitation, with a time constant of `biome_memory_years`. Deterministic.
+    fn update_climate_aggregates(&mut self) {
         let p = &self.params;
-        let topo = &self.topo;
+        let alpha = climate_ema_alpha(p, self.tick);
+        let year = p.ticks_per_year as f32;
         let temp = self.temperature.front();
-        let water = self.surface_water.front();
         let precip = &self.precipitation;
-        let elevation = &self.elevation;
-        let cc = &self.carrying_capacity;
-        let pft = &mut self.pft;
-        for i in topo.indices() {
-            let moisture = moisture_index(p, water[i], precip[i]);
-            pft[i] = classify_pft(p, temp[i], moisture, cc[i], elevation[i]);
+        for i in self.topo.indices() {
+            let bt = temp[i].clamp(0.0, 30.0);
+            self.bio_temp[i] += alpha * (bt - self.bio_temp[i]);
+            self.annual_precip[i] += alpha * (precip[i] * year - self.annual_precip[i]);
         }
     }
 
-    /// Fill `carrying_capacity` and `pft` from the initial climate so a fresh
-    /// world reads sensibly before the first tick (without advancing biomass).
+    /// Classify each land tile's Holdridge life zone from its annual climate
+    /// averages (open sea below the datum is always `Water`).
+    fn update_biome(&mut self) {
+        let p = &self.params;
+        let topo = &self.topo;
+        let elevation = &self.elevation;
+        let bio_temp = &self.bio_temp;
+        let annual_precip = &self.annual_precip;
+        let biome = &mut self.biome;
+        for i in topo.indices() {
+            let water = elevation[i] < p.sea_level;
+            biome[i] = classify_biome(p, bio_temp[i], annual_precip[i], water);
+        }
+    }
+
+    /// Fill `carrying_capacity`, the climate averages, and `biome` from the
+    /// initial climate so a fresh world reads sensibly before the first tick
+    /// (without advancing biomass). The averages start at the instantaneous
+    /// values; precipitation has not spun up yet, so biomes refine over the
+    /// warm-up like the other dynamic fields.
     fn seed_ecosystem(&mut self) {
         let p = &self.params;
         let topo = &self.topo;
         let temp = self.temperature.front();
-        let water = self.surface_water.front();
         let precip = &self.precipitation;
-        let insol = &self.insolation;
         let elevation = &self.elevation;
         let soil_n = &self.soil_nutrients;
         let soil_c = &self.soil_carbon;
+        let year = p.ticks_per_year as f32;
         let cc = &mut self.carrying_capacity;
-        let pft = &mut self.pft;
+        let bio_temp = &mut self.bio_temp;
+        let annual_precip = &mut self.annual_precip;
+        let biome = &mut self.biome;
         for i in topo.indices() {
-            let land = elevation[i] >= p.sea_level;
-            let moisture = moisture_index(p, water[i], precip[i]);
-            let g = growth_suitability(p, temp[i], moisture, insol[i], land);
+            let water = elevation[i] < p.sea_level;
+            bio_temp[i] = temp[i].clamp(0.0, 30.0);
+            annual_precip[i] = precip[i] * year;
+            let b = classify_biome(p, bio_temp[i], annual_precip[i], water);
+            biome[i] = b;
+            // Seed the carrying capacity from the biome's profile, exactly as the
+            // running ecosystem does, so a fresh world is consistent with its first tick.
             let nutrient = soil_n[i] / (soil_n[i] + p.nutrient_half);
             let carbon = 1.0 + p.carbon_fertility * soil_c[i] / (soil_c[i] + p.carbon_half);
-            cc[i] = (p.biomass_max * g * nutrient * carbon).max(0.0);
-            pft[i] = classify_pft(p, temp[i], moisture, cc[i], elevation[i]);
+            cc[i] = (p.biomass_max * b.profile(p).productivity * nutrient * carbon).max(0.0);
         }
     }
 
@@ -678,6 +731,7 @@ impl World {
         let precip = &self.precipitation;
         let wind = &self.wind;
         let elevation = &self.elevation;
+        let biome = &self.biome;
         let litter = &mut self.litter;
         let soil_n = &mut self.soil_nutrients;
         let soil_c = &mut self.soil_carbon;
@@ -691,7 +745,10 @@ impl World {
             // An unburnt, fuelled tile may ignite this tick.
             if !burning && fuel > p.fire_fuel_min {
                 let moisture = moisture_index(p, water[i], precip[i]);
-                let dry = fire_dryness(p, temp[i], moisture);
+                // The biome's cover sets how readily fuel takes: grass and scrub
+                // catch eagerly, rainforest and tundra resist.
+                let dry =
+                    (fire_dryness(p, temp[i], moisture) * biome[i].profile(p).flammability).min(1.0);
                 let fuel_factor = fuel / (fuel + p.fire_fuel_half);
                 if dry > 0.0 && fuel_factor > 0.0 {
                     // Lightning.
@@ -751,12 +808,12 @@ impl World {
     fn update_albedo(&mut self) {
         let p = &self.params;
         let topo = &self.topo;
-        let pft = &self.pft;
+        let biome = &self.biome;
         let snow = &self.snow_ice;
         let fire = self.fire.front();
         let albedo = &mut self.albedo;
         for i in topo.indices() {
-            let base = base_albedo(p, pft[i]);
+            let base = base_albedo(p, biome[i].formation());
             let snow_cover = (snow[i] / p.snow_albedo_cover).clamp(0.0, 1.0);
             let bright = base + (p.albedo_snow - base) * snow_cover;
             let burn = (fire[i] / p.fire_albedo_ref).clamp(0.0, 1.0) * p.burn_albedo_weight;
@@ -860,25 +917,71 @@ fn decomposition_activity(params: &Params, temp: f32, moisture: f32) -> f32 {
     (warmth * wetness).clamp(0.0, 3.0)
 }
 
-/// Whittaker-style plant-type classification from temperature, moisture, and the
-/// tile's carrying capacity (open sea is `Water`; too little growth is `Barren`).
-fn classify_pft(params: &Params, temp: f32, moisture: f32, cc: f32, elevation: f32) -> Pft {
-    if elevation < params.sea_level {
-        return Pft::Water;
+/// Blend factor for the running annual climate averages. It floors at the long
+/// run EMA rate (`1 / memory_years·ticks_per_year`) but for a fresh world starts
+/// as a true cumulative mean (`1 / age`), so the averages lock onto the first
+/// year's seasonal cycle quickly and then drift slowly — accurate biomes after a
+/// one-year warm-up without sacrificing long-term memory. A pure function of the
+/// tick, so it stays deterministic and resume-safe.
+fn climate_ema_alpha(params: &Params, tick: u64) -> f32 {
+    let ema = 1.0 / (params.biome_memory_years * params.ticks_per_year as f32).max(1.0);
+    let cumulative = 1.0 / (tick as f32 + 1.0);
+    ema.max(cumulative).clamp(0.0, 1.0)
+}
+
+/// Classify a tile's **Holdridge life zone** from its annual climate averages:
+/// the latitudinal belt from mean annual biotemperature, the humidity province
+/// from the potential-evapotranspiration / precipitation ratio. Open sea (below
+/// the datum) is `Water`.
+fn classify_biome(params: &Params, bio_temp: f32, annual_precip: f32, water: bool) -> Biome {
+    if water {
+        return Biome::Water;
     }
-    if cc < params.barren_cc {
-        return Pft::Barren;
-    }
-    if temp < params.tundra_temp {
-        return Pft::Tundra;
-    }
-    let water_factor = moisture / (moisture + params.moisture_half);
-    if water_factor < params.shrub_moisture {
-        Pft::Shrubland
-    } else if water_factor > params.forest_moisture {
-        Pft::Forest
+    Biome::from_cell(belt_of(params, bio_temp), humidity_index(params, bio_temp, annual_precip))
+}
+
+/// The Holdridge latitudinal belt for a mean annual biotemperature (°C).
+fn belt_of(params: &Params, bio_temp: f32) -> Belt {
+    if bio_temp < params.biotemp_subpolar {
+        Belt::Polar
+    } else if bio_temp < params.biotemp_boreal {
+        Belt::Subpolar
+    } else if bio_temp < params.biotemp_cool_temperate {
+        Belt::Boreal
+    } else if bio_temp < params.biotemp_warm_temperate {
+        Belt::CoolTemperate
+    } else if bio_temp < params.biotemp_subtropical {
+        Belt::WarmTemperate
+    } else if bio_temp < params.biotemp_tropical {
+        Belt::Subtropical
     } else {
-        Pft::Grassland
+        Belt::Tropical
+    }
+}
+
+/// Humidity-province index `0` (driest superarid) … `7` (wettest superhumid) from
+/// the PET/precipitation ratio on Holdridge's canonical log₂ ladder. `PET` is the
+/// biotemperature scaled by `pet_coeff`; a dry tile (little rain, much potential
+/// evaporation) has a high ratio and lands in the low, arid indices.
+fn humidity_index(params: &Params, bio_temp: f32, annual_precip: f32) -> usize {
+    let pet = bio_temp * params.pet_coeff;
+    let ratio = if annual_precip > 1e-6 { pet / annual_precip } else { f32::INFINITY };
+    if ratio >= 16.0 {
+        0
+    } else if ratio >= 8.0 {
+        1
+    } else if ratio >= 4.0 {
+        2
+    } else if ratio >= 2.0 {
+        3
+    } else if ratio >= 1.0 {
+        4
+    } else if ratio >= 0.5 {
+        5
+    } else if ratio >= 0.25 {
+        6
+    } else {
+        7
     }
 }
 
@@ -890,15 +993,17 @@ fn fire_dryness(params: &Params, temp: f32, moisture: f32) -> f32 {
     (heat * dampening).clamp(0.0, 1.0)
 }
 
-/// Base surface reflectance for a plant-functional type, before snow/burn.
-fn base_albedo(params: &Params, pft: Pft) -> f32 {
-    match pft {
-        Pft::Water => params.albedo_water,
-        Pft::Forest => params.albedo_forest,
-        Pft::Grassland => params.albedo_grass,
-        Pft::Shrubland => params.albedo_shrub,
-        Pft::Barren => params.albedo_barren,
-        Pft::Tundra => params.albedo_tundra,
+/// Base surface reflectance for a structural cover (Holdridge formation), before
+/// snow brightening and burn darkening.
+fn base_albedo(params: &Params, formation: Formation) -> f32 {
+    match formation {
+        Formation::Water => params.albedo_water,
+        Formation::Desert => params.albedo_desert,
+        Formation::Tundra => params.albedo_tundra,
+        Formation::Grassland => params.albedo_grass,
+        Formation::Shrubland => params.albedo_shrub,
+        Formation::Forest => params.albedo_forest,
+        Formation::Rainforest => params.albedo_rainforest,
     }
 }
 
@@ -921,7 +1026,8 @@ impl Substrate for World {
         self.update_water_and_snow();
         self.update_vegetation();
         self.update_soil();
-        self.update_pft();
+        self.update_climate_aggregates();
+        self.update_biome();
         self.update_fire(rng);
         self.update_albedo();
     }
@@ -1149,7 +1255,7 @@ mod tests {
         for i in world.topology().indices() {
             if world.elevation[i] < p.sea_level {
                 assert_eq!(world.plant_biomass.front()[i], 0.0, "plants grew in the sea");
-                assert_eq!(world.pft[i], Pft::Water, "submerged tile should read as Water");
+                assert_eq!(world.biome[i], Biome::Water, "submerged tile should read as Water");
             }
         }
     }
@@ -1177,13 +1283,74 @@ mod tests {
             world.evolve(&mut rng);
         }
         // A pole-to-equator world with mountains and seas should host more than
-        // one vegetated biome, not a single monoculture.
-        let vegetated = [Pft::Tundra, Pft::Grassland, Pft::Shrubland, Pft::Forest];
-        let kinds = vegetated
+        // one land formation, not a single monoculture.
+        let land_formations = [
+            Formation::Desert,
+            Formation::Tundra,
+            Formation::Grassland,
+            Formation::Shrubland,
+            Formation::Forest,
+            Formation::Rainforest,
+        ];
+        let kinds = land_formations
             .iter()
-            .filter(|&&k| world.topology().indices().any(|i| world.pft[i] == k))
+            .filter(|&&f| world.topology().indices().any(|i| world.biome[i].formation() == f))
             .count();
-        assert!(kinds >= 2, "expected at least two vegetated biomes, found {kinds}");
+        assert!(kinds >= 2, "expected at least two land formations, found {kinds}");
+    }
+
+    #[test]
+    fn belt_climbs_with_biotemperature() {
+        let p = Params::default();
+        assert_eq!(belt_of(&p, 0.5), Belt::Polar);
+        assert_eq!(belt_of(&p, 2.0), Belt::Subpolar);
+        assert_eq!(belt_of(&p, 4.5), Belt::Boreal);
+        assert_eq!(belt_of(&p, 9.0), Belt::CoolTemperate);
+        assert_eq!(belt_of(&p, 15.0), Belt::WarmTemperate);
+        assert_eq!(belt_of(&p, 20.0), Belt::Subtropical);
+        assert_eq!(belt_of(&p, 27.0), Belt::Tropical);
+    }
+
+    #[test]
+    fn humidity_index_rises_as_a_tile_gets_wetter() {
+        let p = Params::default();
+        let bt = 20.0;
+        // More annual precipitation at the same potential evapotranspiration is
+        // wetter, so it climbs the humidity ladder toward the superhumid index.
+        let dry = humidity_index(&p, bt, 5.0);
+        let mid = humidity_index(&p, bt, 60.0);
+        let wet = humidity_index(&p, bt, 600.0);
+        assert!(dry < mid && mid < wet, "expected dry {dry} < mid {mid} < wet {wet}");
+        assert_eq!(humidity_index(&p, bt, 0.0), 0, "no rain is the driest province");
+    }
+
+    #[test]
+    fn classify_biome_reads_the_extremes() {
+        let p = Params::default();
+        assert_eq!(classify_biome(&p, 25.0, 100.0, true), Biome::Water, "below-sea is water");
+        // Hot and soaked → a tropical rain canopy.
+        let hot_wet = classify_biome(&p, 26.0, 4000.0, false);
+        assert_eq!(hot_wet.belt(), Some(Belt::Tropical));
+        assert_eq!(hot_wet.formation(), Formation::Rainforest);
+        // Cold land stays in the frozen belts whatever the moisture.
+        assert_eq!(classify_biome(&p, 1.0, 200.0, false).belt(), Some(Belt::Polar));
+    }
+
+    #[test]
+    fn from_cell_realises_every_land_life_zone() {
+        use std::collections::HashSet;
+        let mut seen = HashSet::new();
+        for belt in Belt::ALL {
+            for h in 0..8 {
+                seen.insert(Biome::from_cell(belt, h));
+            }
+        }
+        for b in Biome::ALL {
+            if b == Biome::Water {
+                continue;
+            }
+            assert!(seen.contains(&b), "life zone {b:?} is never produced by from_cell");
+        }
     }
 
     /// The headline loop: climate feeds the ecosystem. Kill the moisture cycle

@@ -2,25 +2,36 @@
 //! you spawn a body in the simulated world and *explore* it — walk the land, lift the fog,
 //! watch a populace live and talk around you. The simulation (`agents`) is authoritative
 //! and bevy-free; this Bevy shell is a thin view over it (the pattern the reference
-//! strategy-tactics game uses). Presentation: true-3D hex columns whose height is the
-//! land's real elevation, vertex-coloured by terrain, with only the explored map drawn.
+//! strategy-tactics game uses). Presentation: hex columns at compressed-but-real relief (peaks
+//! flattened so a piece can land on any top), coloured by terrain and vegetation class, dressed
+//! with **procedurally generated** trees, scrub, rock, and the buildings of settlements, courts,
+//! and ruins (see `props`, `scatter`, `feature_art`). Only the explored map is drawn, under a
+//! cool haze.
 //!
-//! Controls: **click a tile to travel** · **Space** wait · **T** speak to a soul nearby ·
-//! **A/D** orbit · **W/S** tilt · **scroll** zoom. Turn-based — the world moves when you act.
+//! Controls: **hover** a tile to look · **left-click** to inspect it · **right-click** to travel ·
+//! **Space** wait · **T** speak to a soul nearby · **A/D** orbit · **W/S** tilt · **scroll** zoom.
+//! Turn-based — the world moves when you act.
 //!
 //! `cargo run -p app --release`
 
-use agents::{Coord, Goals, Registry, Setup, Simulation, Terrain};
-use bevy::asset::RenderAssetUsages;
+use agents::{Coord, FindState, Goals, Registry, Setup, Simulation};
 use bevy::input::ButtonState;
 use bevy::input::keyboard::{Key, KeyboardInput};
 use bevy::input::mouse::AccumulatedMouseScroll;
-use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
-use game_sim::World as GameWorld;
 use std::collections::{HashMap, HashSet};
 
+mod fauna_art;
+mod feature_art;
+mod layout;
+mod mesh;
 mod palette;
+mod props;
+mod scatter;
+mod ui;
+mod world_mesh;
+
+use layout::{tile_top, tile_world};
 
 // =====================================================================================
 // The dialogue voice (optional SLM). All candle-touching code is confined to the `voice`
@@ -97,10 +108,6 @@ mod voice_bridge {
     }
 }
 
-const SQRT3: f32 = 1.732_050_8;
-/// Real metres of elevation → world units of column height (≈5000 m → 13 units).
-const HEIGHT_SCALE: f32 = 0.0026;
-const MIN_LAND_H: f32 = 0.18;
 /// Sim ticks per real second while the world is running.
 const TICK_DT: f32 = 0.12;
 /// Characters per second the conversation text types in at (the RPG-style reveal that also
@@ -117,6 +124,9 @@ struct Game {
     avatar_pos: Coord,
     last_explored: usize,
     last_tick: u64,
+    /// The world tick the rendered fauna were last synced to (so creatures only
+    /// re-target when the world has actually moved).
+    last_fauna_tick: u64,
     accum: f32,
     status: String,
     convo: Option<Convo>,
@@ -128,6 +138,12 @@ struct Game {
     /// In-flight intent classifications: request id → the NPC the effect lands on. When the
     /// result arrives, it drives `apply_conversational_intent` (the conversation's social effect).
     classify: HashMap<u64, Entity>,
+    /// The tile under the cursor right now (hover), and the tile the player has clicked to
+    /// inspect — the two halves of the new pick model (hover = look, click = select).
+    hovered: Option<Coord>,
+    selected: Option<Coord>,
+    /// Is the discoveries journal open?
+    journal_open: bool,
 }
 
 /// An open, free-text conversation with one soul within reach. The player *types* to the
@@ -197,12 +213,16 @@ fn main() {
         avatar_pos,
         last_explored: usize::MAX,
         last_tick: u64::MAX,
+        last_fauna_tick: u64::MAX,
         accum: 0.0,
         status: "Welcome. Click a tile to set out - the world moves when you do.".into(),
         convo: None,
         voice: voice_bridge::Bridge::spawn(),
         req_seq: 0,
         classify: HashMap::new(),
+        hovered: None,
+        selected: None,
+        journal_open: false,
     };
 
     let mut app = App::new();
@@ -210,12 +230,37 @@ fn main() {
         primary_window: Some(Window { title: "Achlydesa — exploration".into(), ..default() }),
         ..default()
     }))
-    .insert_resource(ClearColor(Color::srgb(0.02, 0.03, 0.05)))
+    .insert_resource(ClearColor(Color::srgb(palette::SKY_RGB[0], palette::SKY_RGB[1], palette::SKY_RGB[2])))
     .add_systems(Startup, setup)
     .add_systems(
         Update,
-        (drive_sim, talk_input, poll_voice, tick_typewriter, wait_input, click_travel, rebuild_map, rebuild_markers, camera_control, update_hud).chain(),
-    );
+        (
+            drive_sim,
+            talk_input,
+            poll_voice,
+            tick_typewriter,
+            wait_input,
+            search_input,
+            journal_input,
+            ui::tile_interact,
+            rebuild_map,
+            scatter_props,
+            build_features,
+            rebuild_markers,
+            camera_control,
+            ui::update_highlights,
+            ui::update_tooltip,
+            ui::update_inspect,
+            ui::update_labels,
+            ui::update_journal,
+            update_hud,
+        )
+            .chain(),
+    )
+    // The fauna layer runs as its own group: `sync_fauna` re-targets creatures when
+    // the world ticks (idempotent in between, so loose ordering is fine) and
+    // `animate_fauna` is purely visual.
+    .add_systems(Update, (sync_fauna, fauna_art::animate_fauna).chain());
     app.world_mut().insert_non_send_resource(game);
     app.run();
 }
@@ -239,6 +284,11 @@ fn build_world() -> Simulation {
         height: 36,
         seed: 7,
         warmup: 150,
+        // The wild — herds and the packs that hunt them, sorted into the biomes that
+        // suit them. Spawned generously: many die sorting into the harsh world, and
+        // only those on explored tiles are drawn, so the survivors should still be met.
+        fauna: 350,
+        carnivores: 90,
         npcs: 60,
         markets: 6,
         markets_on_settlements: true,
@@ -247,23 +297,6 @@ fn build_world() -> Simulation {
         registry: reg,
         ..Default::default()
     })
-}
-
-// =====================================================================================
-// Hex layout — match the sim exactly (pointy-top, odd-offset, via hexx).
-// =====================================================================================
-
-fn tile_world(col: i32, row: i32) -> Vec2 {
-    let h = hexx::Hex::from_offset_coordinates([col, row], hexx::OffsetHexMode::Odd, hexx::HexOrientation::Pointy);
-    let (q, r) = (h.x as f32, h.y as f32);
-    Vec2::new(SQRT3 * (q + r / 2.0), 1.5 * r)
-}
-
-/// The world-height of a tile's top (sea level for ocean, real relief for land).
-fn land_top(gw: &GameWorld, c: Coord) -> f32 {
-    let sea = gw.params().sea_level;
-    let elev = gw.elevation(c);
-    if Terrain::of(elev, sea) == Terrain::Ocean { 0.0 } else { ((elev - sea) * HEIGHT_SCALE).max(MIN_LAND_H) }
 }
 
 // =====================================================================================
@@ -278,6 +311,15 @@ fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials
         ..default()
     });
     let npc_mat = materials.add(StandardMaterial { base_color: Color::srgb(0.78, 0.80, 0.88), ..default() });
+    // The procedural prop library (trees, scrub, rock) shares the map's matte vertex-colour
+    // material; the meshes carry their own colour.
+    let prop_lib = props::build_library(&mut meshes, map_mat.clone());
+    commands.insert_resource(prop_lib);
+    // One procedural creature mesh per species, sharing the matte vertex-colour material.
+    let fauna_art = fauna_art::build_fauna_art(&mut meshes, map_mat.clone(), game.sim.bestiary());
+    commands.insert_resource(fauna_art);
+    commands.init_resource::<scatter::Decorated>();
+    commands.init_resource::<feature_art::Built>();
     commands.insert_resource(RenderAssets {
         map_mat,
         avatar_mesh: meshes.add(Capsule3d::new(0.5, 1.8)),
@@ -288,11 +330,14 @@ fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials
 
     let aw = tile_world(game.avatar_pos.col, game.avatar_pos.row);
     let rig = CamRig { dist: 42.0, yaw: 0.0, pitch: 0.92 };
+    let fog = palette::FOG_RGB;
     commands.spawn((
         Camera3d::default(),
         cam_transform(Vec3::new(aw.x, 0.0, aw.y), &rig),
         rig,
-        AmbientLight { brightness: 220.0, ..default() },
+        // A cool ambient and a pale distance haze — the dream half-drowned in fog.
+        AmbientLight { brightness: 200.0, color: Color::srgb(0.72, 0.79, 0.9), ..default() },
+        DistanceFog { color: Color::srgb(fog[0], fog[1], fog[2]), falloff: FogFalloff::Linear { start: 70.0, end: 300.0 }, ..default() },
     ));
 
     commands.spawn((
@@ -300,6 +345,7 @@ fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials
         Transform::from_rotation(Quat::from_euler(EulerRot::YXZ, -0.6, -0.95, 0.0)),
     ));
 
+    ui::setup_ui(&mut commands, &mut meshes, &mut materials);
     spawn_hud(&mut commands);
 }
 
@@ -374,6 +420,41 @@ fn wait_input(keys: Res<ButtonInput<KeyCode>>, mut game: NonSendMut<Game>) {
     }
     if g.sim.player_wait() {
         g.status = "You wait, and the world moves a moment on.".into();
+    }
+}
+
+/// **Search** — press **F** to search the tile you stand on. Reveals the hidden things here you
+/// have the knowledge to find, and you learn whatever lore they hold. A locked place tells you
+/// it is there but withholds itself until you know more. One action, one tick (like waiting).
+fn search_input(keys: Res<ButtonInput<KeyCode>>, mut game: NonSendMut<Game>) {
+    if game.convo.is_some() || !keys.just_pressed(KeyCode::KeyF) {
+        return;
+    }
+    let g = &mut *game;
+    if g.sim.player_traveling() {
+        return;
+    }
+    let out = g.sim.player_search();
+    if out.is_empty() {
+        g.status = match g.sim.player_find_state() {
+            FindState::Locked => "Something is hidden here, but you lack the knowledge to find it.".into(),
+            _ => "You search the ground, but find nothing of note.".into(),
+        };
+        return;
+    }
+    let mut s = format!("You discover: {}.", out.found.join(", "));
+    if !out.lore_gained.is_empty() {
+        let learned: Vec<String> = out.lore_gained.iter().map(|l| ui::pretty(l)).collect();
+        s.push_str(&format!("  You come to know: {}.", learned.join(", ")));
+    }
+    g.status = s;
+}
+
+/// **Journal** — press **J** to open or close the discoveries journal (what you've found and the
+/// lore you hold). A look at the world, not an action: time does not pass.
+fn journal_input(keys: Res<ButtonInput<KeyCode>>, mut game: NonSendMut<Game>) {
+    if game.convo.is_none() && keys.just_pressed(KeyCode::KeyJ) {
+        game.journal_open = !game.journal_open;
     }
 }
 
@@ -634,44 +715,6 @@ fn tick_typewriter(time: Res<Time>, mut game: NonSendMut<Game>) {
     }
 }
 
-fn click_travel(
-    mouse: Res<ButtonInput<MouseButton>>,
-    windows: Query<&Window>,
-    cams: Query<(&Camera, &GlobalTransform), With<CamRig>>,
-    mut game: NonSendMut<Game>,
-) {
-    if game.convo.is_some() || !mouse.just_pressed(MouseButton::Left) {
-        return;
-    }
-    let Ok(window) = windows.single() else { return };
-    let Some(cursor) = window.cursor_position() else { return };
-    let Ok((cam, cam_tf)) = cams.single() else { return };
-    let Ok(ray) = cam.viewport_to_world(cam_tf, cursor) else { return };
-    let dir = *ray.direction;
-    if dir.y.abs() < 1e-5 {
-        return;
-    }
-    let t = -ray.origin.y / dir.y;
-    if t < 0.0 {
-        return;
-    }
-    let hit = ray.origin + dir * t;
-    let target = Vec2::new(hit.x, hit.z);
-    let g = &mut *game;
-    let nearest = g.sim.player_explored().into_iter().min_by(|a, b| {
-        let da = (tile_world(a.col, a.row) - target).length_squared();
-        let db = (tile_world(b.col, b.row) - target).length_squared();
-        da.total_cmp(&db)
-    });
-    if let Some(c) = nearest {
-        if g.sim.player_travel_to(c) {
-            g.status = format!("Setting out for ({}, {}).", c.col, c.row);
-        } else {
-            g.status = "No path leads there on foot.".into();
-        }
-    }
-}
-
 // =====================================================================================
 // Rendering the world
 // =====================================================================================
@@ -691,69 +734,18 @@ fn rebuild_map(
     for e in &old {
         commands.entity(e).despawn();
     }
-    let mesh = build_map_mesh(&game.sim);
+    let mesh = world_mesh::build_ground_mesh(&game.sim);
     commands.spawn((MapMesh, Mesh3d(meshes.add(mesh)), MeshMaterial3d(ra.map_mat.clone()), Transform::IDENTITY));
 }
 
-fn build_map_mesh(sim: &Simulation) -> Mesh {
-    let gw = sim.substrate();
-    let sea = gw.params().sea_level;
-    let (mut pos, mut nor, mut col, mut idx) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
-    for c in sim.player_explored() {
-        let elev = gw.elevation(c);
-        let terrain = Terrain::of(elev, sea);
-        let rgb = palette::tile_rgb(terrain, gw.carrying_capacity(c));
-        let centre = tile_world(c.col, c.row);
-        let top = if terrain == Terrain::Ocean { 0.0 } else { ((elev - sea) * HEIGHT_SCALE).max(MIN_LAND_H) };
-        add_column(&mut pos, &mut nor, &mut col, &mut idx, centre, top, rgb);
-    }
-    Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default())
-        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, pos)
-        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, nor)
-        .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, col)
-        .with_inserted_indices(Indices::U32(idx))
+/// Dress each newly-revealed tile with its trees, scrub, and rock (one-shot per tile).
+fn scatter_props(mut commands: Commands, lib: Res<props::PropLibrary>, game: NonSend<Game>, mut done: ResMut<scatter::Decorated>) {
+    scatter::decorate_newly_explored(&mut commands, &lib, &game.sim, &mut done);
 }
 
-/// One pointy-top hex column: a fan-triangulated top face plus six side walls (darkened),
-/// vertex-coloured. Mirrors the reference game's prism builder.
-fn add_column(pos: &mut Vec<[f32; 3]>, nor: &mut Vec<[f32; 3]>, col: &mut Vec<[f32; 4]>, idx: &mut Vec<u32>, centre: Vec2, top: f32, rgb: [f32; 3]) {
-    let r = 0.97; // a hairline gap between tiles
-    let corners: [Vec2; 6] = std::array::from_fn(|k| {
-        let a = std::f32::consts::FRAC_PI_6 + std::f32::consts::FRAC_PI_3 * k as f32;
-        centre + Vec2::new(a.cos(), a.sin()) * r
-    });
-    let rgba = [rgb[0], rgb[1], rgb[2], 1.0];
-    let base = pos.len() as u32;
-    pos.push([centre.x, top, centre.y]);
-    nor.push([0.0, 1.0, 0.0]);
-    col.push(rgba);
-    for cn in corners {
-        pos.push([cn.x, top, cn.y]);
-        nor.push([0.0, 1.0, 0.0]);
-        col.push(rgba);
-    }
-    for k in 0..6u32 {
-        idx.extend([base, base + 1 + (k + 1) % 6, base + 1 + k]);
-    }
-    if top <= 0.0 {
-        return;
-    }
-    let side = [rgb[0] * 0.6, rgb[1] * 0.6, rgb[2] * 0.6, 1.0];
-    for k in 0..6 {
-        let a = corners[k];
-        let b = corners[(k + 1) % 6];
-        let mid = (a + b) * 0.5 - centre;
-        let n = mid.normalize_or_zero();
-        let normal = [n.x, 0.0, n.y];
-        let bi = pos.len() as u32;
-        for (x, y, z) in [(a.x, top, a.y), (b.x, top, b.y), (b.x, 0.0, b.y), (a.x, 0.0, a.y)] {
-            pos.push([x, y, z]);
-            nor.push(normal);
-            col.push(side);
-        }
-        idx.extend([bi, bi + 2, bi + 1]);
-        idx.extend([bi, bi + 3, bi + 2]);
-    }
+/// Raise the buildings for features as the player discovers them (settlements, courts, ruins).
+fn build_features(mut commands: Commands, lib: Res<props::PropLibrary>, game: NonSend<Game>, mut built: ResMut<feature_art::Built>) {
+    feature_art::build_discovered(&mut commands, &lib, &game.sim, &mut built);
 }
 
 fn rebuild_markers(mut commands: Commands, ra: Res<RenderAssets>, mut game: NonSendMut<Game>, old: Query<Entity, With<Marker>>) {
@@ -768,7 +760,7 @@ fn rebuild_markers(mut commands: Commands, ra: Res<RenderAssets>, mut game: NonS
     let g = &mut *game;
     // The avatar — a bright capsule standing on its tile.
     let ap = g.avatar_pos;
-    let atop = land_top(g.sim.substrate(), ap);
+    let atop = tile_top(g.sim.substrate(), ap);
     let aw = tile_world(ap.col, ap.row);
     commands.spawn((Marker, Mesh3d(ra.avatar_mesh.clone()), MeshMaterial3d(ra.avatar_mat.clone()), Transform::from_xyz(aw.x, atop + 1.2, aw.y)));
     // The populace — only where the player has been (where the fog is lifted).
@@ -777,9 +769,53 @@ fn rebuild_markers(mut commands: Commands, ra: Res<RenderAssets>, mut game: NonS
         if !explored.contains(&(c.col, c.row)) {
             continue;
         }
-        let top = land_top(g.sim.substrate(), c);
+        let top = tile_top(g.sim.substrate(), c);
         let w = tile_world(c.col, c.row);
         commands.spawn((Marker, Mesh3d(ra.npc_mesh.clone()), MeshMaterial3d(ra.npc_mat.clone()), Transform::from_xyz(w.x, top + 0.3, w.y)));
+    }
+}
+
+/// Reconcile the rendered creatures with the simulation's census each world tick:
+/// re-target survivors to their new tiles (the animation walks them there), spawn the
+/// newly-seen, and despawn the dead or those that slipped back into the fog. Only
+/// fauna on explored tiles are drawn, so creatures fade in as the land is uncovered.
+fn sync_fauna(
+    mut commands: Commands,
+    art: Res<fauna_art::FaunaArt>,
+    mut game: NonSendMut<Game>,
+    mut existing: Query<(Entity, &mut fauna_art::Fauna)>,
+) {
+    let tick = game.sim.substrate().tick();
+    if tick == game.last_fauna_tick {
+        return;
+    }
+    game.last_fauna_tick = tick;
+    let g = &mut *game;
+
+    let explored: HashSet<(i32, i32)> = g.sim.player_explored().iter().map(|c| (c.col, c.row)).collect();
+    // id → (species, world ground position), explored tiles only.
+    let mut want: HashMap<u64, (usize, Vec3)> = HashMap::new();
+    for (id, sp, c) in g.sim.fauna_census() {
+        if !explored.contains(&(c.col, c.row)) {
+            continue;
+        }
+        let top = tile_top(g.sim.substrate(), c);
+        let w = tile_world(c.col, c.row);
+        want.insert(id, (sp, Vec3::new(w.x, top + 0.15, w.y)));
+    }
+
+    // Re-target survivors; despawn the gone.
+    for (e, mut f) in &mut existing {
+        if let Some((_, pos)) = want.remove(&f.id) {
+            f.target = pos;
+        } else {
+            commands.entity(e).despawn();
+        }
+    }
+    // Spawn the newly-seen, each with the mesh of its species.
+    for (id, (sp, pos)) in want {
+        let form = g.sim.bestiary().species[sp].form;
+        fauna_art::spawn_creature(&mut commands, &art, id, sp, form, pos);
     }
 }
 
@@ -841,6 +877,12 @@ fn update_hud(mut game: NonSendMut<Game>, time: Res<Time>, mut texts: Query<(&Hu
     let status = g.status.clone();
     let voice_line = g.voice.status_line();
     let can_talk = !traveling && g.convo.is_none() && view.as_ref().is_some_and(|v| !v.nearby.is_empty());
+    // The lure: does the ground here hold something to find?
+    let search_cue = match (traveling, g.sim.player_find_state()) {
+        (false, FindState::Findable) => "\n‹ you sense something here — press F to search ›",
+        (false, FindState::Locked) => "\n‹ something here eludes you — you lack the knowledge ›",
+        _ => "",
+    };
 
     // The soul's live disposition toward the player — it shifts as the conversation lands effects.
     let avatar = g.sim.player_avatar();
@@ -885,8 +927,8 @@ fn update_hud(mut game: NonSendMut<Game>, time: Res<Time>, mut texts: Query<(&Hu
                 Some(v) => {
                     let feats = if v.here.features.is_empty() { String::new() } else { format!("\nyou see: {}", v.here.features.join(", ")) };
                     format!(
-                        "Day {day}\n({}, {})  {}  {:.0} m\nfertile {:.2}   {} soul(s) near\nfog lifted from {} tiles{}",
-                        v.pos.col, v.pos.row, v.here.terrain.name(), v.here.elevation, v.here.fertility, v.nearby.len(), explored, feats,
+                        "Day {day}\n({}, {})  {}  {:.0} m\nfertile {:.2}   {} soul(s) near\nfog lifted from {} tiles{}{}",
+                        v.pos.col, v.pos.row, v.here.terrain.name(), v.here.elevation, v.here.fertility, v.nearby.len(), explored, feats, search_cue,
                     )
                 }
                 None => "no avatar".into(),
@@ -894,7 +936,7 @@ fn update_hud(mut game: NonSendMut<Game>, time: Res<Time>, mut texts: Query<(&Hu
             HudKind::Talk => talk_panel.clone(),
             HudKind::Help => {
                 let mut h = format!(
-                    "{status}\nclick travel | Space wait | T speak | A/D orbit | W/S tilt | scroll zoom  -  the world moves only when you act",
+                    "{status}\nL-click inspect | R-click travel | Space wait | F search | T speak | J journal | A/D/W/S camera | scroll zoom",
                 );
                 if let Some(v) = &voice_line {
                     h.push_str("  -  ");

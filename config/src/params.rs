@@ -183,14 +183,40 @@ pub struct Params {
     /// Soil carbon at which that fertility boost is half its maximum.
     pub carbon_half: f32,
 
-    // --- Ecosystem: PFT classification thresholds ---
-    /// Carrying capacity below which a land tile reads as `Barren`.
-    pub barren_cc: f32,
-    /// Below this temperature (°C) vegetated land is `Tundra`.
-    pub tundra_temp: f32,
-    /// Water-factor cutoffs separating shrubland / grassland / forest.
-    pub shrub_moisture: f32,
-    pub forest_moisture: f32,
+    // --- Ecosystem: Holdridge biome classification ---
+    /// Mean-annual *biotemperature* (°C) boundaries between the Holdridge
+    /// latitudinal belts (polar→subpolar→boreal→cool→warm→subtropical→tropical).
+    /// Real degrees — the model's temperatures are already in °C, so these are the
+    /// canonical 1.5/3/6/12/18/24 chart lines.
+    pub biotemp_subpolar: f32,
+    pub biotemp_boreal: f32,
+    pub biotemp_cool_temperate: f32,
+    pub biotemp_warm_temperate: f32,
+    pub biotemp_subtropical: f32,
+    pub biotemp_tropical: f32,
+    /// Potential-evapotranspiration coefficient: `PET = biotemperature × pet_coeff`
+    /// (Holdridge's 58.93 mm·°C⁻¹, rescaled to the model's precipitation units).
+    /// The single knob that calibrates wet↔dry: the resulting PET/precipitation
+    /// ratio is bucketed into the eight humidity provinces on a log₂ ladder.
+    pub pet_coeff: f32,
+    /// How many years of climate a tile's biome remembers — the time constant of
+    /// the running annual biotemperature / precipitation averages it is classified
+    /// from. Larger = biomes lag the weather more and drift more slowly.
+    pub biome_memory_years: f32,
+
+    // --- Ecosystem: per-biome ecology (the biome organises the ecosystem) ---
+    /// Per-**formation** productivity ceiling — the fraction of `biomass_max` a
+    /// biome of that structural class can carry, before a warmth scaling by belt.
+    /// The biome (distilled from the climate) — not the raw climate curve — now
+    /// sets how lush a tile may become: barren desert, sparse tundra, rich grass
+    /// and shrub, full forest, teeming rainforest. The single strongest lever on
+    /// how green (and how fantastical) a world reads.
+    pub prod_desert: f32,
+    pub prod_tundra: f32,
+    pub prod_grass: f32,
+    pub prod_shrub: f32,
+    pub prod_forest: f32,
+    pub prod_rainforest: f32,
 
     // --- Disturbance: fire (stochastic CA) ---
     /// Per-tick lightning ignition chance on a maximally dry, fuelled tile.
@@ -223,13 +249,15 @@ pub struct Params {
     pub fire_ash_carbon: f32,
 
     // --- Disturbance: albedo (and its temperature feedback) ---
-    /// Base surface reflectance by cover type.
+    /// Base surface reflectance by structural cover (the Holdridge `Formation`):
+    /// dark canopies, mid scrub/grass, bright bare ground and cold pale tundra.
     pub albedo_water: f32,
-    pub albedo_forest: f32,
+    pub albedo_desert: f32,
+    pub albedo_tundra: f32,
     pub albedo_grass: f32,
     pub albedo_shrub: f32,
-    pub albedo_barren: f32,
-    pub albedo_tundra: f32,
+    pub albedo_forest: f32,
+    pub albedo_rainforest: f32,
     /// Reflectance of full snow cover and of a fresh (charred) burn.
     pub albedo_snow: f32,
     pub albedo_burn: f32,
@@ -326,10 +354,21 @@ impl Default for Params {
             carbon_fertility: 1.0,
             carbon_half: 2.0,
 
-            barren_cc: 0.4,
-            tundra_temp: 3.0,
-            shrub_moisture: 0.3,
-            forest_moisture: 0.6,
+            biotemp_subpolar: 1.5,
+            biotemp_boreal: 3.0,
+            biotemp_cool_temperate: 6.0,
+            biotemp_warm_temperate: 12.0,
+            biotemp_subtropical: 18.0,
+            biotemp_tropical: 24.0,
+            pet_coeff: 3.0,
+            biome_memory_years: 1.0,
+
+            prod_desert: 0.05,
+            prod_tundra: 0.25,
+            prod_grass: 0.6,
+            prod_shrub: 0.4,
+            prod_forest: 0.9,
+            prod_rainforest: 1.2,
 
             base_lightning: 0.0008,
             fire_dry_temp: 12.0,
@@ -348,11 +387,12 @@ impl Default for Params {
             fire_ash_carbon: 0.05,
 
             albedo_water: 0.06,
-            albedo_forest: 0.12,
+            albedo_desert: 0.35,
+            albedo_tundra: 0.30,
             albedo_grass: 0.20,
             albedo_shrub: 0.25,
-            albedo_barren: 0.35,
-            albedo_tundra: 0.30,
+            albedo_forest: 0.13,
+            albedo_rainforest: 0.11,
             albedo_snow: 0.70,
             albedo_burn: 0.06,
             snow_albedo_cover: 0.5,

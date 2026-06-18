@@ -29,12 +29,12 @@
 
 use crate::ai::Curve;
 use bevy_ecs::prelude::Resource;
-use game_sim::fields::Pft;
+use game_sim::fields::Formation;
 use config::{Asset, Config};
 use game_sim::{Coord, SplitMix64, Topology, World as GameWorld};
 use serde::Deserialize;
 use sim::Rng;
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 
 /// Index of a feature kind in the [`FeatureCatalog`].
 pub type FeatureId = usize;
@@ -55,6 +55,17 @@ impl Category {
     pub fn idx(self) -> usize {
         self as usize
     }
+}
+
+/// What a player's search of a tile would turn up, given the lore they hold.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum FindState {
+    /// Nothing left to find here.
+    Nothing,
+    /// Something undiscovered is here and the player's knowledge is enough to find it.
+    Findable,
+    /// Something is here, but the player lacks the lore the gate demands — the lure.
+    Locked,
 }
 
 /// How a feature reveals itself when an agent enters its hex.
@@ -162,6 +173,15 @@ pub struct FeatureDef {
     /// for pure scenery.
     #[serde(default)]
     pub affordances: Vec<AffordanceDef>,
+    /// **Knowledge gate.** Lore facts the player must already hold before this feature can be
+    /// found (or entered) — the seven passwords before the gate of the seven, an Archon's name
+    /// before its throne. Empty = no gate (the default, so existing content is unaffected).
+    #[serde(default)]
+    pub requires: Vec<String>,
+    /// **Knowledge granted.** Lore facts the player gains by discovering this feature — gnosis
+    /// spreading from the place that holds it. Empty = it teaches nothing.
+    #[serde(default)]
+    pub reveals: Vec<String>,
 }
 
 /// A placed feature: which kind, and whether it has been discovered yet.
@@ -212,6 +232,40 @@ impl Features {
             .filter(|(_, fs)| fs.iter().any(|f| catalog.def(f.kind).category == category))
             .map(|(i, _)| topo.coord(i))
             .collect()
+    }
+
+    /// **Player search at tile `i`.** Reveal every still-undiscovered feature here whose
+    /// knowledge gate ([`FeatureDef::requires`]) the player already satisfies — Hidden places
+    /// (usually ungated) and any Secret whose lore the player holds. Returns the kinds newly
+    /// revealed, so the caller can harvest their [`FeatureDef::reveals`]. The deterministic,
+    /// knowledge-gated heart of player discovery (no luck involved).
+    pub fn search_at_index(&mut self, catalog: &FeatureCatalog, i: usize, lore: &HashSet<String>) -> Vec<FeatureId> {
+        let mut found = Vec::new();
+        if let Some(fs) = self.tiles.get_mut(i) {
+            for f in fs.iter_mut() {
+                if !f.discovered && catalog.def(f.kind).requires.iter().all(|r| lore.contains(r)) {
+                    f.discovered = true;
+                    found.push(f.kind);
+                }
+            }
+        }
+        found
+    }
+
+    /// Whether searching tile `i` would turn anything up, given the lore the player holds:
+    /// `Findable` (something undiscovered here whose gate is met), `Locked` (something is
+    /// here but the player lacks the knowledge to find it — the lure), or `Nothing`.
+    pub fn find_state_at_index(&self, catalog: &FeatureCatalog, i: usize, lore: &HashSet<String>) -> FindState {
+        let mut locked = false;
+        for f in self.at_index(i) {
+            if !f.discovered {
+                if catalog.def(f.kind).requires.iter().all(|r| lore.contains(r)) {
+                    return FindState::Findable;
+                }
+                locked = true;
+            }
+        }
+        if locked { FindState::Locked } else { FindState::Nothing }
     }
 
     /// Reveal every still-hidden feature on tile `i` whose discovery tier is at or
@@ -347,7 +401,7 @@ pub fn place(substrate: &GameWorld, catalog: &FeatureCatalog, cfg: &FeatureConfi
         let coast = topo.neighbors(i).iter().any(|l| substrate.elevation(topo.coord(l.to)) < sea);
         let fertility = (substrate.carrying_capacity(c) / biomass_max).clamp(0.0, 1.0);
         let veg = (substrate.plant_biomass(c) / biomass_max).clamp(0.0, 1.0);
-        let pft = substrate.pft(c);
+        let formation = substrate.biome(c).formation();
         let s = &mut sig[i];
         s[Signal::Elevation.idx()] = elev - sea;
         s[Signal::Slope.idx()] = slope;
@@ -358,8 +412,9 @@ pub fn place(substrate: &GameWorld, catalog: &FeatureCatalog, cfg: &FeatureConfi
         s[Signal::Minerals.idx()] = substrate.minerals(c);
         s[Signal::SurfaceWater.idx()] = substrate.surface_water(c);
         s[Signal::Coast.idx()] = if coast { 1.0 } else { 0.0 };
-        s[Signal::Forest.idx()] = if pft == Pft::Forest { 1.0 } else { 0.0 };
-        s[Signal::Grass.idx()] = if pft == Pft::Grassland { 1.0 } else { 0.0 };
+        s[Signal::Forest.idx()] =
+            if matches!(formation, Formation::Forest | Formation::Rainforest) { 1.0 } else { 0.0 };
+        s[Signal::Grass.idx()] = if formation == Formation::Grassland { 1.0 } else { 0.0 };
         s[Signal::Aridity.idx()] = 1.0 - fertility;
     }
 
@@ -545,6 +600,35 @@ mod tests {
             w.evolve(&mut rng);
         }
         w
+    }
+
+    #[test]
+    fn search_is_knowledge_gated() {
+        // A seer that teaches a password, and a gate that needs it — a minimal gnosis chain.
+        let cat = FeatureCatalog::from_ron(
+            r#"[
+                (name: "seer", category: Court, discovery: Secret, density: 0.0, favoured: [], reveals: ["password"]),
+                (name: "gate", category: Ruin, discovery: Secret, density: 0.0, favoured: [], requires: ["password"]),
+            ]"#,
+        )
+        .unwrap();
+        let (seer, gate) = (cat.id_of("seer").unwrap(), cat.id_of("gate").unwrap());
+        let mut feats =
+            Features { tiles: vec![vec![Feature { kind: seer, discovered: false }, Feature { kind: gate, discovered: false }]] };
+        let mut lore = HashSet::new();
+
+        // The seer is ungated → findable; searching reveals it but NOT the gate.
+        assert_eq!(feats.find_state_at_index(&cat, 0, &lore), FindState::Findable);
+        assert_eq!(feats.search_at_index(&cat, 0, &lore), vec![seer]);
+        // Now only the gate is left, and without the password it merely lures.
+        assert_eq!(feats.find_state_at_index(&cat, 0, &lore), FindState::Locked);
+        assert!(feats.search_at_index(&cat, 0, &lore).is_empty());
+
+        // Learn the password (as the seer would teach) → the gate opens to a search.
+        lore.insert("password".to_string());
+        assert_eq!(feats.find_state_at_index(&cat, 0, &lore), FindState::Findable);
+        assert_eq!(feats.search_at_index(&cat, 0, &lore), vec![gate]);
+        assert_eq!(feats.find_state_at_index(&cat, 0, &lore), FindState::Nothing);
     }
 
     #[test]

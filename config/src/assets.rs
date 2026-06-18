@@ -67,6 +67,7 @@ pub fn parse<T: DeserializeOwned>(ron: &str) -> Result<T, ConfigError> {
 pub enum Asset {
     Appraisals,
     Beats,
+    Bestiary,
     Features,
     Goals,
     Goods,
@@ -84,9 +85,10 @@ pub enum Asset {
 impl Asset {
     /// Every asset, in declaration order — handy for "load them all" sweeps and
     /// for tests that assert the bundled set is complete.
-    pub const ALL: [Asset; 14] = [
+    pub const ALL: [Asset; 15] = [
         Asset::Appraisals,
         Asset::Beats,
+        Asset::Bestiary,
         Asset::Features,
         Asset::Goals,
         Asset::Goods,
@@ -107,6 +109,7 @@ impl Asset {
         match self {
             Asset::Appraisals => "appraisals.ron",
             Asset::Beats => "beats.ron",
+            Asset::Bestiary => "bestiary.ron",
             Asset::Features => "features.ron",
             Asset::Goals => "goals.ron",
             Asset::Goods => "goods.ron",
@@ -157,6 +160,7 @@ impl Bundled {
         match asset {
             Asset::Appraisals => bundled!("appraisals.ron"),
             Asset::Beats => bundled!("beats.ron"),
+            Asset::Bestiary => bundled!("bestiary.ron"),
             Asset::Features => bundled!("features.ron"),
             Asset::Goals => bundled!("goals.ron"),
             Asset::Goods => bundled!("goods.ron"),

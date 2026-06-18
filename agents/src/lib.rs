@@ -42,15 +42,15 @@ pub use ai::{Consideration, Curve, Input};
 pub use data::{GoodDef, GoodId, MoodDef, MoodId, Recipe, Registry, ResourceKind, SkillId, TraitDef, TraitId};
 pub use beats::{Beat, BeatBook, Effect, Phase, Pre, Register, Role};
 pub use dialogue::{Dialogue, DialogueConfig, IntentBook, SlmRealizer, SpeechAct, TextGen, Utterance};
-pub use player::{Player, PlayerState, PlayerView, Terrain, TileInfo};
+pub use player::{Player, PlayerKnowledge, PlayerState, PlayerView, Rumor, SearchOutcome, Terrain, TileInfo};
 pub use game_sim::{Coord, Topology};
 pub use director::{Cadence, Director, DirectorConfig, Protagonist, Thread};
 pub use events::{AgentEvent, Appraisals, EventQueue};
 pub use factions::{Allegiance, Bond, Detained, Faction, FactionConfig, Factions, Government, Law, Opinion};
-pub use fauna::{Carnivore, Energy, FaunaConfig, FaunaRng, Herbivore};
+pub use fauna::{Bestiary, Carnivore, Diet, Energy, FaunaConfig, FaunaRng, Form, Herbivore, Species, SpeciesId};
 pub use features::{
     AffordanceDef, Category, Discovery, EffectDef, Feature, FeatureCatalog, FeatureConfig, FeatureDef, FeatureId,
-    Features, NeedKind,
+    Features, FindState, NeedKind,
 };
 pub use goals::{Goal, Goals};
 pub use norms::{Modality, Norm, Norms};
@@ -233,8 +233,18 @@ impl Simulation {
         let affordances = people::build_affordances(&setup.features, &features, &setup.registry, substrate.topology());
 
         let mut world = World::new();
-        fauna::spawn_fauna(&mut world, &substrate, &mut rng, setup.fauna, setup.fauna_cfg.initial_energy);
-        fauna::spawn_carnivores(&mut world, &substrate, &mut rng, setup.carnivores, setup.fauna_cfg.carn_initial_energy);
+        // The creature roster — which species live which biomes. Static content, so
+        // built once and shared between placement and the running fauna systems.
+        let bestiary = fauna::Bestiary::bundled();
+        fauna::spawn_fauna(&mut world, &substrate, &bestiary, &mut rng, setup.fauna, setup.fauna_cfg.initial_energy);
+        fauna::spawn_carnivores(
+            &mut world,
+            &substrate,
+            &bestiary,
+            &mut rng,
+            setup.carnivores,
+            setup.fauna_cfg.carn_initial_energy,
+        );
         let markets = if setup.npcs == 0 {
             Vec::new()
         } else if setup.markets_on_settlements {
@@ -320,6 +330,8 @@ impl Simulation {
         // The player avatar's state — empty (no avatar) until `spawn_player` is called, so
         // a world with no player is byte-identical (the travel system early-returns).
         world.insert_resource(player::PlayerState::default());
+        // What the player knows (lore facts, rumours) — empty until an avatar goes looking.
+        world.insert_resource(player::PlayerKnowledge::default());
 
         // The land-movement graph is fixed by the terrain (elevation never changes),
         // so build it once here and share it — never rebuilt during planning.
@@ -335,6 +347,7 @@ impl Simulation {
         world.insert_resource(factions::Factions::default());
         world.insert_resource(factions::FactionRes(setup.faction_cfg));
         world.insert_resource(fauna::FaunaRes(setup.fauna_cfg));
+        world.insert_resource(bestiary);
         world.insert_resource(setup.registry);
         world.insert_resource(people::EconRes(setup.econ));
         world.insert_resource(people::NeedsRes(setup.needs));
@@ -659,6 +672,37 @@ impl Simulation {
         true
     }
 
+    /// **Search** where the avatar stands — the discovery verb. Reveals every undiscovered
+    /// feature here whose knowledge gate the player satisfies, and the player gains whatever
+    /// lore those places teach. It is an action like waiting: one tick passes. Returns what was
+    /// found (empty with no avatar). Deterministic: knowledge, not luck, decides.
+    pub fn player_search(&mut self) -> player::SearchOutcome {
+        if self.world.resource::<player::PlayerState>().avatar().is_none() {
+            return player::SearchOutcome::default();
+        }
+        let out = player::search(&mut self.world);
+        self.step(); // searching spends the turn
+        out
+    }
+
+    /// Would a search here turn anything up? `Findable` (there is, and you can), `Locked` (there
+    /// is, but you lack the lore — the lure), or `Nothing`. Drives the "press F to search" hint.
+    pub fn player_find_state(&self) -> FindState {
+        player::find_state(&self.world)
+    }
+
+    /// The lore facts the player holds, sorted — the contents of the journal's Lore tab.
+    pub fn player_lore(&self) -> Vec<String> {
+        let mut v: Vec<String> = self.world.resource::<player::PlayerKnowledge>().lore.iter().cloned().collect();
+        v.sort();
+        v
+    }
+
+    /// Does the player hold this lore fact?
+    pub fn player_knows(&self, fact: &str) -> bool {
+        self.world.resource::<player::PlayerKnowledge>().lore.contains(fact)
+    }
+
     /// Is the avatar mid-journey?
     pub fn player_traveling(&self) -> bool {
         self.world.resource::<player::PlayerState>().traveling()
@@ -826,6 +870,20 @@ impl Simulation {
         q.iter(&self.world).map(|p| p.0).collect()
     }
 
+    /// The creature roster this world hosts — every species and its traits.
+    pub fn bestiary(&self) -> &Bestiary {
+        self.world.resource::<Bestiary>()
+    }
+
+    /// A census of every living creature: a **stable id** (unchanged across ticks
+    /// until the creature dies, so the renderer can track and smoothly move it), its
+    /// species (an index into [`Self::bestiary`]), and where it stands. Also what the
+    /// demos read to show how species sort themselves into their biomes.
+    pub fn fauna_census(&mut self) -> Vec<(u64, usize, Coord)> {
+        let mut q = self.world.query::<(Entity, &SpeciesId, &Position)>();
+        q.iter(&self.world).map(|(e, s, p)| (e.to_bits(), s.0, p.0)).collect()
+    }
+
     pub fn npc_count(&mut self) -> usize {
         let mut q = self.world.query_filtered::<(), With<Npc>>();
         q.iter(&self.world).count()
@@ -913,7 +971,9 @@ mod tests {
             ..Default::default()
         });
         assert!(sim.fauna_count() > 0);
-        sim.run(15);
+        // Long enough that even the smallest, slowest-burning species starves
+        // (metabolism now scales with body size, so the tiniest last the longest).
+        sim.run(40);
         assert_eq!(sim.fauna_count(), 0, "no animal should survive without food");
     }
 
