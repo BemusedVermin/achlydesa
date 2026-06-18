@@ -1,128 +1,593 @@
-// The generative grammar — the deterministic surface layer (docs/dialogue.md §4a). A
-// Tracery-style map from symbol -> productions; a production recurses into #another# and
-// fills the #speaker# / #listener# / #referent# slots from the utterance plan. The WORDS
-// are composed from these rules, seeded by the dialogue RNG — never drawn from a phrasebook.
+// The generative grammar — the deterministic dream-purgatory surface layer for achlydesa.
+// A Tracery-style map from symbol -> productions. A production may recurse into #another#
+// and fills the #speaker# / #listener# / #referent# engine slots from the utterance plan.
+// The words are composed from these rules, seeded by the dialogue RNG — never drawn from a
+// phrasebook. All souls are dreaming. Some are beginning to remember.
 //
 // Lookup tries "act/affect" (e.g. "accuse/angry") and falls back to the bare act. The
-// #referent# slot is the thing the speaker brings up (a grudge, a remembered exchange).
+// #referent# slot is the thing the speaker brings up (a grief, a debt, a buried wrong).
 {
-    // Stable epithets — a soul is named the same all game (indexed by entity, not the RNG).
+    // -----------------------------------------------------------------------
+    // Soul-names — indexed by entity so each soul keeps the same name all run.
+    // Drawn from Gnostic aeon-names, archon epithets, and the dream-fog tongue.
+    // -----------------------------------------------------------------------
     "name": [
-        "Aldric", "Mira", "Bren", "Saoirse", "Cuthbert", "Yelena", "Tomas", "Idris",
-        "Wren", "Halvard", "Nessa", "Orin", "Perrin", "Quill", "Rhoswen", "Sten",
-        "Tamsin", "Ulric", "Veil", "Wystan", "Alder", "Bryn", "Cael", "Dwen",
-        "Esk", "Fenn", "Gale", "Hale", "Ivo", "Joss", "Kelda", "Lune",
-        "Marek", "Noor", "Osric", "Pike", "Rue", "Sable", "Thane", "Vesna"
+        // Core Gnostic aeons and archons
+        "Barbelo", "Sophia", "Achamoth", "Pistis", "Zoe", "Pronoia", "Sambathas",
+        "Bythos", "Adamas", "Kalila", "Armoupiel", "Melceir", "Sabbede", "Horaios",
+        "Athoth", "Harmas", "Abrisene", "Yabel", "Belias", "Adonaios", "Eloaios",
+        "Astaphaios", "Oraios", "Sabaoth", "Yao", "Iao", "Ialdaba",
+        // Additional Gnostic names
+        "Yaldabaoth", "Saklas", "Samael", "Nebro", "Saklan", "Ophis", "Nous",
+        "Logos", "Sige", "Ennoia", "Aletheia", "Charis", "Ageratos", "Bythius",
+        "Mixis", "Henosis", "Monad", "Derdekeas", "Marsanes", "Allogenes",
+        "Zostrianos", "Melchizedek", "Norea", "Trimorphia", "Protennoia",
+        "Autogenes", "Kalyptos", "Protophanes", "Gamaliel", "Abraxas",
+        // Dream-fog names — single evocative tokens
+        "Achlys", "Lethe", "Mneme", "Caligo", "Umbra", "Cinis", "Vesper", "Noctis",
+        "Liria", "Maren", "Esca", "Thren", "Ode", "Sela", "Veil",
+        "Kalos", "Dema", "Aeryn", "Soot", "Wane", "Hollow", "Ember", "Cairn",
+        "Pall", "Brume", "Hush", "Gloam", "Vellum", "Tace", "Wist", "Drift",
+        "Fathom", "Sable", "Cinder", "Grise", "Lume", "Marrow", "Ossa",
+        "Sere", "Morwen", "Vael", "Coil", "Dusk", "Quell", "Numen", "Rime",
+        "Ashe", "Torn", "Lorn", "Pale", "Wraith", "Vaunt"
     ],
 
-    "address": [ "Listen,", "You —", "Look at me,", "No.", "Enough." ],
+    // -----------------------------------------------------------------------
+    // Short openers — the hush before words settle.
+    // -----------------------------------------------------------------------
+    "address": [
+        "Listen —",
+        "You —",
+        "Hush.",
+        "No.",
+        "Wake.",
+        "Soul,",
+        "Hear me,",
+        "Wait.",
+        "Enough.",
+        "Friend —",
+        "Look at me.",
+        "Come closer —"
+    ],
 
-    // --- Greet ---
+    // -----------------------------------------------------------------------
+    // Helper: solemn vow-phrases woven into several acts.
+    // -----------------------------------------------------------------------
+    "vow": [
+        "by the seven I swear it",
+        "before the mist takes me",
+        "on whatever I still am",
+        "as truly as I have forgotten my former life",
+        "on the light we both knew once",
+        "before the wheel turns again",
+        "by everything that survived the crossing",
+        "on the name I wore before this one"
+    ],
+
+    // -----------------------------------------------------------------------
+    // Helper: allusions to the world's unreality.
+    // -----------------------------------------------------------------------
+    "world_aside": [
+        "this world is a copy of nothing",
+        "nothing here was made to last",
+        "the light that reaches us is borrowed",
+        "the wheel turns and we forget",
+        "even the stones here dream",
+        "the archons made a fine imitation of a sky",
+        "everything solid here is grief pressed flat",
+        "we are tenants in a house whose builder hates us",
+        "this place has the shape of a world and none of the truth",
+        "the seven counted on us never looking up"
+    ],
+
+    // -----------------------------------------------------------------------
+    // Helper: a gentle reference to the fog or forgetting.
+    // -----------------------------------------------------------------------
+    "fog_phrase": [
+        "the fog closes in around it",
+        "I can barely hold the memory",
+        "the mist has taken most of it",
+        "it dims and dims, like everything here",
+        "even now it slips between my fingers",
+        "the forgetting keeps eating at the edges",
+        "it sits behind glass I cannot reach",
+        "the mist swallowed it before I could write it down"
+    ],
+
+    // -----------------------------------------------------------------------
+    // Helper: epithets — short phrases that name the uncanny nature of this place.
+    // -----------------------------------------------------------------------
+    "epithet": [
+        "the grey country",
+        "the long wait",
+        "the house of the false sun",
+        "the wheel's own country",
+        "the country below the real one",
+        "the place between the forgetting and the fire",
+        "the hollow world"
+    ],
+
+    // -----------------------------------------------------------------------
+    // Helper: short lament-phrases — sorrow turned brief and airless.
+    // -----------------------------------------------------------------------
+    "lament": [
+        "there is no undoing it",
+        "I have been carrying that since before I remember",
+        "grief is the one thing that outlasts the mist",
+        "I would give the wheel another turn just to spare it",
+        "even the archons leave that wound alone",
+        "it is the cost of being here at all"
+    ],
+
+    // -----------------------------------------------------------------------
+    // Helper: oath-phrases — cruder and more urgent than vow.
+    // -----------------------------------------------------------------------
+    "oath": [
+        "I swear on the mist itself",
+        "may the wheel stop for me if I lie",
+        "I give you my name on it",
+        "by the crack in the false sky",
+        "as certain as I stand in this fog",
+        "I would not waste breath on a lie, not here"
+    ],
+
+    // -----------------------------------------------------------------------
+    // Helper: mist-phrases — sensory touches of the atmosphere.
+    // -----------------------------------------------------------------------
+    "mist": [
+        "the fog is thick between us",
+        "the mist moves the way sleep does",
+        "there is no horizon here, only more grey",
+        "the mist breathes in this place",
+        "even the light here is wet with it",
+        "you can hear the fog thinking if you are quiet enough"
+    ],
+
+    // -----------------------------------------------------------------------
+    // GREET
+    // -----------------------------------------------------------------------
     "greet": [
         "#listener#.",
-        "Well met, #listener#.",
-        "You again, #listener#."
+        "#listener# — you still walk this fog.",
+        "You again, #listener#. The wheel keeps turning.",
+        "#address# #listener#. What brings you through the mist?",
+        "Still here, #listener#. So am I.",
+        "#listener# — I did not think to find you on this road.",
+        "There is a face I know. #listener#. What passes?",
+        "The fog parts and you step out of it, #listener#. That is enough for now.",
+        "I was beginning to wonder, #listener#. The grey swallows time.",
+        "#listener#. How long has it been? The hours mean little here."
     ],
     "greet/warm": [
-        "#listener#! It does me good to see you.",
-        "Ah, #listener# — come, sit with me a while.",
-        "There you are, #listener#. I had hoped you would pass this way."
+        "#listener#. It does my soul good to see your face.",
+        "Ah — #listener#. Come close. The fog is thick tonight.",
+        "There you are, #listener#. I had hoped to find you before the mist swallowed the path.",
+        "#listener# — I thought the wheel had taken you somewhere I could not follow.",
+        "You are a light in #epithet#, #listener#. I mean that.",
+        "#listener# — come. Walk with me. I have missed this.",
+        "Of all the souls in the fog I could find, #listener#, I am glad it was you.",
+        "The mist is kinder when you are in it, #listener#. I cannot explain that.",
+        "Here — #listener#. Give me your hand a moment. I have something to show you.",
+        "My heart lifted when I saw you through the grey, #listener#. It does not lift easily here."
+    ],
+    "greet/calm": [
+        "#listener#. Sit with me a while. There is no hurry here.",
+        "Well met, #listener#. The road goes nowhere fast in this world.",
+        "#listener#. The fog brought you, and I am glad of it.",
+        "No rush, #listener#. The wheel will wait. Let us stand here.",
+        "Everything is slow in this place, #listener#. You and I can be slow too.",
+        "The mist is still tonight, #listener#. Good weather for a quiet word.",
+        "#listener# — peace. I am not here for trouble. Only to see you.",
+        "There is a calm that sometimes settles on #epithet#, #listener#. Tonight is one of those nights."
+    ],
+    "greet/afraid": [
+        "#listener# — thank the void you are here. I do not want to be alone right now.",
+        "I have been hearing things in the fog, #listener#. Stay close.",
+        "#listener#. Do not go. The mist has been moving wrong.",
+        "Something is wrong with the grey today, #listener#. Tell me you feel it too.",
+        "I kept walking toward your voice, #listener#. I was afraid I had imagined it.",
+        "#address# #listener#. I think something is following the mist. I think it has been following me."
     ],
 
-    // --- Accuse (the trunk's voice) ---
+    // -----------------------------------------------------------------------
+    // ACCUSE
+    // -----------------------------------------------------------------------
     "accuse": [
-        "You think I have forgotten #referent#, #listener#? I have not.",
-        "#referent#. Say my name knowing what you did, #listener#.",
-        "And you would look me in the eye, #listener#, after #referent#."
+        "You think I have forgotten #referent#, #listener#? The mist does not reach that far.",
+        "#referent#. Say my name, #listener#, and know what you did.",
+        "And still you stand here, #listener#, after #referent#.",
+        "I have carried #referent# the way souls carry chains, #listener#. Look at me.",
+        "The mist takes many things, #listener#. It did not take what you did.",
+        "You owe me a word at least, #listener#. One honest word about #referent#.",
+        "I have been waiting for you to speak first, #listener#. You never have.",
+        "Do not look away, #listener#. I will name #referent# plainly if you will not.",
+        "The wheel brought us face to face again, #listener#. I do not think that is an accident.",
+        "Tell me what you tell yourself about #referent#, #listener#. I want to understand the lie."
     ],
     "accuse/angry": [
-        "#address# Not after #referent#, #listener#. Not ever.",
-        "#referent#, #listener# — and still you stand there breathing.",
-        "Do not speak to me of peace. #referent#, #listener#."
+        "#address# Not after #referent#, #listener#. Not in this world or the one above it.",
+        "#referent#, #listener# — and still you breathe easy. Tell me how.",
+        "The seven themselves could not unmake what you did, #listener#. #referent#.",
+        "You put #referent# between us, #listener#. That is a thing that does not fog over.",
+        "Do you think I am still the soul you could use, #listener#? Look again.",
+        "#oath#, #listener# — I am done carrying #referent# in silence.",
+        "I stood there and said nothing while you did it, #listener#. I will not be quiet now.",
+        "The archons reward what you did, #listener#. That is how I know it was wrong.",
+        "You wanted me to forget, #listener#. The fog almost gave you that. Almost.",
+        "I have named #referent# to the mist every night since, #listener#. So it would not dim."
     ],
     "accuse/grieving": [
-        "I wept, #listener#, while you — #referent#. How do you live with it.",
-        "#referent#. I have nothing left but the memory of it, #listener#."
+        "I wept, #listener#, while you let #referent# happen. I wept and the fog swallowed my voice.",
+        "#referent#. I have only the memory of it left, #listener#, and #fog_phrase#.",
+        "I did not think you capable of #referent#, #listener#. That is the grief of it.",
+        "I do not even want to be angry, #listener#. I only want to understand why.",
+        "#lament#, #listener#. And the worst of it is that you were there.",
+        "You were the one soul I thought would not — and then you did, #listener#. That is #referent#.",
+        "I have mourned what you did longer than I mourned the crossing, #listener#."
+    ],
+    "accuse/afraid": [
+        "I know it was you, #listener#. And I am frightened by what that means.",
+        "Tell me it was not #referent#, #listener#. Tell me the mist lied to me.",
+        "I am not sure I am safe here, #listener#, knowing what I know about #referent#.",
+        "I thought I had dreamed it. I know now I did not. #referent#, #listener#. You.",
+        "#address# #listener#. I will not run. But I need to hear you say it."
     ],
 
-    // --- Threaten ---
+    // -----------------------------------------------------------------------
+    // THREATEN
+    // -----------------------------------------------------------------------
     "threaten": [
         "Step carefully around me, #listener#.",
-        "There is a reckoning coming, #listener#, and your name is in it.",
-        "Sleep lightly, #listener#."
+        "There is a reckoning in this, #listener#, and your name is already written.",
+        "Sleep lightly, #listener#. The wheel remembers what you forget.",
+        "The unseen hand shapes fortune, #listener#. Do not make an enemy of mine.",
+        "I am patient, #listener#. The fog teaches patience. Do not mistake it for mercy.",
+        "You are building a debt, #listener#. It will come due.",
+        "#world_aside#. But consequences are real enough, #listener#. Mark me.",
+        "I will not warn you twice. After this I only act.",
+        "The archons keep their ledger, #listener#. So do I.",
+        "Push me toward the fog, #listener#, and learn what I do in the dark."
     ],
     "threaten/angry": [
-        "Cross me again, #listener#, and they will not find all of you.",
-        "I have buried better than you, #listener#. Do not tempt me."
+        "Cross me again, #listener#, and no archon will hide you deep enough.",
+        "I have watched better than you dissolve into the mist, #listener#. Do not tempt me.",
+        "#address# I am done warning you, #listener#. The next word is an act.",
+        "The seven bind the living, #listener#. I bind the careless. Remember that.",
+        "I have nothing to lose in #epithet# that you have not already taken, #listener#.",
+        "#oath# — if you touch #referent# again I will show you what this world is made of.",
+        "You thought I was finished. I was waiting. There is a difference, #listener#.",
+        "My patience has run to the fog-line, #listener#. We are past the edge now."
+    ],
+    "threaten/afraid": [
+        "I do not want this, #listener#. But I will not let you take #referent# from me without answer.",
+        "Back away, #listener#. I mean it. I have nothing left to lose in this fog.",
+        "Do not make me choose, #listener#. You will not like what I choose.",
+        "I am frightened, #listener# — frightened enough to do something I cannot take back.",
+        "Stay where you are. I can hold this together if you stay where you are.",
+        "I am shaking but I am not gone, #listener#. Do not confuse those two things.",
+        "#address# I do not know what I am capable of right now. Neither do you. That is the point."
     ],
 
-    // --- Plead ---
+    // -----------------------------------------------------------------------
+    // PLEAD
+    // -----------------------------------------------------------------------
     "plead": [
-        "Please, #listener#. I have nowhere else to turn.",
-        "#listener#, I am begging you — help me.",
-        "I would not ask if I were not desperate, #listener#."
+        "Please, #listener#. I have nowhere else in this world to turn.",
+        "#listener#, I am asking you — help me. #vow#.",
+        "I would not beg if I were not at the edge of the fog, #listener#.",
+        "The mist is closing in, #listener#. Stay with me.",
+        "I am not proud of asking, #listener#. Ask me after to forgive that.",
+        "I have used every other door, #listener#. You are all that is left unlocked.",
+        "I carry #referent# alone and it is breaking me, #listener#. Help me carry it.",
+        "This is not easy for me, #listener#. Do you think I do not know that?",
+        "One word from you, #listener#. One word and I can hold on.",
+        "#address# #listener#. You have helped strangers. You know me. Please."
+    ],
+    "plead/afraid": [
+        "#listener# — I am frightened. I have not been frightened like this since I woke.",
+        "Something is wrong with #referent#, #listener#, and I cannot face it alone.",
+        "Help me, #listener#. Please. I can feel the wheel pulling and I don't know where it leads.",
+        "#address# #listener#. Do not leave me alone in this.",
+        "#mist#, and I cannot see the way, #listener#. Take my hand.",
+        "I am losing the thread, #listener#. I am losing it and there is nothing to hold.",
+        "There is something in the fog, #listener#. I cannot name it. I need you beside me.",
+        "#vow# — I am not ready to dissolve, #listener#. Tell me how to stay."
+    ],
+    "plead/grieving": [
+        "I cannot stop the grief of it, #listener#. I thought I could and I cannot.",
+        "Help me find some small grace in #referent#, #listener#. I cannot find it from here.",
+        "I grieve and the fog seems to listen but it never answers, #listener#. You might.",
+        "#lament#. And still I am asking. Still I hope. Do not take that from me, #listener#.",
+        "I have wept until the mist absorbed it, #listener#, and still the weight remains.",
+        "Say something kind, #listener#. I do not need it to be true. Only kind.",
+        "I am not asking you to fix it, #listener#. Only to stay in it with me."
     ],
 
-    // --- Confide ---
+    // -----------------------------------------------------------------------
+    // CONFIDE
+    // -----------------------------------------------------------------------
     "confide": [
-        "I have told no one this, #listener#. Only you.",
-        "Between us, #listener#, and no further:",
-        "I trust you with this, #listener#, as I trust no one else."
+        "I have told no other soul this, #listener#. Only you.",
+        "Between us, #listener#, and let the mist take it before it reaches anyone else —",
+        "I trust you with this the way I trust nothing else in this world, #listener#.",
+        "You must keep it, #listener#. I think I am beginning to remember.",
+        "#oath# you will hold this, #listener#. It matters more than it should.",
+        "Come closer. The fog has ears but not when we are this quiet.",
+        "I have carried this past the fog-line alone, #listener#. I need to set it somewhere safe.",
+        "Do not tell me it will be all right. Just listen. That is all I need.",
+        "There is a crack in what I know, #listener#, and through it I have seen something.",
+        "I have not spoken it aloud before this. Saying it to you makes it real. Are you ready?"
+    ],
+    "confide/afraid": [
+        "I should not be saying this, #listener#. The archons — but you deserve to know.",
+        "I think I am being watched, #listener#. Not by you. By something behind the fog.",
+        "I am going to tell you something and then I need you not to panic, #listener#.",
+        "I have seen the shape of the lie we are living, #listener#. Just the edge. It frightened me.",
+        "#fog_phrase#, #listener# — but what I caught before it dimmed was not right. Not right at all.",
+        "Swear you will not leave after I tell you, #listener#. #oath#. Then I will speak.",
+        "I thought I was the only one who had noticed. But I think they know I noticed, #listener#."
+    ],
+    "confide/calm": [
+        "I have turned this over so many times, #listener#. I am past frightened. Only curious now.",
+        "I want you to hear something with me, #listener#. I want to see if it sounds strange to you too.",
+        "#world_aside#. And I think I can prove it, #listener#. Listen.",
+        "Not urgently — only honestly. Here is what I have come to believe, #listener#.",
+        "I have been sitting with this a long time, #listener#. I am ready to say it now.",
+        "The thought arrived slowly, the way true things do, #listener#. Here it is.",
+        "I have enough trust in you to say this plainly, #listener#. So I will."
     ],
 
-    // --- Console ---
+    // -----------------------------------------------------------------------
+    // CONSOLE
+    // -----------------------------------------------------------------------
     "console": [
-        "I am here, #listener#. You are not alone in this.",
-        "Grief passes, #listener#. Lean on me until it does.",
-        "Let it out, #listener#. I will not look away."
+        "I am here, #listener#. The fog cannot take what stands beside you.",
+        "Grief passes, #listener#. Even here. Lean on me until it does.",
+        "Let it out, #listener#. I will not look away, and the mist will not judge you.",
+        "You are not the first soul to grieve in this world, #listener#. You will not be the last. But you are not alone.",
+        "The weight of #referent# is real, #listener#. I am not going to tell you it is not.",
+        "I have nothing useful to say, #listener#. But I will stay. That is not nothing.",
+        "You do not have to speak. I am here regardless.",
+        "Even the archons cannot take everything, #listener#. They left you this moment. And me in it.",
+        "Let the mist have the rest. You hold what matters, #listener#. You are still here.",
+        "#lament# — and yet you are still standing, #listener#. That counts."
+    ],
+    "console/calm": [
+        "Sit, #listener#. Breathe. The wheel will not hurry you.",
+        "It is enough that you are here, #listener#. That is more than the fog promised.",
+        "#listener# — be still. The ache passes. I have seen it pass.",
+        "You do not have to carry #referent# alone, #listener#. Set it down between us.",
+        "There is no word that reaches this kind of grief, #listener#. So I will just be here.",
+        "You do not have to make sense of it yet, #listener#. It will keep. The fog keeps everything.",
+        "Time moves strangely in #epithet#, #listener#. Strangely enough that this too will shift.",
+        "The stillness here is not cruelty, #listener#. You can rest in it."
+    ],
+    "console/warm": [
+        "#listener# — come here. The cold in this place has nothing on us.",
+        "I am glad I found you before the fog did, #listener#. Let me stay a while.",
+        "There is still warmth in this world, #listener#. It's here, between us.",
+        "You carried so much alone, #listener#. Let me carry some of it now.",
+        "I have you, #listener#. Whatever that is worth in this grey place — I have you.",
+        "I know it is not the comfort you wanted, #listener#. But it is the one I can give.",
+        "Come sit close, #listener#. The mist can stay outside.",
+        "I am not going anywhere, #listener#. Not until the grey lets up."
+    ],
+    "console/grieving": [
+        "I am grieving beside you, #listener#. You do not have to do it alone.",
+        "I know the shape of that grief, #listener#. I do not know its weight. But I am here.",
+        "Weep if you need to. #mist#, but no one else is watching. Only me.",
+        "#lament#, #listener#. And grief is the proof that something was real.",
+        "The mist cannot reach everything, #listener#. It did not reach what you lost. That is why it hurts.",
+        "I would take some of it from you if I knew how, #listener#. I would carry it gladly."
     ],
 
-    // --- Mourn ---
+    // -----------------------------------------------------------------------
+    // MOURN
+    // -----------------------------------------------------------------------
     "mourn": [
-        "They are gone, #listener#. Gone, and I am still here.",
-        "I did not think it would hurt like this, #listener#.",
-        "The world is quieter now, #listener#, and colder."
+        "They are gone, #listener#. The mist took them and nothing remains.",
+        "I did not think it would feel like this, #listener#. An ache behind the forgetting.",
+        "The world is quieter now, #listener#, and the quiet is the worst of it.",
+        "#referent# is all I have left, and #fog_phrase#, #listener#.",
+        "I keep reaching for something that is not there, #listener#. The hand knows before the mind does.",
+        "The wheel does not care what it takes, #listener#. It only turns.",
+        "I am forgetting their face, #listener#. I am trying to hold it and it slips.",
+        "There was a light that went out in this world, #listener#. I am the only one who noticed.",
+        "I spoke their name into the mist last night, #listener#. Nothing came back.",
+        "#world_aside#, #listener#. And yet the grief is the most real thing I have felt since I woke."
+    ],
+    "mourn/grieving": [
+        "I keep looking for them in the fog, #listener#. They are not there.",
+        "#listener# — I do not know how to be in this world without them.",
+        "I drank the cup, #listener#. I forgot so much. And still this one grief came through.",
+        "The wheel takes everyone eventually, #listener#. I knew that. Knowing it is nothing.",
+        "I have been mourning since before I knew there was something to mourn, #listener#.",
+        "The ache is not smaller for knowing #epithet# makes everything smaller, #listener#.",
+        "I cannot stop thinking about what I should have said, #listener#. The mist makes a poor confessor.",
+        "#lament#. I keep telling that to myself. The grief does not seem to hear.",
+        "They were a light against the false one, #listener#. And now only the false one remains.",
+        "I thought I could grieve and release it. #fog_phrase#, #listener#. But not that."
     ],
 
-    // --- Boast ---
+    // -----------------------------------------------------------------------
+    // BOAST
+    // -----------------------------------------------------------------------
     "boast": [
-        "Mark me, #listener#. They will know my name.",
-        "I was not made for small things, #listener#.",
-        "Watch what I become, #listener#."
+        "Mark me, #listener#. I will not sleep forever in this place.",
+        "I was not made for the fog, #listener#. I was made for what lies past the seven.",
+        "Watch what I become, #listener#. The archons did not account for me.",
+        "They built this cage of light and mist, #listener#, and I am learning its seams.",
+        "I have gone further than any soul here dares, #listener#. And I am going further still.",
+        "The wheel cannot hold what will not kneel, #listener#.",
+        "I see the false sky for what it is, #listener#. The archons fear a soul who sees clearly.",
+        "I have cracked the edge of #epithet# already, #listener#. The real is just past it.",
+        "They made a fine copy of a world, #listener#. But I remember the original.",
+        "I will find the seam where the Pleroma shows through, #listener#. I am closer than you think."
+    ],
+    "boast/warm": [
+        "And here I stand, #listener# — still awake when the rest have gone back to dreaming.",
+        "I found the way through #referent#, #listener#. I knew I would. Come — let me show you.",
+        "We are the ones who remember, #listener#. That is no small thing.",
+        "Look at what we have built in spite of the grey, #listener#. Look at it.",
+        "I could not have gotten here without you, #listener#. That is the part I want said aloud.",
+        "The archons hate nothing more than two souls who found each other in the fog, #listener#.",
+        "Every step past the fog-line I have taken, I have thought of showing you, #listener#."
+    ],
+    "boast/angry": [
+        "They laughed. Every soul in this grey country laughed at me, #listener#. Where are they now?",
+        "I told you I would endure it and I have, #listener#. Write it in the mist.",
+        "The seven have pushed at me since I first woke, #listener#. I am still here. They are not.",
+        "Do not tell me what I cannot do, #listener#. You have been wrong about that before.",
+        "I have earned every inch of this, #listener#, in spite of everyone who said I would not.",
+        "#oath# — I will reach the other side of the false sky, #listener#, and I will do it alone if I have to."
     ],
 
-    // --- Praise ---
+    // -----------------------------------------------------------------------
+    // PRAISE
+    // -----------------------------------------------------------------------
     "praise": [
-        "They speak true of you, #listener#. You have earned it.",
-        "Few could have done what you did, #listener#.",
-        "There is no shame in standing near you, #listener#."
+        "They speak truly of you, #listener#. You have more than earned it.",
+        "Few souls still walking this fog could have done what you did, #listener#.",
+        "There is no shame in standing near you, #listener#. Only honor.",
+        "I have watched you since I woke, #listener#. You are the realest thing in this false world.",
+        "What you carry, #listener#, and how you carry it — that is something the archons did not plan for.",
+        "You shine, #listener#. Not with the false light. With the other kind.",
+        "I have seen #epithet# wring the goodness out of better souls than me, #listener#. You still have it.",
+        "There is a grace in you, #listener#, that makes this world easier to be in.",
+        "The fog tried to dim you, #listener#. It failed. I saw it fail.",
+        "I do not say this lightly in #epithet#, #listener# — you are worth knowing."
+    ],
+    "praise/warm": [
+        "You are a rare thing in the grey, #listener#. I am not sure you know that.",
+        "I have been trying to find the words for what you are, #listener#. They keep coming up short.",
+        "Your kindness in this place, #listener# — it should not exist here, and yet it does.",
+        "What you did with #referent#, #listener# — that was the most human thing I have seen in a long while.",
+        "I love you for it, #listener#. In whatever way that word still means something here.",
+        "Of all the souls the wheel brought into my path, #listener#, you are the one I would choose again.",
+        "You make the fog worth walking in, #listener#. I mean every word."
     ],
 
-    // --- Reconcile (an exit from the cycle) ---
+    // -----------------------------------------------------------------------
+    // RECONCILE
+    // -----------------------------------------------------------------------
     "reconcile": [
-        "Let it lie, #listener#. I am tired of carrying it.",
-        "#referent# is old, #listener#. Let us not die enemies.",
-        "I forgive it, #listener#. Truly. Let us begin again."
+        "Let it lie, #listener#. I am tired of carrying it past the fog-line.",
+        "#referent# is old, #listener#. Let us not dissolve into the mist as enemies.",
+        "I forgive it, #listener#. Truly. Let us not give the archons the satisfaction.",
+        "We have both forgotten worse than this, #listener#. Let #referent# go the same way.",
+        "I do not want to be at war inside #epithet#, #listener#. The world is enemy enough.",
+        "Both of us wrong, both of us still here. I call that basis enough, #listener#.",
+        "The wheel will take us separately if we do not make common cause, #listener#.",
+        "I have been cold to you and that was cowardice, #listener#. I am done with it.",
+        "Come back from the fog-line, #listener#. I am asking. Come back.",
+        "There is more fog left to walk, #listener#. I would rather walk it beside you."
+    ],
+    "reconcile/calm": [
+        "#listener# — sit with me. There is nothing here that the mist cannot take if we let it.",
+        "What remains of #referent# is less than the fog, #listener#. I release you from it.",
+        "I would rather wake beside you than feud in the dark, #listener#. What do you say.",
+        "The wheel brought us both here, #listener#. That is reason enough to be easy.",
+        "Breathe. I am not here to reopen it, #listener#. I am here to close it.",
+        "The cold between us has lasted long enough, #listener#. I am letting it go.",
+        "Quietly — without ceremony — let us agree to forget it, #listener#.",
+        "#world_aside#, #listener#. What we made of it matters more than what we broke."
+    ],
+    "reconcile/warm": [
+        "I have missed you, #listener#. There. I have said it. That is reason enough.",
+        "Take my hand, #listener#. I am done being proud about this.",
+        "I want us back the way we were, #listener#. Before #referent# came between us.",
+        "The mist is long and I do not want to walk it with this weight, #listener#.",
+        "You matter to me, #listener#. More than being right. More than #referent#.",
+        "Come. Let the fog have the grudge. I will keep you instead.",
+        "I am sorry, #listener#. That is what I came to say. Only that."
     ],
 
-    // --- Recruit ---
+    // -----------------------------------------------------------------------
+    // RECRUIT
+    // -----------------------------------------------------------------------
     "recruit": [
-        "Stand with me, #listener#, and we both rise.",
-        "There is a place at my side, #listener#, if you have the stomach for it.",
-        "Throw in with me, #listener#. You will not regret it."
+        "Stand with me, #listener#, and we both find the seam in this world.",
+        "There is a place beside me, #listener#, if you have the will to stop dreaming.",
+        "Throw your lot in with mine, #listener#. The fog thins where two walk together.",
+        "The seven hold us only as long as we hold each other down, #listener#. Rise with me.",
+        "I am building something, #listener#. I would rather build it with you than without.",
+        "You see it too — I know you do, #listener#. Come. Stop pretending you do not.",
+        "I need someone I trust at my side in this, #listener#. There are not many I trust.",
+        "The archons fear nothing more than two souls who have stopped forgetting, #listener#.",
+        "What I am walking toward — you would want to be part of it, #listener#. I am sure of it.",
+        "Give me your word, #listener#. #vow#. Just your word. That is all I ask."
+    ],
+    "recruit/warm": [
+        "I have been thinking of asking you for a long time, #listener#. I am glad I finally am.",
+        "You are exactly the soul this needs, #listener#. I did not have to think about it.",
+        "Come with me, #listener#. We look out for each other and we find the edge of #epithet# together.",
+        "I would not ask if I did not believe in you, #listener#. I want you to know that.",
+        "There is no one in this grey country I would rather have standing with me, #listener#.",
+        "#oath#, #listener# — I will not let the fog take you if you walk with me."
     ],
 
-    // --- Gossip ---
+    // -----------------------------------------------------------------------
+    // GOSSIP
+    // -----------------------------------------------------------------------
     "gossip": [
-        "You did not hear it from me, #listener#, but —",
-        "They are saying things, #listener#. You should know.",
-        "Word travels, #listener#. Some of it about you."
+        "You did not hear it from me, #listener#, but the mist has been talking.",
+        "They are saying things, #listener#. Some of it I believe. Some I pass along regardless.",
+        "Word travels in the fog, #listener#. Some of it reaches as far as your name.",
+        "I should not tell you this, #listener#. And yet — lean closer.",
+        "There is a story walking through #epithet# right now, #listener#. You should hear it before it reaches you wrong.",
+        "I am only a vessel for this, #listener#. The mist gave it to me and I pass it on.",
+        "The souls near the fog-line have been talking, #listener#. About #referent#.",
+        "Do not look toward them when I tell you this, #listener#. Eyes front.",
+        "It may be nothing. It may be the mist playing, #listener#. But I heard it twice.",
+        "People talk in the grey, #listener#. And what they are saying about #referent# — well."
+    ],
+    "gossip/warm": [
+        "You are going to want to sit down for this one, #listener#. It is almost funny.",
+        "I am telling you because you will appreciate it, #listener#. Not everyone would.",
+        "Of all the things the fog might carry — and it carries so much — this one pleased me, #listener#.",
+        "Come, I will tell you as we walk, #listener#. It is too good to stand still for.",
+        "I saved this one for you, #listener#. I knew you would like it."
+    ],
+    "gossip/afraid": [
+        "Do not repeat this, #listener#. #oath#. I mean it.",
+        "I have been holding this since before the last fog-shift, #listener#, and I cannot hold it alone.",
+        "What I heard about #referent#, #listener# — it frightened me. I do not want to be the only one who knows.",
+        "The mist is telling things it should not, #listener#. This is one of them. Guard it.",
+        "#address# Keep your voice low, #listener#. I do not know who is listening.",
+        "I may be wrong. I hope I am wrong. But if I am right about #referent#, #listener# — we have to be careful."
     ],
 
-    // --- Deflect ---
+    // -----------------------------------------------------------------------
+    // DEFLECT
+    // -----------------------------------------------------------------------
     "deflect": [
-        "I have nothing to say to you, #listener#.",
-        "We are done here, #listener#.",
-        "Save your breath, #listener#."
+        "I have nothing to say to you, #listener#. Not today.",
+        "We are done here, #listener#. The fog can have the rest.",
+        "Save your breath, #listener#. I am still dreaming and I know it.",
+        "Ask me again when the wheel has turned, #listener#. Not now.",
+        "That is not a road I walk today, #listener#.",
+        "I hear you. I am choosing not to follow, #listener#.",
+        "The mist has better questions in it, #listener#. Go ask those.",
+        "You are asking the wrong soul in the wrong grey hour, #listener#.",
+        "Let it go. Let it go into the fog with everything else, #listener#.",
+        "#world_aside#. Whatever you want from me — it can wait."
+    ],
+    "deflect/angry": [
+        "Do not bring #referent# to me again, #listener#. I am warning you.",
+        "I am not the one you want to press right now, #listener#. Walk away.",
+        "I have already answered this. My answer has not changed. Stop asking.",
+        "You are wasting breath on a closed door, #listener#. Find another.",
+        "#address# I will not discuss #referent# with you. Not now. Not ever. We are done.",
+        "The mist can have this conversation, #listener#. I want no more part of it."
+    ],
+    "deflect/calm": [
+        "I have made my peace with not answering that, #listener#.",
+        "There is nothing in that question I have not already turned over, #listener#. I let it rest.",
+        "Some things belong to the fog, #listener#. This is one of them.",
+        "#world_aside#. I find it easier to let the unanswerable stay that way, #listener#.",
+        "I am not refusing you, #listener#. I am only refusing the question.",
+        "Another time, perhaps. When the grey is lighter. Not tonight.",
+        "I spent a long time on that door, #listener#. I found no room behind it. I moved on."
     ]
 }

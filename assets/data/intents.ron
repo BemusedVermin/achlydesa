@@ -176,4 +176,939 @@
             Sway(who: Speaker, trait_name: "vengeance", delta: -0.08),
         ],
     ),
+
+    // --- The dream-purgatory: waking, the cult, the false comfort ---
+
+    // The world is a lie — a gnosis-touched soul whispers the secret to one they trust
+    (
+        id: "a_secret_of_falseness",
+        act: Confide,
+        tags: ["gnosis", "warning"],
+        weight: 1.2,
+        appeal: [
+            (input: Trait("gnosis"),   curve: Power(exp: 1.4)),
+            (input: OpinionOf,         curve: Linear(m: 0.8, b: 0.0)),
+            (input: SharedHistory,     curve: Linear(m: 0.7, b: 0.1)),
+        ],
+        moves: [
+            Stir(who: Listener, mood: "longing", delta: 0.12),
+            Stir(who: Listener, mood: "dread",   delta: 0.09),
+            Sway(who: Listener, trait_name: "gnosis", delta: 0.04),
+        ],
+    ),
+
+    // Wake up — an awakened soul pleads with the sleeper to see past the veil
+    (
+        id: "a_plea_to_wake",
+        act: Plead,
+        tags: ["gnosis", "waking"],
+        weight: 1.1,
+        appeal: [
+            (input: Trait("gnosis"),   curve: Power(exp: 1.5)),
+            (input: Mood("longing"),   curve: Linear(m: 0.8, b: 0.1)),
+            (input: OpinionOf,         curve: Linear(m: 0.5, b: 0.1)),
+        ],
+        moves: [
+            Stir(who: Listener, mood: "longing", delta: 0.14),
+            Stir(who: Listener, mood: "dread",   delta: 0.07),
+            Sway(who: Listener, trait_name: "oblivion", delta: -0.05),
+        ],
+    ),
+
+    // The seven watch — hushed gossip that fortune is shaped by unseen hands
+    (
+        id: "a_whisper_of_the_seven",
+        act: Gossip,
+        tags: ["warning", "archon"],
+        weight: 0.9,
+        appeal: [
+            (input: Mood("dread"),    curve: Power(exp: 1.3)),
+            (input: SharedHistory,    curve: Linear(m: 0.7, b: 0.1)),
+            (input: OpinionOf,        curve: Linear(m: 0.4, b: 0.1)),
+        ],
+        moves: [
+            Stir(who: Listener, mood: "dread",   delta: 0.12),
+            Stir(who: Listener, mood: "longing", delta: 0.05),
+        ],
+    ),
+
+    // Come to the temple — a devout soul draws another into the cult of the Demiurge
+    (
+        id: "a_call_to_the_temple",
+        act: Recruit,
+        tags: ["cult", "devotion"],
+        weight: 1.1,
+        appeal: [
+            (input: Trait("devotion"),   curve: Power(exp: 1.4)),
+            (input: Trait("submission"), curve: Linear(m: 0.6, b: 0.1)),
+            (input: OpinionOf,           curve: Linear(m: 0.5, b: 0.1)),
+        ],
+        moves: [
+            Sway(who: Listener, trait_name: "devotion", delta: 0.05),
+            Stir(who: Listener, mood: "rapture",        delta: 0.1),
+            Turn(who: Listener, toward: Speaker,        delta: 0.04),
+        ],
+    ),
+
+    // Drink and forget — a tender, sinister invitation to sink back into the dream
+    (
+        id: "a_tender_forgetting",
+        act: Console,
+        tags: ["false-comfort", "oblivion"],
+        weight: 1.0,
+        appeal: [
+            (input: Trait("submission"), curve: Linear(m: 0.7, b: 0.1)),
+            (input: OpinionOf,           curve: Power(exp: 1.2)),
+            (input: Mood("longing"),     curve: Linear(m: 0.5, b: 0.0)),
+        ],
+        moves: [
+            Stir(who: Listener, mood: "calm",    delta: 0.13),
+            Stir(who: Listener, mood: "rapture", delta: 0.08),
+            Stir(who: Listener, mood: "longing", delta: -0.1),
+            Sway(who: Listener, trait_name: "oblivion", delta: 0.04),
+        ],
+    ),
+
+    // I have seen the light of the false god — a devout visionary boasts of rapturous standing
+    (
+        id: "a_vision_proclaimed",
+        act: Boast,
+        tags: ["wonder", "cult"],
+        weight: 0.9,
+        appeal: [
+            (input: Trait("devotion"),  curve: Power(exp: 1.3)),
+            (input: Mood("rapture"),    curve: Linear(m: 0.8, b: 0.1)),
+            (input: Trait("ambition"),  curve: Linear(m: 0.4, b: 0.1)),
+        ],
+        moves: [
+            Stir(who: Speaker, mood: "joy",    delta: 0.1),
+            Stir(who: Listener, mood: "awe",   delta: 0.07),
+        ],
+    ),
+
+    // Exalting the order — a faithful soul praises one of high standing in the false hierarchy
+    (
+        id: "a_praise_of_the_order",
+        act: Praise,
+        tags: ["cult", "esteem"],
+        weight: 0.8,
+        appeal: [
+            (input: OpinionOf,   curve: Linear(m: 0.7, b: 0.1)),
+            (input: Prominence,  curve: Power(exp: 1.3)),
+            (input: Trait("devotion"), curve: Linear(m: 0.5, b: 0.1)),
+        ],
+        moves: [
+            Turn(who: Listener, toward: Speaker, delta: 0.08),
+            Stir(who: Listener, mood: "rapture", delta: 0.05),
+        ],
+    ),
+
+    // You are one of theirs — accusing the listener of being an Archon's hand or a heretic
+    (
+        id: "an_accusation_of_heresy",
+        act: Accuse,
+        tags: ["heresy", "betrayal"],
+        weight: 1.2,
+        appeal: [
+            (input: GrievanceAgainst,   curve: Linear(m: 0.8, b: 0.0)),
+            (input: Trait("devotion"),  curve: Power(exp: 1.3)),
+            (input: Mood("anger"),      curve: Linear(m: 0.7, b: 0.1)),
+        ],
+        moves: [
+            Turn(who: Listener, toward: Speaker, delta: -0.14),
+            Stir(who: Speaker, mood: "anger",    delta: 0.09),
+            Grudge(who: Listener, against: Speaker),
+        ],
+    ),
+
+    // The faithful will come — a devout enforcer warns the heretic of retribution
+    (
+        id: "a_warning_of_retribution",
+        act: Threaten,
+        tags: ["warning", "devotion"],
+        weight: 1.1,
+        appeal: [
+            (input: Trait("devotion"),  curve: Power(exp: 1.3)),
+            (input: Trait("vengeance"), curve: Linear(m: 0.6, b: 0.1)),
+            (input: Mood("dread"),      curve: Linear(m: 0.5, b: 0.0)),
+        ],
+        moves: [
+            Stir(who: Listener, mood: "fear",  delta: 0.16),
+            Turn(who: Listener, toward: Speaker, delta: -0.07),
+        ],
+    ),
+
+    // Mourning a vanished soul — grieving one who ascended or drank the cup and forgot
+    (
+        id: "a_grief_for_the_forgotten",
+        act: Mourn,
+        tags: ["grief", "oblivion"],
+        weight: 0.9,
+        appeal: [
+            (input: Mood("sorrow"),  curve: Power(exp: 1.3)),
+            (input: Mood("longing"), curve: Linear(m: 0.7, b: 0.1)),
+        ],
+        moves: [
+            Stir(who: Speaker,   mood: "sorrow",  delta: 0.08),
+            Stir(who: Listener,  mood: "sorrow",  delta: 0.07),
+            Stir(who: Listener,  mood: "longing", delta: 0.05),
+        ],
+    ),
+
+    // Two souls who both remember — reconciling at the edge of the wheel
+    (
+        id: "a_recognition_at_the_wheel",
+        act: Reconcile,
+        tags: ["mercy", "gnosis"],
+        weight: 1.1,
+        appeal: [
+            (input: Trait("forgiveness"), curve: Power(exp: 1.3)),
+            (input: Trait("gnosis"),      curve: Linear(m: 0.8, b: 0.0)),
+            (input: SharedHistory,        curve: Linear(m: 0.6, b: 0.1)),
+        ],
+        moves: [
+            Turn(who: Speaker,  toward: Listener, delta: 0.13),
+            Turn(who: Listener, toward: Speaker,  delta: 0.1),
+            Sway(who: Speaker,  trait_name: "vengeance", delta: -0.07),
+            Stir(who: Speaker,  mood: "hope",     delta: 0.1),
+            Stir(who: Listener, mood: "hope",     delta: 0.08),
+        ],
+    ),
+
+    // The mist-touched greeting — wary or warm, tinted by the fog of not-quite-remembering
+    (
+        id: "a_greeting_through_the_mist",
+        act: Greet,
+        tags: ["warmth", "gnosis"],
+        weight: 0.5,
+        appeal: [
+            (input: OpinionOf,            curve: Linear(m: 0.7, b: 0.1)),
+            (input: Trait("sociability"), curve: Linear(m: 0.5, b: 0.1)),
+            (input: Trait("gnosis"),      curve: Linear(m: 0.3, b: 0.0)),
+        ],
+        moves: [
+            Turn(who: Listener, toward: Speaker, delta: 0.04),
+            Stir(who: Listener, mood: "longing", delta: 0.03),
+        ],
+    ),
+
+    // The oblivion-blanket — a soul too deep in the dream gives a flat, forgetting dismissal
+    (
+        id: "a_forgetting_dismissal",
+        act: Deflect,
+        tags: ["false-comfort", "oblivion"],
+        weight: 0.8,
+        appeal: [
+            (input: Trait("oblivion"), curve: Power(exp: 1.4)),
+            (input: OpinionOf,         curve: Inverse),
+        ],
+        moves: [
+            Stir(who: Speaker,   mood: "calm",    delta: 0.06),
+            Stir(who: Listener,  mood: "longing", delta: 0.05),
+            Turn(who: Listener, toward: Speaker,  delta: -0.03),
+        ],
+    ),
+
+    // --- More voices: the full weather of a soul ---
+
+    // A wanderer's greeting — curiosity-bright, reaching across the mist toward a stranger
+    (
+        id: "a_wanderers_greeting",
+        act: Greet,
+        tags: ["wandering"],
+        weight: 0.6,
+        appeal: [
+            (input: Trait("wanderlust"),  curve: Power(exp: 1.3)),
+            (input: Trait("curiosity"),   curve: Linear(m: 0.6, b: 0.1)),
+            (input: OpinionOf,            curve: Linear(m: 0.3, b: 0.2)),
+        ],
+        moves: [
+            Turn(who: Listener, toward: Speaker, delta: 0.04),
+            Stir(who: Speaker,  mood: "restlessness", delta: -0.05),
+        ],
+    ),
+
+    // A proud hail — high prominence, a soul that knows its own weight
+    (
+        id: "a_proud_hail",
+        act: Greet,
+        tags: ["esteem", "pride"],
+        weight: 0.5,
+        appeal: [
+            (input: Trait("pride"),  curve: Power(exp: 1.3)),
+            (input: Prominence,      curve: Linear(m: 0.7, b: 0.1)),
+        ],
+        moves: [
+            Stir(who: Listener, mood: "awe",   delta: 0.05),
+            Turn(who: Listener, toward: Speaker, delta: 0.03),
+        ],
+    ),
+
+    // A lonely reaching-out — loneliness drives even a cautious soul to speak first
+    (
+        id: "a_lonesome_greeting",
+        act: Greet,
+        tags: ["warmth", "loneliness"],
+        weight: 0.7,
+        appeal: [
+            (input: Mood("loneliness"),   curve: Power(exp: 1.4)),
+            (input: Trait("sociability"), curve: Linear(m: 0.5, b: 0.1)),
+            (input: OpinionOf,            curve: Linear(m: 0.4, b: 0.1)),
+        ],
+        moves: [
+            Stir(who: Speaker, mood: "loneliness", delta: -0.08),
+            Stir(who: Speaker, mood: "hope",       delta: 0.06),
+            Turn(who: Listener, toward: Speaker,   delta: 0.03),
+        ],
+    ),
+
+    // A wary nod — caution keeps the speaker brief, eyes on the exits of the dream
+    (
+        id: "a_wary_nod",
+        act: Greet,
+        tags: ["coldness"],
+        weight: 0.4,
+        appeal: [
+            (input: Trait("caution"),   curve: Power(exp: 1.2)),
+            (input: OpinionOf,          curve: Linear(m: 0.4, b: 0.0)),
+            (input: Mood("foreboding"), curve: Linear(m: 0.5, b: 0.0)),
+        ],
+        moves: [
+            Stir(who: Speaker, mood: "foreboding", delta: 0.03),
+        ],
+    ),
+
+    // Confessing curiosity about the world's seams — a soul who has begun to notice the cracks
+    (
+        id: "a_curiosity_about_the_seams",
+        act: Confide,
+        tags: ["gnosis", "wonder"],
+        weight: 1.0,
+        appeal: [
+            (input: Trait("curiosity"),  curve: Power(exp: 1.4)),
+            (input: Trait("gnosis"),     curve: Linear(m: 0.6, b: 0.0)),
+            (input: OpinionOf,           curve: Linear(m: 0.7, b: 0.1)),
+            (input: SharedHistory,       curve: Linear(m: 0.4, b: 0.1)),
+        ],
+        moves: [
+            Stir(who: Listener, mood: "longing",  delta: 0.09),
+            Stir(who: Listener, mood: "awe",      delta: 0.07),
+            Sway(who: Listener, trait_name: "curiosity", delta: 0.03),
+        ],
+    ),
+
+    // A nostalgic confidence — sharing a half-remembered life before the purgatory
+    (
+        id: "a_memory_half_remembered",
+        act: Confide,
+        tags: ["nostalgia", "warmth"],
+        weight: 0.9,
+        appeal: [
+            (input: Mood("nostalgia"),  curve: Power(exp: 1.3)),
+            (input: SharedHistory,      curve: Linear(m: 0.8, b: 0.1)),
+            (input: OpinionOf,          curve: Linear(m: 0.6, b: 0.1)),
+        ],
+        moves: [
+            Stir(who: Speaker,  mood: "nostalgia", delta: 0.08),
+            Stir(who: Listener, mood: "nostalgia", delta: 0.07),
+            Stir(who: Listener, mood: "longing",   delta: 0.05),
+        ],
+    ),
+
+    // A guilty admission — something done in this grey life that sits heavy
+    (
+        id: "a_guilty_admission",
+        act: Confide,
+        tags: ["guilt", "trust"],
+        weight: 1.0,
+        appeal: [
+            (input: Mood("guilt"),  curve: Power(exp: 1.4)),
+            (input: OpinionOf,      curve: Linear(m: 0.8, b: 0.0)),
+            (input: SharedHistory,  curve: Linear(m: 0.6, b: 0.1)),
+        ],
+        moves: [
+            Stir(who: Speaker,   mood: "guilt",  delta: -0.1),
+            Stir(who: Speaker,   mood: "calm",   delta: 0.06),
+            Turn(who: Listener, toward: Speaker, delta: 0.07),
+        ],
+    ),
+
+    // Sharing a foreboding — something is gathering in the mist, and the speaker cannot hold it alone
+    (
+        id: "a_shared_foreboding",
+        act: Confide,
+        tags: ["warning", "foreboding"],
+        weight: 0.9,
+        appeal: [
+            (input: Mood("foreboding"),  curve: Power(exp: 1.3)),
+            (input: Mood("dread"),       curve: Linear(m: 0.5, b: 0.1)),
+            (input: OpinionOf,           curve: Linear(m: 0.7, b: 0.0)),
+            (input: SharedHistory,       curve: Linear(m: 0.5, b: 0.1)),
+        ],
+        moves: [
+            Stir(who: Listener, mood: "foreboding", delta: 0.12),
+            Stir(who: Listener, mood: "dread",      delta: 0.06),
+            Turn(who: Listener, toward: Speaker,    delta: 0.04),
+        ],
+    ),
+
+    // Rumour of an Archon's hand — whispered suspicion that the hierarchy moved against someone
+    (
+        id: "a_rumour_of_an_archons_hand",
+        act: Gossip,
+        tags: ["archon", "warning"],
+        weight: 1.0,
+        appeal: [
+            (input: Mood("foreboding"),  curve: Power(exp: 1.2)),
+            (input: Mood("fear"),        curve: Linear(m: 0.4, b: 0.1)),
+            (input: SharedHistory,       curve: Linear(m: 0.6, b: 0.1)),
+            (input: Trait("curiosity"),  curve: Linear(m: 0.5, b: 0.0)),
+        ],
+        moves: [
+            Stir(who: Listener, mood: "dread",      delta: 0.1),
+            Stir(who: Listener, mood: "foreboding", delta: 0.06),
+        ],
+    ),
+
+    // Envious talk of another's fortune — a resentful soul cannot help but name the lucky one
+    (
+        id: "an_envious_rumour",
+        act: Gossip,
+        tags: ["rumour", "envy"],
+        weight: 0.9,
+        appeal: [
+            (input: Mood("envy"),       curve: Power(exp: 1.3)),
+            (input: Trait("greed"),     curve: Linear(m: 0.4, b: 0.1)),
+            (input: SharedHistory,      curve: Linear(m: 0.5, b: 0.1)),
+        ],
+        moves: [
+            Stir(who: Listener, mood: "envy",    delta: 0.08),
+            Stir(who: Speaker,  mood: "envy",    delta: -0.04),
+        ],
+    ),
+
+    // Idle wonder — a soul simply marvelling aloud at something strange in the grey world
+    (
+        id: "an_idle_wonder",
+        act: Gossip,
+        tags: ["wonder", "rumour"],
+        weight: 0.6,
+        appeal: [
+            (input: Trait("curiosity"),   curve: Power(exp: 1.2)),
+            (input: Mood("awe"),          curve: Linear(m: 0.6, b: 0.1)),
+            (input: Trait("sociability"), curve: Linear(m: 0.4, b: 0.1)),
+        ],
+        moves: [
+            Stir(who: Listener, mood: "awe",  delta: 0.06),
+            Turn(who: Listener, toward: Speaker, delta: 0.02),
+        ],
+    ),
+
+    // Humble praise — low pride, genuine admiration freely given
+    (
+        id: "a_humble_praise",
+        act: Praise,
+        tags: ["esteem", "humility"],
+        appeal: [
+            (input: Trait("humility"), curve: Power(exp: 1.2)),
+            (input: OpinionOf,         curve: Linear(m: 0.8, b: 0.1)),
+        ],
+        moves: [
+            Turn(who: Listener, toward: Speaker, delta: 0.1),
+            Stir(who: Listener, mood: "gratitude", delta: 0.08),
+        ],
+    ),
+
+    // Zealous praise of the cult — fervent adulation of a fellow believer
+    (
+        id: "a_zealous_praise",
+        act: Praise,
+        tags: ["cult", "esteem"],
+        weight: 0.9,
+        appeal: [
+            (input: Trait("zeal"),     curve: Power(exp: 1.3)),
+            (input: Trait("devotion"), curve: Linear(m: 0.6, b: 0.1)),
+            (input: OpinionOf,         curve: Linear(m: 0.5, b: 0.1)),
+        ],
+        moves: [
+            Turn(who: Listener, toward: Speaker, delta: 0.07),
+            Stir(who: Listener, mood: "rapture", delta: 0.08),
+            Stir(who: Speaker,  mood: "rapture", delta: 0.05),
+        ],
+    ),
+
+    // Praising a wanderer's courage — admiring someone who defied the mist and walked far
+    (
+        id: "a_praise_of_the_wanderers_courage",
+        act: Praise,
+        tags: ["esteem", "wandering"],
+        weight: 0.8,
+        appeal: [
+            (input: Prominence,            curve: Linear(m: 0.6, b: 0.1)),
+            (input: Trait("wanderlust"),   curve: Linear(m: 0.5, b: 0.1)),
+            (input: OpinionOf,             curve: Linear(m: 0.6, b: 0.1)),
+            (input: Trait("compassion"),   curve: Linear(m: 0.3, b: 0.0)),
+        ],
+        moves: [
+            Turn(who: Listener, toward: Speaker, delta: 0.08),
+            Stir(who: Listener, mood: "hope",    delta: 0.06),
+        ],
+    ),
+
+    // A proud boast — pride cresting, the speaker names their own achievements in the grey world
+    (
+        id: "a_proud_boast",
+        act: Boast,
+        tags: ["esteem", "pride"],
+        weight: 1.1,
+        appeal: [
+            (input: Trait("pride"),    curve: Power(exp: 1.4)),
+            (input: Prominence,        curve: Linear(m: 0.6, b: 0.1)),
+            (input: Mood("elation"),   curve: Linear(m: 0.5, b: 0.1)),
+        ],
+        moves: [
+            Stir(who: Speaker,  mood: "joy",   delta: 0.1),
+            Stir(who: Listener, mood: "envy",  delta: 0.06),
+        ],
+    ),
+
+    // A zealot's boast — proclaiming the Demiurge's favour with burning certainty
+    (
+        id: "a_zealots_boast",
+        act: Boast,
+        tags: ["cult", "devotion"],
+        weight: 1.0,
+        appeal: [
+            (input: Trait("zeal"),     curve: Power(exp: 1.4)),
+            (input: Trait("devotion"), curve: Linear(m: 0.6, b: 0.1)),
+            (input: Mood("rapture"),   curve: Linear(m: 0.7, b: 0.1)),
+        ],
+        moves: [
+            Stir(who: Speaker,  mood: "rapture", delta: 0.1),
+            Stir(who: Listener, mood: "awe",     delta: 0.07),
+            Stir(who: Listener, mood: "dread",   delta: 0.04),
+        ],
+    ),
+
+    // A cruel taunt-boast — cruelty and contempt fused into a gloating blow
+    (
+        id: "a_cruel_taunt",
+        act: Boast,
+        tags: ["grievance", "cruelty"],
+        weight: 1.1,
+        appeal: [
+            (input: Trait("cruelty"),   curve: Power(exp: 1.4)),
+            (input: OpinionOf,          curve: Inverse),
+            (input: Mood("contempt"),   curve: Linear(m: 0.7, b: 0.1)),
+        ],
+        moves: [
+            Stir(who: Listener, mood: "anger",   delta: 0.14),
+            Stir(who: Listener, mood: "sorrow",  delta: 0.07),
+            Turn(who: Listener, toward: Speaker, delta: -0.1),
+            Grudge(who: Listener, against: Speaker),
+        ],
+    ),
+
+    // A wanderer's call to roam together — two restless souls, one invitation
+    (
+        id: "a_call_to_roam",
+        act: Recruit,
+        tags: ["wandering", "faction"],
+        weight: 0.8,
+        appeal: [
+            (input: Trait("wanderlust"),  curve: Power(exp: 1.4)),
+            (input: Trait("curiosity"),   curve: Linear(m: 0.5, b: 0.1)),
+            (input: OpinionOf,            curve: Linear(m: 0.6, b: 0.1)),
+        ],
+        moves: [
+            Turn(who: Listener, toward: Speaker, delta: 0.08),
+            Stir(who: Listener, mood: "restlessness", delta: 0.09),
+            Sway(who: Listener, trait_name: "wanderlust", delta: 0.03),
+        ],
+    ),
+
+    // A defiant call to resist — waking soul urges another to stand against the Archons
+    (
+        id: "a_call_to_resist",
+        act: Recruit,
+        tags: ["gnosis", "defiance"],
+        weight: 1.2,
+        appeal: [
+            (input: Trait("defiance"),  curve: Power(exp: 1.5)),
+            (input: Trait("gnosis"),    curve: Linear(m: 0.7, b: 0.0)),
+            (input: OpinionOf,          curve: Linear(m: 0.5, b: 0.1)),
+            (input: Mood("anger"),      curve: Linear(m: 0.4, b: 0.0)),
+        ],
+        moves: [
+            Stir(who: Listener, mood: "anger",   delta: 0.1),
+            Stir(who: Listener, mood: "hope",    delta: 0.08),
+            Sway(who: Listener, trait_name: "defiance", delta: 0.04),
+            Turn(who: Listener, toward: Speaker, delta: 0.05),
+        ],
+    ),
+
+    // Accusing of cruelty — naming what was done in plain, damning language
+    (
+        id: "an_accusation_of_cruelty",
+        act: Accuse,
+        tags: ["grievance", "cruelty"],
+        weight: 1.2,
+        appeal: [
+            (input: GrievanceAgainst,    curve: Linear(m: 0.9, b: 0.0)),
+            (input: Trait("compassion"), curve: Linear(m: 0.6, b: 0.1)),
+            (input: Mood("anger"),       curve: Linear(m: 0.6, b: 0.1)),
+        ],
+        moves: [
+            Turn(who: Listener, toward: Speaker, delta: -0.12),
+            Stir(who: Listener, mood: "guilt",   delta: 0.1),
+            Stir(who: Speaker,  mood: "anger",   delta: 0.06),
+        ],
+    ),
+
+    // Accusing of cowardice — contempt for one who flinched when they should have stood
+    (
+        id: "an_accusation_of_cowardice",
+        act: Accuse,
+        tags: ["grievance", "betrayal"],
+        weight: 1.1,
+        appeal: [
+            (input: GrievanceAgainst,    curve: Linear(m: 0.8, b: 0.0)),
+            (input: Trait("defiance"),   curve: Linear(m: 0.5, b: 0.1)),
+            (input: Mood("contempt"),    curve: Linear(m: 0.6, b: 0.1)),
+        ],
+        moves: [
+            Turn(who: Listener, toward: Speaker, delta: -0.1),
+            Stir(who: Listener, mood: "guilt",   delta: 0.09),
+            Stir(who: Speaker,  mood: "contempt", delta: 0.05),
+            Grudge(who: Listener, against: Speaker),
+        ],
+    ),
+
+    // A cold contemptuous threat — no heat, just the flat certainty of harm to come
+    (
+        id: "a_contemptuous_threat",
+        act: Threaten,
+        tags: ["grievance", "coldness"],
+        weight: 1.1,
+        appeal: [
+            (input: Trait("cruelty"),   curve: Linear(m: 0.6, b: 0.1)),
+            (input: OpinionOf,          curve: Inverse),
+            (input: Mood("contempt"),   curve: Power(exp: 1.3)),
+        ],
+        moves: [
+            Stir(who: Listener, mood: "fear",    delta: 0.15),
+            Stir(who: Listener, mood: "dread",   delta: 0.08),
+            Turn(who: Listener, toward: Speaker, delta: -0.07),
+        ],
+    ),
+
+    // A vengeful threat — old wounds demanding their price
+    (
+        id: "a_vengeful_threat",
+        act: Threaten,
+        tags: ["grievance", "vengeance"],
+        weight: 1.2,
+        appeal: [
+            (input: GrievanceAgainst,   curve: Linear(m: 0.9, b: 0.0)),
+            (input: Trait("vengeance"), curve: Power(exp: 1.4)),
+            (input: Mood("anger"),      curve: Linear(m: 0.6, b: 0.1)),
+        ],
+        moves: [
+            Stir(who: Listener, mood: "fear",    delta: 0.18),
+            Stir(who: Speaker,  mood: "anger",   delta: 0.07),
+            Turn(who: Listener, toward: Speaker, delta: -0.09),
+        ],
+    ),
+
+    // Pleading from loneliness — the rawest need: just be here, just stay
+    (
+        id: "a_plea_from_loneliness",
+        act: Plead,
+        tags: ["need", "loneliness"],
+        weight: 1.0,
+        appeal: [
+            (input: Mood("loneliness"),   curve: Power(exp: 1.5)),
+            (input: OpinionOf,            curve: Linear(m: 0.6, b: 0.1)),
+        ],
+        moves: [
+            Stir(who: Speaker,   mood: "loneliness", delta: -0.1),
+            Stir(who: Listener,  mood: "calm",        delta: 0.06),
+            Turn(who: Listener, toward: Speaker,      delta: 0.06),
+        ],
+    ),
+
+    // Begging to be remembered — longing for the life before, and for someone to confirm it was real
+    (
+        id: "a_plea_to_be_remembered",
+        act: Plead,
+        tags: ["need", "nostalgia"],
+        weight: 1.0,
+        appeal: [
+            (input: Mood("longing"),    curve: Power(exp: 1.4)),
+            (input: Mood("nostalgia"),  curve: Linear(m: 0.7, b: 0.1)),
+            (input: SharedHistory,      curve: Linear(m: 0.8, b: 0.0)),
+        ],
+        moves: [
+            Stir(who: Speaker,  mood: "longing",   delta: -0.08),
+            Stir(who: Listener, mood: "nostalgia", delta: 0.1),
+            Stir(who: Listener, mood: "sorrow",    delta: 0.06),
+            Turn(who: Listener, toward: Speaker,   delta: 0.07),
+        ],
+    ),
+
+    // Pleading for compassion — bared vulnerability, asking not to be discarded
+    (
+        id: "a_plea_for_compassion",
+        act: Plead,
+        tags: ["need"],
+        appeal: [
+            (input: Mood("fear"),         curve: Power(exp: 1.3)),
+            (input: Mood("sorrow"),       curve: Linear(m: 0.5, b: 0.1)),
+            (input: Trait("compassion"),  curve: Logistic(mid: 0.5, k: 4.0)),
+            (input: OpinionOf,            curve: Linear(m: 0.5, b: 0.1)),
+        ],
+        moves: [
+            Turn(who: Speaker,  toward: Listener, delta: 0.07),
+            Stir(who: Listener, mood: "hope",      delta: 0.08),
+        ],
+    ),
+
+    // Grief shaded by nostalgia — mourning what was, not just who is gone
+    (
+        id: "a_nostalgic_mourning",
+        act: Mourn,
+        tags: ["grief", "nostalgia"],
+        weight: 0.9,
+        appeal: [
+            (input: Mood("nostalgia"),  curve: Power(exp: 1.3)),
+            (input: Mood("sorrow"),     curve: Linear(m: 0.6, b: 0.1)),
+            (input: SharedHistory,      curve: Linear(m: 0.7, b: 0.0)),
+        ],
+        moves: [
+            Stir(who: Speaker,  mood: "sorrow",    delta: 0.07),
+            Stir(who: Listener, mood: "nostalgia", delta: 0.09),
+            Stir(who: Listener, mood: "longing",   delta: 0.06),
+        ],
+    ),
+
+    // Mourning a soul that forgot — grief for one drowned in oblivion while still walking
+    (
+        id: "a_grief_for_the_sleeping",
+        act: Mourn,
+        tags: ["grief", "oblivion"],
+        weight: 1.0,
+        appeal: [
+            (input: Trait("gnosis"),    curve: Linear(m: 0.7, b: 0.0)),
+            (input: Mood("sorrow"),     curve: Power(exp: 1.2)),
+            (input: Mood("longing"),    curve: Linear(m: 0.5, b: 0.1)),
+        ],
+        moves: [
+            Stir(who: Speaker,  mood: "sorrow",  delta: 0.09),
+            Stir(who: Listener, mood: "dread",   delta: 0.07),
+            Stir(who: Listener, mood: "longing", delta: 0.06),
+        ],
+    ),
+
+    // A lonely lament — grief without a witness, now offered to one who happened to be near
+    (
+        id: "a_lonely_lament",
+        act: Mourn,
+        tags: ["grief", "loneliness"],
+        weight: 0.8,
+        appeal: [
+            (input: Mood("loneliness"), curve: Power(exp: 1.3)),
+            (input: Mood("sorrow"),     curve: Linear(m: 0.7, b: 0.1)),
+        ],
+        moves: [
+            Stir(who: Speaker,  mood: "loneliness", delta: -0.06),
+            Stir(who: Speaker,  mood: "sorrow",     delta: 0.06),
+            Stir(who: Listener, mood: "sorrow",     delta: 0.05),
+        ],
+    ),
+
+    // A compassionate consolation — seeing sorrow and moving toward it without hesitation
+    (
+        id: "a_compassionate_consolation",
+        act: Console,
+        tags: ["warmth", "compassion"],
+        weight: 1.0,
+        appeal: [
+            (input: Trait("compassion"), curve: Power(exp: 1.4)),
+            (input: Mood("sorrow"),      curve: Linear(m: 0.7, b: 0.1)),
+            (input: OpinionOf,           curve: Linear(m: 0.5, b: 0.1)),
+        ],
+        moves: [
+            Stir(who: Listener, mood: "sorrow", delta: -0.09),
+            Stir(who: Listener, mood: "hope",   delta: 0.1),
+            Turn(who: Listener, toward: Speaker, delta: 0.08),
+            Stir(who: Speaker,  mood: "gratitude", delta: 0.05),
+        ],
+    ),
+
+    // You are not forgotten — a gentle word against the abyss of loneliness
+    (
+        id: "a_word_against_forgetting",
+        act: Console,
+        tags: ["warmth", "loneliness"],
+        weight: 0.9,
+        appeal: [
+            (input: Mood("loneliness"),   curve: Power(exp: 1.3)),
+            (input: Trait("compassion"),  curve: Linear(m: 0.6, b: 0.1)),
+            (input: SharedHistory,        curve: Linear(m: 0.6, b: 0.1)),
+        ],
+        moves: [
+            Stir(who: Listener, mood: "loneliness", delta: -0.12),
+            Stir(who: Listener, mood: "hope",       delta: 0.1),
+            Turn(who: Listener, toward: Speaker,    delta: 0.07),
+        ],
+    ),
+
+    // Gratitude-tinged comfort — offering solace from the surplus of one's own relief
+    (
+        id: "a_gratitude_tinged_comfort",
+        act: Console,
+        tags: ["warmth", "gratitude"],
+        weight: 0.8,
+        appeal: [
+            (input: Mood("gratitude"),   curve: Power(exp: 1.2)),
+            (input: Mood("sorrow"),      curve: Linear(m: 0.6, b: 0.0)),
+            (input: OpinionOf,           curve: Linear(m: 0.6, b: 0.1)),
+        ],
+        moves: [
+            Stir(who: Listener, mood: "hope",      delta: 0.09),
+            Stir(who: Listener, mood: "sorrow",    delta: -0.06),
+            Stir(who: Speaker,  mood: "gratitude", delta: -0.05),
+            Turn(who: Listener, toward: Speaker,   delta: 0.06),
+        ],
+    ),
+
+    // Forgiving from compassion — letting the wound close because kindness demands it
+    (
+        id: "a_compassionate_forgiveness",
+        act: Reconcile,
+        tags: ["mercy", "compassion"],
+        weight: 1.0,
+        appeal: [
+            (input: Trait("compassion"),  curve: Power(exp: 1.4)),
+            (input: Trait("forgiveness"), curve: Linear(m: 0.7, b: 0.1)),
+            (input: GrievanceAgainst,     curve: Logistic(mid: 0.4, k: 3.0)),
+        ],
+        moves: [
+            Turn(who: Speaker,  toward: Listener, delta: 0.14),
+            Turn(who: Listener, toward: Speaker,  delta: 0.1),
+            Sway(who: Speaker,  trait_name: "vengeance",  delta: -0.07),
+            Stir(who: Speaker,  mood: "calm",     delta: 0.1),
+            Stir(who: Listener, mood: "gratitude", delta: 0.09),
+        ],
+    ),
+
+    // Two wakers' accord — waking souls recognising each other and putting old friction aside
+    (
+        id: "a_wakers_accord",
+        act: Reconcile,
+        tags: ["mercy", "gnosis"],
+        weight: 1.1,
+        appeal: [
+            (input: Trait("gnosis"),      curve: Power(exp: 1.4)),
+            (input: Trait("forgiveness"), curve: Linear(m: 0.5, b: 0.1)),
+            (input: SharedHistory,        curve: Linear(m: 0.6, b: 0.1)),
+            (input: GrievanceAgainst,     curve: Logistic(mid: 0.5, k: 4.0)),
+        ],
+        moves: [
+            Turn(who: Speaker,  toward: Listener, delta: 0.14),
+            Turn(who: Listener, toward: Speaker,  delta: 0.12),
+            Sway(who: Speaker,  trait_name: "gnosis", delta: 0.03),
+            Stir(who: Speaker,  mood: "hope",  delta: 0.1),
+            Stir(who: Listener, mood: "hope",  delta: 0.08),
+        ],
+    ),
+
+    // Letting an old envy go — envy draining away, replaced by reluctant peace
+    (
+        id: "an_envy_released",
+        act: Reconcile,
+        tags: ["mercy", "envy"],
+        weight: 0.9,
+        appeal: [
+            (input: Mood("envy"),         curve: Logistic(mid: 0.6, k: 4.0)),
+            (input: Trait("forgiveness"), curve: Linear(m: 0.7, b: 0.1)),
+            (input: SharedHistory,        curve: Linear(m: 0.5, b: 0.1)),
+        ],
+        moves: [
+            Stir(who: Speaker,  mood: "envy",    delta: -0.12),
+            Stir(who: Speaker,  mood: "calm",    delta: 0.09),
+            Turn(who: Speaker,  toward: Listener, delta: 0.1),
+            Turn(who: Listener, toward: Speaker,  delta: 0.06),
+        ],
+    ),
+
+    // Humble reconciliation — approaching without pride, hands open
+    (
+        id: "a_humble_reconciliation",
+        act: Reconcile,
+        tags: ["mercy", "humility"],
+        weight: 0.9,
+        appeal: [
+            (input: Trait("humility"),    curve: Power(exp: 1.3)),
+            (input: Trait("forgiveness"), curve: Linear(m: 0.6, b: 0.1)),
+            (input: GrievanceAgainst,     curve: Linear(m: 0.7, b: 0.0)),
+        ],
+        moves: [
+            Turn(who: Speaker,  toward: Listener, delta: 0.15),
+            Turn(who: Listener, toward: Speaker,  delta: 0.1),
+            Stir(who: Speaker,  mood: "calm",      delta: 0.08),
+            Sway(who: Speaker,  trait_name: "pride", delta: -0.04),
+        ],
+    ),
+
+    // A proud dismissal — too important to be bothered; pride is the armour
+    (
+        id: "a_proud_dismissal",
+        act: Deflect,
+        tags: ["esteem", "pride"],
+        weight: 0.8,
+        appeal: [
+            (input: Trait("pride"),  curve: Power(exp: 1.3)),
+            (input: OpinionOf,       curve: Inverse),
+            (input: Prominence,      curve: Linear(m: 0.5, b: 0.1)),
+        ],
+        moves: [
+            Stir(who: Speaker,  mood: "contempt",  delta: 0.04),
+            Turn(who: Listener, toward: Speaker,   delta: -0.04),
+        ],
+    ),
+
+    // A contemptuous brush-off — the listener is not worth the breath
+    (
+        id: "a_contemptuous_brush_off",
+        act: Deflect,
+        tags: ["coldness"],
+        weight: 0.9,
+        appeal: [
+            (input: Mood("contempt"),   curve: Power(exp: 1.4)),
+            (input: OpinionOf,          curve: Inverse),
+            (input: Trait("cruelty"),   curve: Linear(m: 0.4, b: 0.1)),
+        ],
+        moves: [
+            Turn(who: Listener, toward: Speaker, delta: -0.06),
+            Stir(who: Listener, mood: "anger",   delta: 0.08),
+            Stir(who: Speaker,  mood: "contempt", delta: 0.03),
+        ],
+    ),
+
+    // A restless "not now" — the wanderer's spirit won't be pinned down even by a friend
+    (
+        id: "a_restless_deflection",
+        act: Deflect,
+        tags: ["wandering", "coldness"],
+        weight: 0.7,
+        appeal: [
+            (input: Mood("restlessness"), curve: Power(exp: 1.3)),
+            (input: Trait("wanderlust"),  curve: Linear(m: 0.5, b: 0.1)),
+        ],
+        moves: [
+            Stir(who: Speaker,  mood: "restlessness", delta: -0.06),
+            Turn(who: Listener, toward: Speaker,      delta: -0.02),
+        ],
+    ),
 ]
