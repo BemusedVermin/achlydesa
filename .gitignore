@@ -21,3 +21,6 @@ Thumbs.db
 
 # Scratch screenshots dropped at the workspace root
 /*.png
+
+# Generated story transcript from `cargo run -p agents --example story_log`
+/achlydesa_story.txt
