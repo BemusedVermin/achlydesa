@@ -445,8 +445,11 @@ mod tests {
     #[test]
     fn bundled_data_loads_and_resolves() {
         let reg = Registry::bundled();
-        assert_eq!(reg.good_count(), 2);
-        assert_eq!(reg.skill_count(), 2);
+        // The core food economy (grain → bread, farming/baking) is always present; the
+        // bundled set layers more goods/skills on top (the weaver's reed→shroud trade),
+        // so assert the floor, not an exact count.
+        assert!(reg.good_count() >= 2);
+        assert!(reg.skill_count() >= 2);
         let grain = reg.good_id("grain").unwrap();
         let bread = reg.good_id("bread").unwrap();
         let bake = reg.recipes().iter().find(|r| r.name == "bake").unwrap();

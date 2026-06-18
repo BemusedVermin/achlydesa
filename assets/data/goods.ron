@@ -15,4 +15,19 @@
     // of labour between growing and baking) emerges from people's food goals.
     (name: "grain", base_price: 10, target_stock: 40, nutrition: 0.0),
     (name: "bread", base_price: 30, target_stock: 25, nutrition: 45.0),
+    // The weaver's chain (inedible — nutrition 0, so the food economy is untouched): reeds
+    // cut from the standing growth of the fen, woven into the shrouds the dead are wrapped
+    // in. A raw → craft chain exactly like grain → bread, so the same division of labour
+    // (a cutter who sells fibre, a weaver who buys it) can emerge between two trades that
+    // are in truth one calling.
+    (name: "reed-fibre", base_price: 8,  target_stock: 45, nutrition: 0.0),
+    (name: "shroud",     base_price: 34, target_stock: 20, nutrition: 0.0),
+    // More wares the trades make (all inedible — nutrition 0, so bread stays the only food and
+    // the survival loop is untouched). The weaver branches into veils and baskets; the delver's
+    // chain runs ore → ingot → tool.
+    (name: "veil",   base_price: 22, target_stock: 22, nutrition: 0.0),
+    (name: "basket", base_price: 14, target_stock: 30, nutrition: 0.0),
+    (name: "ore",    base_price: 9,  target_stock: 40, nutrition: 0.0),
+    (name: "ingot",  base_price: 24, target_stock: 18, nutrition: 0.0),
+    (name: "tool",   base_price: 50, target_stock: 12, nutrition: 0.0),
 ]

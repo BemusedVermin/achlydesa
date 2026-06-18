@@ -17,4 +17,43 @@
 //
 //   (act: "avenge", modality: Forbidden, defiance: Some("vengeance")),
 //   (act: "avenge", modality: Permitted, when: Some(Relation(predicate: "enthroned", subject: Foe, equals: 1))),
-[]
+//
+// ─────────────────────────────────────────────────────────────────────────────────────
+// THE LAW OF THE ARCHONS — the blind god's order, by which the counterfeit world keeps its
+// souls. This is the deontic spine of achlydesa's myth: under it, *waking is the cardinal
+// sin* and *forgetting a virtue*. It is **dormant by default** — a bare world carries no
+// taboos (Setup uses an empty `Norms`), exactly the project's opt-in discipline — but every
+// clause below resolves against the bundled registry (verbs.ron / predicates.ron /
+// traits.ron), so a scenario plays the myth with `Setup { norms: Norms::bundled(&reg), .. }`.
+// (Left active in the list, not commented: it is valid, shipped content; switching it on is
+// a Setup field, not an edit.)
+// ─────────────────────────────────────────────────────────────────────────────────────
+[
+    // The first taboo, and the heaviest: no soul may wake another. To `awaken` is the one
+    // heresy the seven were set to prevent. The Law presses on every soul — but one who has
+    // already tasted gnosis barely feels it (the crack in the wall the Demiurge cannot seal).
+    (act: "awaken", modality: Forbidden, weight: 1.3, defiance: Some("gnosis")),
+
+    // No soul may climb past the Archons and out of the counterfeit. Ascension is forbidden;
+    // the defiant flout it, which is why so few — and only the defiant — ever rise.
+    (act: "ascend", modality: Forbidden, weight: 1.0, defiance: Some("defiance")),
+
+    // To `free` a soul already chained — to strike off another's mark — is forbidden,
+    // resisted by defiance: the Law would have every hand help hold the wheel, not break it.
+    (act: "free", modality: Forbidden, weight: 0.8, defiance: Some("defiance")),
+
+    // The chaining of souls is the Archons' own work, and the Law *obliges* it of the faithful
+    // wherever a soul has woken: bind the heretic. A duty — it pulls even absent private malice
+    // (the devout simply do it), and lifts the prohibition on binding where it applies.
+    (act: "bind", modality: Obliged, weight: 0.5,
+        when: Some(Relation(predicate: "awakened", subject: Foe, equals: 1))),
+
+    // Killing is broadly forbidden under the Law's false peace (the world must *look* merciful);
+    // the vengeful break it anyway...
+    (act: "avenge", modality: Forbidden, weight: 1.0, defiance: Some("vengeance")),
+    // ...save against one who has woken. The Law *permits* the blood of the heretic, so the mob
+    // that hunts an awakened soul does so righteously and the taboo lifts — persecution wearing
+    // the face of virtue, the Demiurge's signature.
+    (act: "avenge", modality: Permitted,
+        when: Some(Relation(predicate: "awakened", subject: Foe, equals: 1))),
+]

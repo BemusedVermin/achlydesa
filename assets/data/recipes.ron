@@ -37,4 +37,43 @@
         deplete: 0.0,
         effort: 1.0,
     ),
+    // The weaver's trade (skills.ron): cut reeds from the fen, then weave the fibre into a
+    // shroud. A raw → craft chain mirroring farm → bake, so the same emergent division of
+    // labour can arise. Cutting draws on the land's Fertility (the same renewable, widely-
+    // reachable capacity farming does, so a weaver can always find work and never starves
+    // for want of reeds) but does not deplete it. Inedible throughout — money, not food.
+    (
+        name: "cut_reeds",
+        skill: "weaving",
+        inputs: [],
+        outputs: [("reed-fibre", 2)],
+        resource: Some(Fertility),
+        min_resource: 0.05,
+        deplete: 0.0,
+        effort: 1.0,
+    ),
+    (
+        name: "weave_shroud",
+        skill: "weaving",
+        inputs: [("reed-fibre", 2)],
+        outputs: [("shroud", 1)],
+        resource: None,
+        min_resource: 0.0,
+        deplete: 0.0,
+        effort: 1.0,
+    ),
+    // The weaver branches: the same fibre into veils for the dead's faces and baskets for the
+    // living's burdens — one calling, several wares to sell.
+    (name: "weave_veil",   skill: "weaving", inputs: [("reed-fibre", 1)], outputs: [("veil", 1)],
+        resource: None, min_resource: 0.0, deplete: 0.0, effort: 1.0),
+    (name: "weave_basket", skill: "weaving", inputs: [("reed-fibre", 1)], outputs: [("basket", 1)],
+        resource: None, min_resource: 0.0, deplete: 0.0, effort: 1.0),
+    // The delver's three-step chain, all under one calling: draw ore from the rock (depleting
+    // the seam), smelt it to an ingot, forge the ingot into a tool — value rising at each step.
+    (name: "delve", skill: "delving", inputs: [], outputs: [("ore", 2)],
+        resource: Some(Minerals), min_resource: 0.1, deplete: 0.02, effort: 1.5),
+    (name: "smelt", skill: "delving", inputs: [("ore", 2)], outputs: [("ingot", 1)],
+        resource: None, min_resource: 0.0, deplete: 0.0, effort: 1.2),
+    (name: "forge", skill: "delving", inputs: [("ingot", 1)], outputs: [("tool", 1)],
+        resource: None, min_resource: 0.0, deplete: 0.0, effort: 1.2),
 ]

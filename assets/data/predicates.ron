@@ -6,4 +6,17 @@
 [
     "enthroned",
     "alive",
+    // The achlydesan facts — a soul's standing in the Demiurge's order. No *bundled* goal
+    // targets these, so they perturb no economy; they are the vocabulary the Archon Law
+    // (norms.ron) regulates and that scenarios and the deeper layers reason over.
+    "awakened", // has the soul woken to the truth of the world? (gnosis, made fact)
+    "bound",    // is the soul chained to the wheel of fate — marked, in the Archons' ledger?
+    "ascended", // has the soul passed the seven and risen out of the counterfeit?
+    // Further facts the deeper layers (norms, scenarios) reason over — a soul's standing in
+    // the chronicle of the dead.
+    "marked",     // singled out by an Archon's hand — branded for the wheel
+    "hallowed",   // set apart as holy by the cult
+    "cursed",     // damned by name
+    "remembered", // named and held against the forgetting
+    "exiled",     // cast out of every faction and hearth
 ]

@@ -8,4 +8,19 @@
 [
     (name: "rule",   predicate: "enthroned", value: 1),
     (name: "avenge", predicate: "alive",     value: 0),
+    // The achlydesan verbs — deeds the Archon Law (norms.ron) judges, each setting one of
+    // the new predicates on its target. Goals may name them (`(verb: "awaken", target: Me)`)
+    // and norms may forbid or oblige them — the blind god forbids waking and ascending,
+    // and obliges the binding of any soul that has woken.
+    (name: "awaken", predicate: "awakened", value: 1), // rouse a soul to gnosis
+    (name: "bind",   predicate: "bound",    value: 1), // chain a soul to the wheel of fate
+    (name: "free",   predicate: "bound",    value: 0), // strike another's chain off
+    (name: "ascend", predicate: "ascended", value: 1), // rise past the seven Archons
+    // More deeds the deeper layers can regulate or pursue.
+    (name: "mark",     predicate: "marked",     value: 1), // brand a soul for the wheel
+    (name: "hallow",   predicate: "hallowed",   value: 1), // consecrate a soul to the cult
+    (name: "curse",    predicate: "cursed",     value: 1), // damn a soul by name
+    (name: "absolve",  predicate: "cursed",     value: 0), // lift a curse
+    (name: "remember", predicate: "remembered", value: 1), // hold a soul against the forgetting
+    (name: "exile",    predicate: "exiled",     value: 1), // cast a soul out
 ]

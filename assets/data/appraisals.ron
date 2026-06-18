@@ -6,12 +6,19 @@
 //           and a sustained feeling, in turn, slowly reshapes the matching trait.
 // This is an agent's *values*: author them freely.
 [
-    // Tasting power feeds ambition for good, and brings a flush of joy.
-    (event: "Crowned", traits: [("ambition", 0.05)], moods: [("joy", 0.7)]),
-    // Being cast down stirs hot anger; left to smoulder, anger is what — over a
-    // life of being wronged — hardens into a lasting grudge (anger shapes vengeance).
-    (event: "Deposed", moods: [("anger", 0.9)]),
-    // Crossing a line you knew was forbidden hardens you to it: the first taboo
-    // broken makes the next come easier (vengeance up, and so forgiveness down).
-    (event: "Transgressed", traits: [("vengeance", 0.05)]),
+    // Tasting power feeds ambition for good, and brings a flush of joy. In achlydesa a
+    // throne is one of the blind god's gifts: taking it also deepens *devotion* to the
+    // order that granted it, and the joy comes shot through with the cult's manufactured
+    // *rapture* — the sweeter the counterfeit, the more there is to break.
+    (event: "Crowned", traits: [("ambition", 0.05), ("devotion", 0.05)], moods: [("joy", 0.7), ("rapture", 0.4)]),
+    // Being cast down stirs hot anger; left to smoulder, anger is what — over a life of
+    // being wronged — hardens into a lasting grudge (anger shapes vengeance). It also opens
+    // a *despair* that, sustained, wears the soul toward oblivion: the wheel grinds the
+    // fallen toward forgetting.
+    (event: "Deposed", moods: [("anger", 0.9), ("despair", 0.5)]),
+    // Crossing a line you knew was forbidden hardens you to it: the first taboo broken makes
+    // the next come easier (vengeance up, and so forgiveness down). But the Law leaves its
+    // residue — *guilt*, which sustained bends a soul toward submission. That is what the
+    // Archons' law is *for*: not to prevent the sin, but to mark the sinner.
+    (event: "Transgressed", traits: [("vengeance", 0.05)], moods: [("guilt", 0.6)]),
 ]

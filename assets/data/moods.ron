@@ -21,4 +21,44 @@
     (name: "awe",    decay: 0.07, shapes: Some("piety"),       shape_rate: 0.02),
     (name: "hope",   decay: 0.07, opposes: Some("fear"),  shapes: Some("ambition"), shape_rate: 0.01),
     (name: "love",   decay: 0.05, shapes: Some("sociability"), shape_rate: 0.02),
+
+    // ── The achlydesan registers — feelings the counterfeit world breeds and the
+    // director grooms toward the myth. Each rests at zero (so existing seeded worlds stay
+    // byte-identical: a mood is never drawn at birth, only stirred), and a sustained one
+    // slowly settles into the matching disposition (mood → character; see traits.ron).
+    //
+    // dread — the creeping certainty that something is *wrong* with the world. Sharpens
+    // caution; the first faint pull a soul feels before it can name the prison.
+    (name: "dread",   decay: 0.05, shapes: Some("caution"),     shape_rate: 0.01),
+    // despair — the weight of a captivity with no remembered exit. Opposite of hope, it is
+    // what the long years wear into oblivion (the soul stops struggling and forgets).
+    (name: "despair", decay: 0.04, opposes: Some("hope"),       shapes: Some("oblivion"),   shape_rate: 0.02),
+    // rapture — the counterfeit bliss of the cult, the high the temples manufacture (the
+    // sweetness of the dream). It damps despair and deepens devotion: the lovelier the
+    // counterfeit, the harder the waking. The brightest thing the Demiurge stages to break.
+    (name: "rapture", decay: 0.09, opposes: Some("despair"),    shapes: Some("devotion"),   shape_rate: 0.02),
+    // guilt — the mark a broken taboo leaves (the Law's residue). Sustained, it bends a
+    // soul to submission — exactly what the Archons' law is for.
+    (name: "guilt",   decay: 0.06,                              shapes: Some("submission"), shape_rate: 0.01),
+    // longing — the ache for a home the soul cannot name (the Pleroma it fell from, behind
+    // the cup of forgetfulness). It is the seed of waking: a sustained longing quickens
+    // gnosis, the one feeling the Archons cannot fully drown.
+    (name: "longing", decay: 0.05,                              shapes: Some("gnosis"),     shape_rate: 0.015),
+
+    // ── More feelings — a wider weather for souls to move through (all rest at zero, so
+    // existing seeded worlds stay byte-identical; each may settle into a matching trait).
+    (name: "nostalgia",   decay: 0.05,                            shapes: Some("oblivion"),    shape_rate: 0.01),
+    // envy ↔ gratitude — the two faces a soul turns toward what another has.
+    (name: "envy",        decay: 0.07, opposes: Some("gratitude"), shapes: Some("greed"),      shape_rate: 0.01),
+    (name: "gratitude",   decay: 0.06, opposes: Some("envy"),      shapes: Some("contentment"), shape_rate: 0.01),
+    // contempt — the cold dismissal that, sustained, hardens into cruelty.
+    (name: "contempt",    decay: 0.06,                            shapes: Some("cruelty"),     shape_rate: 0.01),
+    // loneliness — the particular ache of a crowd that does not know it is dead; wears toward submission.
+    (name: "loneliness",  decay: 0.04,                            shapes: Some("submission"),  shape_rate: 0.01),
+    // restlessness — the feet that will not be still; the seed of wanderlust.
+    (name: "restlessness", decay: 0.08,                           shapes: Some("wanderlust"),  shape_rate: 0.01),
+    // foreboding — the slower, colder cousin of dread, the sense of a hand about to fall.
+    (name: "foreboding",  decay: 0.05,                            shapes: Some("caution"),     shape_rate: 0.01),
+    // elation — a bright, soaring high (the director loves to stage it, then break it); damps despair.
+    (name: "elation",     decay: 0.10, opposes: Some("despair"),  shapes: Some("pride"),       shape_rate: 0.01),
 ]

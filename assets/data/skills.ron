@@ -7,4 +7,14 @@
 [
     (name: "farming", gain: 0.02, cap: 5.0),
     (name: "baking",  gain: 0.02, cap: 5.0),
+    // The trade of the dead: cutting the grey reeds of the fen and weaving them into the
+    // burial shrouds a purgatory never wants for. A wholly data-defined calling — the
+    // planner finds it like any other, and a "weaver" emerges with no Rust changes. It
+    // feeds money, not bellies (a shroud is inedible), so it never starves the food loop:
+    // a soul must still eat bread.
+    (name: "weaving", gain: 0.02, cap: 5.0),
+    // The delver's trade: drawing ore from the dead rock and working it through to a finished
+    // tool — one calling spanning a three-step chain (delve → smelt → forge), so a division of
+    // labour can emerge *within* a single craft. Inedible, like the weaver's: money, not bread.
+    (name: "delving", gain: 0.02, cap: 5.0),
 ]

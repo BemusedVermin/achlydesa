@@ -44,4 +44,25 @@
         condition: Money(at_least: 200),
         appeal: [ (input: Deficit, curve: Linear(m: 0.5, b: 0.0)) ],
     ),
+
+    // The four wants above are the engine's load-bearing minimum (survival, rest, larder,
+    // savings), and they read only `Deficit` — so a soul's *character* never bends what it
+    // does to stay alive. That is by design: in achlydesa the dream-purgatory's myth is not
+    // told through the daily grind but through the deeper layers. The *thematic* wants — to
+    // WAKE, to ASCEND past the seven, to FREE a bound soul — are authored as verbs
+    // (verbs.ron) the Archon Law (norms.ron) forbids, and as the director's beats; a
+    // scenario that wants them pursued as goals layers them in over the verb grammar, e.g.:
+    //
+    //   (name: "wake",   condition: Verb(verb: "awaken", target: Me),
+    //       appeal: [ (input: Trait("gnosis"),  curve: Power(exp: 1.4)),
+    //                 (input: Mood("longing"),  curve: Linear(m: 0.7, b: 0.1)),
+    //                 (input: Sanction,         curve: Linear(m: -1.0, b: 1.0)),  // the Law cools it
+    //                 (input: Deficit,          curve: Linear(m: 1.0, b: 0.0)) ]),
+    //   (name: "ascend", condition: Verb(verb: "ascend", target: Me),
+    //       appeal: [ (input: Trait("defiance"), curve: Power(exp: 1.3)),
+    //                 (input: Mood("longing"),   curve: Linear(m: 0.6, b: 0.1)),
+    //                 (input: Deficit,           curve: Linear(m: 1.0, b: 0.0)) ]),
+    //
+    // (Left commented so the bundled world is the bare economy the V&V tests expect — the
+    // same opt-in discipline norms.ron follows.)
 ]

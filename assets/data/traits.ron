@@ -23,4 +23,47 @@
     (name: "sociability", baseline: 0.50, spread: 0.20),
     (name: "piety",       baseline: 0.40, spread: 0.20),
     (name: "caution",     baseline: 0.40, spread: 0.20),
+
+    // ── The achlydesan register — a soul's standing toward its own captivity ──────────
+    // Achlydesa is a counterfeit world (the mist over a dying eye), shaped and ruled by a
+    // blind false god and his seven Archons; its souls are the dead who do not know they
+    // have died. These dispositions decide whether a soul sinks into the dream or claws
+    // toward waking. NONE is read by a bundled survival goal, so they perturb no economy —
+    // the deeper layers read them: dialogue, the director's beats (the Demiurge myth), and
+    // the Archon Law in `norms.ron`.
+    //
+    // gnosis ↔ oblivion — the pull to *wake* (to know the world for the prison it is)
+    // against the pull to *forget* (to drink the mist and be content in the counterfeit).
+    // Most are born asleep: gnosis sits low, oblivion high. Sustained `longing` quickens
+    // gnosis; a life of `despair` deepens oblivion (see moods.ron).
+    (name: "gnosis",     baseline: 0.10, spread: 0.10, opposes: Some("oblivion")),
+    (name: "oblivion",   baseline: 0.55, spread: 0.20, opposes: Some("gnosis")),
+    // defiance ↔ submission — whether a soul resists the Archons' order or bows to it. The
+    // defiant flout the Law (norms.ron) where it forbids ascending or freeing the bound.
+    (name: "defiance",   baseline: 0.20, spread: 0.18, opposes: Some("submission")),
+    (name: "submission", baseline: 0.50, spread: 0.20, opposes: Some("defiance")),
+    // devotion — zeal for the blind god and his cult, the fervour the temples manufacture
+    // (cf. `rapture`, the bliss they feed it on). Distinct from `piety`, the quieter awe of
+    // an unseen hand that is the seed of the myth.
+    (name: "devotion",   baseline: 0.30, spread: 0.22),
+
+    // ── More motives — broader dimensions of who a soul is, for the dialogue and director
+    // layers to read. (Still unread by any bundled survival goal, so the economy is untouched.)
+    //
+    // curiosity — the itch to look closer at the seams of the world; a softer kin of gnosis
+    // that doesn't yet know what it is looking for.
+    (name: "curiosity",  baseline: 0.35, spread: 0.20),
+    // wanderlust ↔ rootedness — the pull to roam the mist and find new ground against the
+    // pull to stay, to hold one place against the fog. (The waypoints exist to be sought.)
+    (name: "wanderlust",  baseline: 0.30, spread: 0.20, opposes: Some("rootedness")),
+    (name: "rootedness",  baseline: 0.45, spread: 0.20, opposes: Some("wanderlust")),
+    // cruelty ↔ compassion — whether a soul adds to the world's suffering or eases it. The
+    // Archons' work is cruelty wearing the face of order.
+    (name: "cruelty",     baseline: 0.20, spread: 0.18, opposes: Some("compassion")),
+    (name: "compassion",  baseline: 0.45, spread: 0.20, opposes: Some("cruelty")),
+    // pride ↔ humility — how a soul carries itself before the others and the unseen hand.
+    (name: "pride",       baseline: 0.35, spread: 0.20, opposes: Some("humility")),
+    (name: "humility",    baseline: 0.40, spread: 0.20, opposes: Some("pride")),
+    // zeal — the heat a soul brings to whatever it believes, holy or heretical alike.
+    (name: "zeal",        baseline: 0.25, spread: 0.22),
 ]

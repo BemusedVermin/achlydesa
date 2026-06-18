@@ -386,4 +386,21 @@ mod tests {
             Err(NormError::UnknownVerb(_))
         ));
     }
+
+    #[test]
+    fn the_bundled_archon_law_loads_and_resolves() {
+        // The shipped `norms.ron` carries the (dormant) Law of the Archons — valid,
+        // bundled scenario data, switched on via `Setup { norms: Norms::bundled(&reg), .. }`
+        // rather than active by default. It must parse and resolve against the bundled
+        // registry (its verbs/predicates/traits), and it must encode the cardinal taboo:
+        // waking another soul is forbidden.
+        let reg = Registry::bundled();
+        let law = Norms::bundled(&reg);
+        assert!(!law.0.is_empty(), "the Archon Law should be authored in norms.ron");
+        let s = state(&reg, empty_facts(&reg));
+        assert!(
+            law.sanction(reg.verb("awaken"), &s, &reg, &[]) > 0.0,
+            "under the Law, awakening another should carry a sanction"
+        );
+    }
 }
