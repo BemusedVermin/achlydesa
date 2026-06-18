@@ -268,6 +268,19 @@ struct MoodIds {
     anger: Option<usize>,
     sorrow: Option<usize>,
     fear: Option<usize>,
+    // The achlydesan affect registers (assets/data/moods.ron): `rapture` is the cult's
+    // *manufactured* bliss — the quintessential high the director grooms a soul on, only to
+    // reverse it — and `despair`/`dread` are depths a relief beat lifts. The affect model
+    // must know them, or the director cannot time a climax onto the very high it staged.
+    // Optional, so a registry without these moods reads them as 0 (behaviour unchanged).
+    rapture: Option<usize>,
+    despair: Option<usize>,
+    dread: Option<usize>,
+    /// `elation` is a bright high (the soaring joy the director stages, then breaks);
+    /// `foreboding` a dark low (the cold sense of a hand about to fall). Like the others,
+    /// optional — absent moods read as 0, so the affect model degrades gracefully.
+    elation: Option<usize>,
+    foreboding: Option<usize>,
 }
 
 impl MoodIds {
@@ -281,17 +294,24 @@ impl MoodIds {
             anger: reg.mood_id("anger"),
             sorrow: reg.mood_id("sorrow"),
             fear: reg.mood_id("fear"),
+            rapture: reg.mood_id("rapture"),
+            despair: reg.mood_id("despair"),
+            dread: reg.mood_id("dread"),
+            elation: reg.mood_id("elation"),
+            foreboding: reg.mood_id("foreboding"),
         }
     }
-    /// How *up* the protagonist currently feels — the height a dark beat reverses.
+    /// How *up* the protagonist currently feels — the height a dark beat reverses. Counts
+    /// the manufactured highs `rapture` and `elation` (the bliss/soaring the cult stages, the
+    /// ones it most loves to break).
     fn high(&self, m: &[f32]) -> f32 {
         let g = |i: Option<usize>| i.and_then(|i| m.get(i)).copied().unwrap_or(0.0);
-        g(self.joy) + g(self.hope) + g(self.love) + g(self.awe) + 0.5 * g(self.calm)
+        g(self.joy) + g(self.hope) + g(self.love) + g(self.awe) + g(self.rapture) + g(self.elation) + 0.5 * g(self.calm)
     }
     /// How *down* the protagonist currently feels — the depth a relief beat reverses.
     fn low(&self, m: &[f32]) -> f32 {
         let g = |i: Option<usize>| i.and_then(|i| m.get(i)).copied().unwrap_or(0.0);
-        g(self.anger) + g(self.sorrow) + g(self.fear)
+        g(self.anger) + g(self.sorrow) + g(self.fear) + g(self.despair) + g(self.dread) + g(self.foreboding)
     }
 }
 
@@ -850,7 +870,9 @@ pub(crate) fn director_step(
     let role_entity = |r: Role| slots[r.slot()];
     let mut suffering = 0.0f32;
     let mut brightness = 0.0f32;
-    let bright_mood = |name: &str| matches!(name, "joy" | "calm" | "hope" | "love" | "awe");
+    // `rapture` is bright (the cult's staged ecstasy); `despair`/`dread`/`guilt`/`longing`
+    // fall through as authored anguish, which is what the director should be charged for.
+    let bright_mood = |name: &str| matches!(name, "joy" | "calm" | "hope" | "love" | "awe" | "rapture");
 
     for effect in &beat.effects {
         match effect {
