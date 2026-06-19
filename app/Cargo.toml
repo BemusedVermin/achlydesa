@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 agents = { path = "../agents" }
 game_sim = { path = "../game_sim" }
+config = { path = "../config" }
 bevy = "0.18.1"
 hexx = { workspace = true }
 # The optional on-device dialogue voice (SLM). Default-on; build with

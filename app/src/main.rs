@@ -279,24 +279,40 @@ fn build_world() -> Simulation {
         &reg,
     )
     .unwrap();
-    Simulation::new(Setup {
-        width: 48,
-        height: 36,
-        seed: 7,
-        warmup: 150,
-        // The wild — herds and the packs that hunt them, sorted into the biomes that
-        // suit them. Spawned generously: many die sorting into the harsh world, and
-        // only those on explored tiles are drawn, so the survivors should still be met.
-        fauna: 350,
-        carnivores: 90,
-        npcs: 60,
-        markets: 6,
-        markets_on_settlements: true,
-        dialogue: true,
-        goals,
-        registry: reg,
-        ..Default::default()
-    })
+    // The app owns world generation. Build the large, US-scale `game_sim` world here —
+    // ~1 hex ≈ a day's walk, so crossing the main landmass is multiple months on foot;
+    // few tectonic plates raise a handful of huge continents, and the wider uplift falloff
+    // keeps mountain belts from thinning to ribbons at this scale — then hand it to the
+    // agent simulation via `from_world`. Worldgen itself lives in `game_sim`; `agents` only
+    // drives the substrate it is given. (Starting values — tune to taste.)
+    let (width, height, seed) = (192, 144, 7);
+    let mut params = config::tunables::params();
+    params.plates = 5; // few plates → a few huge continents
+    params.uplift_falloff = 16.0; // wider mountain belts to match the larger scale
+    let world = game_sim::World::generate(width, height, params, seed);
+
+    Simulation::from_world(
+        world,
+        Setup {
+            seed,
+            // A full year-plus, so the running annual biome classifier matures before play:
+            // on this vast continent the climate needs ≥365 days to spin moisture inland and
+            // settle the biomes (at 120 days the world reads as immature near-total desert).
+            warmup: 400,
+            // The wild — herds and the packs that hunt them, sorted into the biomes that
+            // suit them. Spawned generously across the vast map; many die sorting into the
+            // harsh world, and only those on explored tiles are drawn, so survivors are met.
+            fauna: 1000,
+            carnivores: 200,
+            npcs: 300,
+            markets: 12,
+            markets_on_settlements: true,
+            dialogue: true,
+            goals,
+            registry: reg,
+            ..Default::default()
+        },
+    )
 }
 
 // =====================================================================================
