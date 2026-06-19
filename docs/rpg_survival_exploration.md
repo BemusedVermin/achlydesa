@@ -83,10 +83,15 @@ when on); thirst rises with heat/aridity and is slaked by surface water, warmth 
 is halved by a shelter/gear flag, stamina is a non-lethal travel buffer. Constitution + the Survive
 skill blunt the drain; thirst/warmth bottoming out kills an NPC (the avatar is left at the floor for
 the game). The `HungerModel` seam makes grazing tile-dependent (lush land sustains, wastes starve) —
-flat when off, so byte-identical. **Known gap (flagged):** NPCs have no water/shelter-seeking goals
-yet, so a survival-on autonomous world depopulates (demo: 200 → ~16 over 90 days). Enabling survival
-world-wide in the app needs an NPC survival-AI (GOAP goals) first; until then it's a player/party
-layer. Also deferred: party provisioning (feeding companions), gear items (Phase 6).
+flat when off, so byte-identical. Retuned to be **principled and regional**: only true wastes
+(arid) and the cold are lethal — green/wet land slakes thirst (water is where things grow),
+temperate climes never chill and restore warmth, stamina is a refilling travel buffer; survivors
+hold at full vitals. **Known gap (flagged):** NPCs still have no water/shelter-seeking goals, and
+the calibrated world is mostly arid Dune-waste, so a survival-on autonomous population culls to its
+green pockets (demo: 200 → ~21 over 90 days; the survivors thrive). This is the arid-world × no-AI
+interaction, not a tuning bug — so survival stays a **player/party layer** in the app until an NPC
+survival-AI (water/shelter GOAP goals) lands. Also deferred: party provisioning (feeding companions),
+gear items (Phase 6).
 
 **Speech + world-interaction (Phase 4):** dialogue `apply_moves`/`perform` gained `*_scaled`
 variants (move deltas × a persuasion strength; `1.0` = unscaled canon, so existing speech is

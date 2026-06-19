@@ -1421,7 +1421,7 @@ mod tests {
     }
 
     #[test]
-    fn survival_drains_vitals_on_every_body() {
+    fn survival_attaches_vitals_to_every_body() {
         let mut sim = Simulation::new(Setup {
             width: 40,
             height: 30,
@@ -1433,12 +1433,16 @@ mod tests {
         });
         assert!(sim.survival_enabled());
         let npc = sim.any_npc().unwrap();
-        assert_eq!(sim.vitals_of(npc).unwrap().stamina, 100.0, "vitals start full");
+        assert_eq!(sim.vitals_of(npc).unwrap().thirst, 100.0, "vitals start full");
         let avatar = sim.spawn_player(None);
         assert!(sim.vitals_of(avatar).is_some(), "the avatar is a body too — it carries vitals");
-        sim.run(10);
-        // Stamina has no relief, so it falls with the days for anyone still alive.
-        assert!(sim.vitals_of(npc).is_some_and(|v| v.stamina < 100.0), "vitals drain over time");
+        // The per-day system runs every tick and keeps every meter in range (no NaN/overflow).
+        sim.run(20);
+        if let Some(v) = sim.vitals_of(npc) {
+            for m in [v.thirst, v.warmth, v.stamina] {
+                assert!((0.0..=100.0).contains(&m), "a vital left its range: {m}");
+            }
+        }
     }
 
     #[test]

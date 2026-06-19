@@ -33,19 +33,23 @@ impl Vitals {
 /// carries it in `Setup` and inserts it as a resource when the layer is on.
 #[derive(Resource, Clone, Copy, Debug)]
 pub struct SurvivalConfig {
-    /// Base thirst drain per day, and the extra per °C above `heat_ref`.
+    /// Thirst drain per day in an *arid* tile, and the extra per °C above `heat_ref`.
     pub thirst_rate: f32,
     pub heat_ref: f32,
     pub heat_thirst: f32,
-    /// Surface water above which a tile slakes thirst, and the thirst regained standing there.
+    /// A tile has water at hand (so it slakes thirst) if its surface water exceeds
+    /// `water_threshold` **or** its vegetation fraction exceeds `lush_threshold` — water is where
+    /// things grow, so only true wastes parch you. `water_relief` is the thirst regained there.
     pub water_threshold: f32,
+    pub lush_threshold: f32,
     pub water_relief: f32,
-    /// Base warmth drain per day, and the extra per °C below `cold_ref`.
-    pub warmth_rate: f32,
+    /// Warmth drains only below `cold_ref` (temperate climes never chill you), `cold_warmth` per
+    /// °C of cold; a warm tile restores warmth by `warmth_regen`.
     pub cold_ref: f32,
     pub cold_warmth: f32,
-    /// Base stamina drain per day (a non-lethal travel buffer the travel layer spends harder).
-    pub stamina_rate: f32,
+    pub warmth_regen: f32,
+    /// Stamina the daily rest restores toward full (the travel layer spends it harder).
+    pub stamina_recovery: f32,
     /// Mitigation: drain fraction removed per Constitution modifier and per Survive rank, capped
     /// at `max_mitigation`. A hardy, woods-wise body weathers the wastes far longer.
     pub con_offset: f32,
@@ -58,15 +62,16 @@ pub struct SurvivalConfig {
 impl Default for SurvivalConfig {
     fn default() -> Self {
         Self {
-            thirst_rate: 2.0,
+            thirst_rate: 3.0,
             heat_ref: 25.0,
-            heat_thirst: 0.15,
-            water_threshold: 0.2,
-            water_relief: 10.0,
-            warmth_rate: 1.0,
-            cold_ref: 5.0,
-            cold_warmth: 0.25,
-            stamina_rate: 1.0,
+            heat_thirst: 0.2,
+            water_threshold: 0.15,
+            lush_threshold: 0.2,
+            water_relief: 12.0,
+            cold_ref: 2.0,
+            cold_warmth: 0.4,
+            warmth_regen: 10.0,
+            stamina_recovery: 12.0,
             con_offset: 0.10,
             survive_offset: 0.08,
             max_mitigation: 0.6,
@@ -102,22 +107,28 @@ pub fn survival_metabolism(
         let mitigation = (con as f32 * cfg.con_offset + survive as f32 * cfg.survive_offset).clamp(0.0, cfg.max_mitigation);
         let keep = 1.0 - mitigation;
 
-        // Thirst: slaked by standing water, else rising with the heat.
-        if water > cfg.water_threshold {
+        // Thirst: green or wet land has water at hand; only arid wastes parch you, worse in heat.
+        let biomass_frac = (world.plant_biomass(pos.0) / world.params().biomass_max).clamp(0.0, 1.0);
+        if water > cfg.water_threshold || biomass_frac > cfg.lush_threshold {
             v.thirst = (v.thirst + cfg.water_relief).min(100.0);
         } else {
             let drain = cfg.thirst_rate + (temp - cfg.heat_ref).max(0.0) * cfg.heat_thirst;
             v.thirst = (v.thirst - drain * keep).max(0.0);
         }
 
-        // Warmth: falls with the cold; a sheltered / warm-geared body loses it half as fast.
+        // Warmth: only the cold drains it (temperate climes are fine and restore it); a sheltered
+        // or warm-geared body loses it half as fast.
         let cold = (cfg.cold_ref - temp).max(0.0);
-        let sheltered = flags.is_some_and(|f| f.has("sheltered") || f.has("warm_gear"));
-        let warmth_drain = (cfg.warmth_rate + cold * cfg.cold_warmth) * if sheltered { 0.5 } else { 1.0 };
-        v.warmth = (v.warmth - warmth_drain * keep).max(0.0);
+        if cold > 0.0 {
+            let sheltered = flags.is_some_and(|f| f.has("sheltered") || f.has("warm_gear"));
+            let drain = cold * cfg.cold_warmth * if sheltered { 0.5 } else { 1.0 };
+            v.warmth = (v.warmth - drain * keep).max(0.0);
+        } else {
+            v.warmth = (v.warmth + cfg.warmth_regen).min(100.0);
+        }
 
-        // Stamina: a slow, non-lethal drain (the day's toil).
-        v.stamina = (v.stamina - cfg.stamina_rate * keep).max(0.0);
+        // Stamina: the daily rest refills it; the travel layer spends it harder.
+        v.stamina = (v.stamina + cfg.stamina_recovery).min(100.0);
 
         // Death on a lethal meter — NPCs only; the avatar is left at the floor for the game.
         if npc.is_some() && (v.thirst <= cfg.death_floor || v.warmth <= cfg.death_floor) {
