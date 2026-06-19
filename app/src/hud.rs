@@ -103,18 +103,27 @@ pub enum ActionKind {
     Inspect,
     Travel,
     Search,
+    Use,
     Wait,
     Talk,
     Recruit,
 }
-const ACTIONS: [ActionKind; 6] =
-    [ActionKind::Inspect, ActionKind::Travel, ActionKind::Search, ActionKind::Wait, ActionKind::Talk, ActionKind::Recruit];
+const ACTIONS: [ActionKind; 7] = [
+    ActionKind::Inspect,
+    ActionKind::Travel,
+    ActionKind::Search,
+    ActionKind::Use,
+    ActionKind::Wait,
+    ActionKind::Talk,
+    ActionKind::Recruit,
+];
 impl ActionKind {
     fn label(self) -> &'static str {
         match self {
             ActionKind::Inspect => "Inspect",
             ActionKind::Travel => "Travel",
             ActionKind::Search => "Search",
+            ActionKind::Use => "Use",
             ActionKind::Wait => "Wait",
             ActionKind::Talk => "Talk",
             ActionKind::Recruit => "Recruit",
@@ -488,6 +497,7 @@ struct ActionCtx {
     has_sel: bool,
     findable: bool,
     soul_near: bool,
+    can_use: bool,
     in_convo: bool,
 }
 
@@ -498,6 +508,8 @@ fn action_ctx(g: &mut Game) -> ActionCtx {
         has_sel: g.selected.is_some() && g.selected != pos,
         findable: matches!(g.sim.player_find_state(), FindState::Findable),
         soul_near: !g.sim.player_nearby_npcs().is_empty(),
+        // Is there an affordance the avatar can engage where it stands (a POI to *use*)?
+        can_use: !g.sim.affordances_here().is_empty(),
         // A conversation or its who-to-talk-to chooser is modal over the tray.
         in_convo: g.convo.is_some() || g.talk_choices.is_some(),
     }
@@ -511,6 +523,8 @@ fn enabled(c: &ActionCtx, a: ActionKind) -> bool {
         ActionKind::Inspect => true,
         ActionKind::Travel => c.has_sel && !c.traveling,
         ActionKind::Search => !c.traveling && c.findable,
+        // Use engages a smart-object (rest, water, forage, a craft) where the avatar stands.
+        ActionKind::Use => c.can_use && !c.traveling,
         ActionKind::Wait => !c.traveling,
         // Talk opens a conversation even without the voice model — the speak choices are
         // deterministic; only the free-text line needs the model.
@@ -572,6 +586,7 @@ pub fn action_button_click(mut game: NonSendMut<Game>, q: Query<(&ActionButton, 
             }
         }
         ActionKind::Search => crate::do_search(g),
+        ActionKind::Use => crate::do_use(g),
         ActionKind::Wait => crate::do_wait(g),
         ActionKind::Talk => crate::start_talk(g),
         ActionKind::Recruit => crate::do_recruit(g),

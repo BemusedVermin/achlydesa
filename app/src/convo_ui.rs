@@ -404,8 +404,10 @@ pub fn update_talk_chooser(
         .take(TALK_ROWS)
         .map(|&e| {
             let n = game.sim.display_name(e);
-            match game.sim.archetype_of(e) {
-                Some(a) => format!("{n}  —  {a}"),
+            // A soul the director has woven into a story wears its arc here ("the Betrayed"), so the
+            // figures who matter stand out from the crowd; otherwise its archetype.
+            match game.sim.npc_epithet(e).or_else(|| game.sim.archetype_of(e).map(str::to_string)) {
+                Some(tag) => format!("{n}  —  {tag}"),
                 None => n,
             }
         })

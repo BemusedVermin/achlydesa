@@ -310,6 +310,7 @@ fn main() {
             tick_typewriter,
             wait_input,
             search_input,
+            use_input,
             journal_input,
             ui::tile_interact,
             // Diff the explored set once up front; the builders below read this frame's delta + set.
@@ -426,6 +427,12 @@ fn build_world() -> Simulation {
             markets: 12,
             markets_on_settlements: true,
             dialogue: true,
+            // The hidden narrative director shapes drama among the populace as you explore — the
+            // headline of the narrative-surfacing layer (`docs/narrative_surfacing.md`). On by
+            // default; `ACHLYDESA_NODIRECTOR` disables it for plain whole-world exploration. It
+            // biases its casting toward souls near the avatar (`agent_core::director`), so the
+            // drama is something you can walk into rather than something unfolding off-map.
+            director: std::env::var("ACHLYDESA_NODIRECTOR").is_err(),
             // The RPG, party and exploration layers are on for the game: the avatar and every NPC
             // roll Worlds-Without-Number stats; the avatar can recruit companions who travel as a
             // stack; and travel is cost-paced over a road network with terrain/elevation gates.
@@ -776,6 +783,31 @@ fn do_search(g: &mut Game) {
         s.push_str(&format!("  You come to know: {}.", learned.join(", ")));
     }
     g.status = s;
+}
+
+/// **Use** — press **E** to engage the smart-object where you stand: rest at a spring, draw water at
+/// an oasis, work a craft at a hall. The place tends your body where the survival layer lets it, and
+/// the world lives a tick around the act. One action, one tick (like searching or waiting).
+fn use_input(keys: Res<ButtonInput<KeyCode>>, mut game: NonSendMut<Game>) {
+    if game.convo.is_some() || game.paused || !keys.just_pressed(KeyCode::KeyE) {
+        return;
+    }
+    do_use(&mut game);
+}
+
+/// Engage the first affordance the avatar stands on (shared by E and the Use button).
+fn do_use(g: &mut Game) {
+    if g.sim.player_traveling() {
+        return;
+    }
+    let Some((idx, verb)) = g.sim.affordances_here().into_iter().next() else {
+        g.status = "There is nothing here to put your hand to.".into();
+        return;
+    };
+    g.status = match g.sim.player_use_affordance(idx) {
+        Some(outcome) => outcome,
+        None => format!("You move to {verb}, but the moment passes."),
+    };
 }
 
 /// **Journal** — press **J** to open or close the discoveries journal (what you've found and the
@@ -1296,10 +1328,22 @@ fn start_talk(g: &mut Game) {
 /// `ACHLYDESA_CONVO` dev hook). Assembles the card and lets the soul speak first.
 fn open_conversation_with(g: &mut Game, npc: Entity) {
     let name = g.sim.display_name(npc);
+    // The director's investment shows on the name: a thread's figure is met not as "a villager" but
+    // as "Aldric, the Betrayed" — the arc made legible the moment you face them.
+    let titled = match g.sim.npc_epithet(npc) {
+        Some(ep) => format!("{name}, {ep}"),
+        None => name.clone(),
+    };
     let card = npc_card(&mut g.sim, npc);
-    // The soul speaks first. With the voice model up, the opening line is generated from a scene
-    // cue; without it, a neutral opening — so the deterministic speak choices are still reachable.
-    let greeting = if g.voice.is_ready() {
+    // The soul speaks first. The director's drama leads when there is any: the soul's own lately-
+    // forced words (a `Voice` beat, heard where it lands), or a short line naming its plight — so
+    // meeting a thread's figure opens on their story. Else the voice model's scene-cued opening, or
+    // a neutral one so the deterministic speak choices stay reachable without the model.
+    let greeting = if let Some(voiced) = g.sim.npc_voiced_line(npc) {
+        Line { from_player: false, prefix: format!("{name}: "), text: Some(voiced), reveal: 0.0, pending: None }
+    } else if let Some(sit) = g.sim.npc_situation(npc) {
+        Line { from_player: false, prefix: String::new(), text: Some(format!("{name} regards you, {sit}")), reveal: 0.0, pending: None }
+    } else if g.voice.is_ready() {
         g.req_seq += 1;
         let req = g.req_seq;
         let fallback = format!("{name} regards you in silence.");
@@ -1314,7 +1358,7 @@ fn open_conversation_with(g: &mut Game, npc: Entity) {
     } else {
         Line { from_player: false, prefix: format!("{name}: "), text: Some(format!("{name} meets your eyes, and waits.")), reveal: 0.0, pending: None }
     };
-    g.convo = Some(Convo { listener: npc, name: name.clone(), card, transcript: vec![greeting], input: String::new() });
+    g.convo = Some(Convo { listener: npc, name: titled, card, transcript: vec![greeting], input: String::new() });
     g.status = format!("You fall into talk with {name}.");
 }
 

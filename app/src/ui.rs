@@ -206,10 +206,21 @@ pub fn update_tooltip(
 }
 
 /// The detail panel for the selected tile (or a hint when nothing is selected).
-pub fn update_inspect(game: NonSend<Game>, mut q: Query<&mut Text, With<InspectText>>) {
+pub fn update_inspect(mut game: NonSendMut<Game>, mut q: Query<&mut Text, With<InspectText>>) {
     let Ok(mut text) = q.single_mut() else { return };
-    text.0 = match game.selected {
-        Some(c) => detail_text(&game.sim, c),
+    let sel = game.selected;
+    text.0 = match sel {
+        Some(c) => {
+            let mut s = detail_text(&game.sim, c);
+            // Who is here, and what they are about — a place reads as *alive* when you can see the
+            // souls on it and what each is doing (the director's figures wear their arc here too).
+            let souls = game.sim.souls_at(c);
+            if !souls.is_empty() {
+                s.push_str("\n\nhere now:\n");
+                s.push_str(&souls.join("\n"));
+            }
+            s
+        }
         None => "Left-click a tile to inspect it.\nRight-click to travel there.".into(),
     };
 }
