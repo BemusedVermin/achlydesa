@@ -27,8 +27,28 @@ below (travel costs, roads, RPG & survival, world scale). What's deferred within
 - **POI interaction and carts/paid-passage** need the avatar to be an **economic/needs actor** (it has
   no `Inventory`/money yet); invariant-safe payment needs the avatar's coins counted in `total_money()`.
   Shares the player-`Inventory` prerequisite already flagged for the maps slice.
-- **App render polish.** Roads/rivers aren't drawn, there's no mesh chunking for the US-scale map, and
-  the HUD doesn't surface RPG stats / party / vitals / travel cost (fog-of-war bounds rendering for now).
+- **App rendering at US-scale — mesh chunking + incremental markers.** The ground is *one merged
+  mesh* that `rebuild_map` despawns and **fully rebuilds over every explored tile** (`build_ground_mesh`)
+  on each reveal, re-uploading it to the GPU — O(explored), and the explored set only grows on a
+  US-scale map. `rebuild_markers` likewise **despawned and respawned every marker each tick** (the
+  *avatar* was split off 2026-06 into a persistent, camera-smoothed `AvatarFig`; the **NPC markers
+  still rebuild** wholesale each tick), and three render systems each rebuild an O(explored) `HashSet`
+  every tick. At the larger world these grow without bound; `cargo run -p app --release` makes it
+  tolerable for now, but the **durable fix** is: **(1) mesh chunking** — tile the world into fixed
+  blocks, one mesh per block, and rebuild only the *dirty* block(s) when new tiles are revealed;
+  **(2) incremental marker reconciliation** — move/spawn/despawn only what changed (as `sync_fauna`
+  already does for creatures) instead of a full rebuild; **(3) cache the explored set** rather than
+  rebuilding it per-tick in three systems. If that still isn't enough, **decouple `sim.step()` from
+  the render** (step on a worker, render the latest snapshot) — determinism is preserved (still
+  single-threaded, just off the render thread). **Coarse/LOD off-view simulation is explicitly *not*
+  the fix** — it would break the byte-identical determinism invariant and the authoritative living
+  world (off-screen biomes/ecology/NPCs must keep evolving). **(blocks: smooth play once exploration
+  is heavy)**
+- **App render polish (other).** Roads and rivers aren't drawn yet (the `Roads` set + `surface_water`
+  are queryable — `Simulation::road_tiles()` etc.). The character sheet (`C`) now surfaces RPG stats /
+  archetype / skills / gear / vitals / party, but **travel cost** still isn't shown on the HUD, and
+  recruited companions are listed on the sheet rather than rendered as a stack at the avatar's tile.
+  Fog-of-war still bounds what's drawn.
 - **Combat is deferred by design** — a **job-system** + **xianxia power tiers** (the `PowerTier` +
   grant-bundle hooks are reserved for it); combat-tagged Foci are authored but inert. **NPC↔NPC speech
   scaling** is also deferred (avatar speech only for now).

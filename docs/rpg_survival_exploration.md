@@ -233,11 +233,38 @@ metabolize, so Phase 5 survival must let the player provision them.
   byte-identical run + `total_money()` conserved. Docs: `player.md`, `CLAUDE.md` (crate layout, the
   one new RNG const, the day accumulator), `deferred.md`.
 
+## Phase 8 — App access UI + check calibration (2026-06)
+The layers were live in the sim but the front-end exposed none of them; this phase makes them
+playable, and fixes a calibration bug that made the social/party loop impossible.
+
+- **Character sheet** (`C`): a toggled panel (`SheetPanel`) reading the avatar's live state through
+  the sim API — archetype, the six attributes (score + modifier), trained skills (talk/world
+  tagged), gear, vitals, and the party roster. Read-only; the same data NPCs carry.
+- **Speech acts** (`1`–`5`: greet / praise / confide / console / make-peace): a **deterministic,
+  model-free** opinion path. Each is a real authored intent whose `Turn(Listener→Speaker)` move
+  lands scaled by the avatar's speech check, nudging the soul's opinion (no SLM needed). This is
+  how the prioritized **speech skills** are used. `R` recruits the nearest soul — but only once it
+  has been **won over** (recruiting stays disposition-gated; a neutral stranger refuses).
+- **Survival** turned on for the app but **party-scoped** (`Setup.survival_everyone = false`): only
+  the avatar + companions carry `Vitals` and face drain (recruits get them on joining); the general
+  NPC population is untouched (flat hunger, no Vitals) so the arid world doesn't depopulate before
+  the deferred NPC survival-AI exists.
+- **Check calibration — the root fix.** The deterministic check engine used WWN's dice-target
+  difficulties (6/8/10/12) but rolls no 2d6, so *nothing passed* (a maxed human reaches +6 < `NORMAL`
+  8) — speech never landed and recruiting always failed. Added `rpg::DICE_TAKE = 7` (the average 2d6,
+  "taken" not rolled) inside `check()`, so the authored difficulties read as the tabletop's. Then:
+  `speech_strength` uses `EASY` (anyone can be pleasant; skill scales 1.0→1.5 and a strong-willed
+  listener resists), and `PartyConfig::recruit_difficulty` rose to `10` (HARD) so a neutral stranger
+  needs a `+3` social avatar but a *devoted* soul (opinion won up through speech) drops toward EASY.
+  Verified end-to-end (`opinion_demo`): the seed-7 avatar (Convince 0) wins a stranger over with ~7
+  kind words and recruits at opinion ~0.7.
+
 ## Verification
 - After **every phase**: `cargo build` (default + `--no-default-features`) and whole-workspace
   `cargo test` green (off-by-default proof). Per-phase unit tests live in their crate.
-- Per-crate demos: `worldscale_demo`, `rpg_demo`, `party_demo`, `survival_demo`, extended
-  `explore_demo`/`dialogue_demo`. Manual `cargo run -p app --release` on the large world.
+- Per-crate demos: `worldscale_demo`, `rpg_demo`, `party_demo`, `opinion_demo` (the earned
+  speech→recruit loop), `survival_demo`, extended `explore_demo`/`dialogue_demo`. Manual
+  `cargo run -p app --release` on the large world.
 
 ## Deferred
 Combat (job system + xianxia power tiers — `PowerTier`/grant-bundle hooks reserved), combat-Foci
