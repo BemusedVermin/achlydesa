@@ -104,6 +104,7 @@ dependencies = [
  "bevy_tasks",
  "config",
  "game_sim",
+ "party",
  "rpg",
  "sim",
 ]
@@ -5124,6 +5125,13 @@ dependencies = [
  "redox_syscall 0.5.18",
  "smallvec",
  "windows-link 0.2.1",
+]
+
+[[package]]
+name = "party"
+version = "0.1.0"
+dependencies = [
+ "bevy_ecs",
 ]
 
 [[package]]

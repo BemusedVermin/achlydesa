@@ -9,5 +9,6 @@ bevy_ecs = { version = "0.18.1", features = ["multi_threaded"] }
 bevy_tasks = "0.18"
 config = { path = "../config" }
 game_sim = { path = "../game_sim" }
+party = { path = "../party" }
 rpg = { path = "../rpg" }
 sim = { path = "../sim" }

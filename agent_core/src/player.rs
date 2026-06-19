@@ -340,6 +340,9 @@ pub(crate) fn player_travel(
     catalog: Option<Res<FeatureCatalog>>,
     mut features: Option<ResMut<Features>>,
     mut avatars: Query<(&mut Position, &mut Known), With<Player>>,
+    // Party members travel as a stack: snap them to the avatar's tile each step it walks.
+    // Empty when the party layer is off, so a partyless world is byte-identical.
+    mut followers: Query<&mut Position, (With<crate::Follower>, Without<Player>)>,
 ) {
     let state = state.as_mut();
     let Some(avatar) = state.avatar else { return };
@@ -364,6 +367,10 @@ pub(crate) fn player_travel(
             state.destination = None;
             break;
         }
+    }
+    let here = pos.0;
+    for mut fpos in &mut followers {
+        fpos.0 = here;
     }
 }
 

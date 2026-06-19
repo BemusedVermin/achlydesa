@@ -82,6 +82,12 @@ pub struct SimRng(pub SplitMix64);
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Suspended;
 
+/// Marks an agent that moves *with* the avatar — `player_travel` snaps it to the avatar's
+/// tile each step the avatar travels. Used by recruited party members (a stack that follows
+/// the hero). Absent by default, so a world without the party layer is byte-identical.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Follower;
+
 /// How hunger drains in `people_metabolism`. `Flat` (the default) is the original
 /// constant rate, so an economy run is byte-identical; the survival layer flips this to
 /// `TileBiomass` to make sustenance spatial. Held as a resource so the assembler can set

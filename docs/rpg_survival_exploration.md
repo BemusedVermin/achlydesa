@@ -72,7 +72,16 @@ that generates a default world then delegates. Worldgen lives in `game_sim` and 
 whoever owns the world (the app), not bundled into the agent driver.
 
 **Progress:** Phase 0 (agent_core extraction) ✅ byte-identical · Phase 1 (US-scale world + the seam
-above) ✅ · Phase 2 (rpg crate + NPC/avatar wiring, `Setup.rpg`) ✅. Phases 3–7 pending.
+above) ✅ · Phase 2 (rpg crate + NPC/avatar wiring, `Setup.rpg`) ✅ · Phase 3 (party crate +
+`player_recruit`, the `Suspended`/`Follower` agent_core seams, `Setup.party`) ✅. Phases 4–7 pending.
+
+**Seam wiring landed (Phase 3):** `agent_core` gained `Suspended` (skipped by `people_plan`/
+`people_execute` via `Without<Suspended>`) and `Follower` (synced to the avatar's tile in
+`player_travel`) — both byte-identical no-ops when absent. `party` is a tiny self-contained crate
+(`Party` roster, `PartyMember`, `PartyConfig`, `disposition_difficulty`); `agents::player_recruit`
+runs the deterministic Convince/Lead check vs the NPC's opinion and stamps the three markers.
+Deferred to Phase 6: `party_share_with_flag` (the climbing-gate share). Note: party members still
+metabolize, so Phase 5 survival must let the player provision them.
 
 ## Cross-cutting invariant rulings
 

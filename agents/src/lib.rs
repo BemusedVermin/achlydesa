@@ -30,6 +30,8 @@ pub use agent_core::*;
 // types so `app`, the demos and the tests reach them through `agents`. The `rpg::check` engine
 // and `rpg::wwn_mod` are used internally — depend on `rpg` directly to call them.
 pub use rpg::{Abilities, Archetype, CheckOutcome, FociHeld, Flags, PowerTier, Proficiencies, Rolled, RpgData, Save};
+// The party layer (recruited companions that travel with the avatar) is its own crate.
+pub use party::{Party, PartyConfig, PartyMember};
 
 /// Seed for the RPG layer's dedicated RNG stream, kept so the avatar can be rolled from it in
 /// [`Simulation::spawn_player`] (after the NPCs were rolled at construction). Present as a
@@ -127,6 +129,12 @@ pub struct Setup {
     /// default, so a world without it is byte-identical (no components, no resource, no
     /// stream drawn). The social/world-interaction skills it adds are read by later layers.
     pub rpg: bool,
+    /// Wake the **party layer**: let the avatar recruit NPCs (via [`Simulation::player_recruit`])
+    /// into a roster that travels with it as a stack. Needs the RPG layer (the recruit check
+    /// reads the avatar's Convince/Lead). Off by default → byte-identical.
+    pub party: bool,
+    /// Recruitment knobs (base difficulty, disposition weight, size cap).
+    pub party_cfg: PartyConfig,
 }
 
 impl Default for Setup {
@@ -167,6 +175,8 @@ impl Default for Setup {
             dialogue: false,
             dialogue_cfg: config::tunables::dialogue(),
             rpg: false,
+            party: false,
+            party_cfg: PartyConfig::default(),
         }
     }
 }
@@ -299,6 +309,14 @@ impl Simulation {
             }
             world.insert_resource(RpgSeed(rpg_seed));
             world.insert_resource(data);
+        }
+
+        // Wake the party layer, if asked: insert the empty roster and its knobs so the avatar
+        // can recruit. Off → no resources, the Suspended/Follower seams are never set, and a
+        // partyless world is byte-identical.
+        if setup.party {
+            world.insert_resource(party::Party::default());
+            world.insert_resource(setup.party_cfg);
         }
 
         // Wake the narrative director, if asked. Its `enabled` is the OR of the
@@ -780,6 +798,11 @@ impl Simulation {
         self.world.get::<Inventory>(e).map(|i| i.money)
     }
 
+    /// Where an entity stands, if it carries a position.
+    pub fn position_of(&self, e: bevy_ecs::entity::Entity) -> Option<Coord> {
+        self.world.get::<Position>(e).map(|p| p.0)
+    }
+
     /// Whether the RPG layer is awake for this run (NPCs and the avatar carry WWN stats).
     pub fn rpg_enabled(&self) -> bool {
         self.world.get_resource::<RpgData>().is_some()
@@ -811,6 +834,83 @@ impl Simulation {
     pub fn npcs(&mut self) -> Vec<bevy_ecs::entity::Entity> {
         let mut q = self.world.query_filtered::<Entity, With<Npc>>();
         q.iter(&self.world).collect()
+    }
+
+    // --- Party (recruited companions) ---
+
+    /// Attempt to **recruit** an NPC into the avatar's party. The avatar talks them round with a
+    /// deterministic Convince/Lead check — the avatar's Charisma modifier plus the better of those
+    /// two skills, against a difficulty the NPC's opinion of the avatar sets (a friend is easier,
+    /// a foe harder). On success the NPC joins the roster and travels as a stack: it stops acting
+    /// on its own (`Suspended`) and follows the avatar (`Follower`), keeping all its own stats.
+    /// Recruiting is a social action — one tick passes either way. Returns whether they joined;
+    /// `false` (and no tick) if there's no avatar, the target isn't a recruitable NPC, the RPG or
+    /// party layers are off, the target is already a member, or the party is full.
+    pub fn player_recruit(&mut self, listener: bevy_ecs::entity::Entity) -> bool {
+        let Some(avatar) = self.player_avatar() else { return false };
+        if avatar == listener || self.world.get::<Npc>(listener).is_none() {
+            return false;
+        }
+        let Some(cfg) = self.world.get_resource::<PartyConfig>().copied() else { return false };
+        let Some(party) = self.world.get_resource::<Party>() else { return false };
+        if party.contains(listener) || (cfg.max_size != 0 && party.len() >= cfg.max_size) {
+            return false;
+        }
+        // The avatar's social capability: Charisma modifier + the better of Convince / Lead.
+        let (cha_mod, social) = {
+            let (Some(ab), Some(pr), Some(data)) = (
+                self.world.get::<Abilities>(avatar),
+                self.world.get::<Proficiencies>(avatar),
+                self.world.get_resource::<RpgData>(),
+            ) else {
+                return false;
+            };
+            let rank = |name: &str| data.skill_id(name).map(|i| pr.rank(i)).unwrap_or(rpg::PROF_UNSKILLED);
+            (ab.modifier(rpg::CHA), rank("Convince").max(rank("Lead")))
+        };
+        // Disposition: the NPC's standing opinion of the avatar sets the difficulty.
+        let opinion = self.world.get::<Opinion>(listener).map(|o| o.of(avatar)).unwrap_or(0.0);
+        let difficulty = party::disposition_difficulty(&cfg, opinion);
+        let joined = rpg::check(cha_mod, social, 0, difficulty).succeeded();
+        if joined {
+            let since = self.tick();
+            let at = self.player_position();
+            self.world.entity_mut(listener).insert((PartyMember { since }, Suspended, Follower));
+            // Snap them to the avatar's side at once; `player_travel` keeps them there.
+            if let (Some(at), Some(mut p)) = (at, self.world.get_mut::<Position>(listener)) {
+                p.0 = at;
+            }
+            self.world.resource_mut::<Party>().push(listener);
+        }
+        self.step(); // talking someone round spends the turn either way
+        joined
+    }
+
+    /// The avatar's party roster, in recruit order (empty if the party layer is off).
+    pub fn party_roster(&self) -> Vec<bevy_ecs::entity::Entity> {
+        self.world.get_resource::<Party>().map(|p| p.members.clone()).unwrap_or_default()
+    }
+
+    /// How many companions travel with the avatar.
+    pub fn party_size(&self) -> usize {
+        self.world.get_resource::<Party>().map_or(0, |p| p.len())
+    }
+
+    /// Is this entity a recruited member of the avatar's party?
+    pub fn is_party_member(&self, e: bevy_ecs::entity::Entity) -> bool {
+        self.world.get::<PartyMember>(e).is_some()
+    }
+
+    /// **Dismiss** a companion: drop it from the roster and let it resume its own life.
+    pub fn dismiss(&mut self, e: bevy_ecs::entity::Entity) -> bool {
+        if self.world.get::<PartyMember>(e).is_none() {
+            return false;
+        }
+        self.world.entity_mut(e).remove::<(PartyMember, Suspended, Follower)>();
+        if let Some(mut party) = self.world.get_resource_mut::<Party>() {
+            party.remove(e);
+        }
+        true
     }
 
     /// `who`'s opinion of `toward` (`-1..1`; `0` if they have no opinion or no `Opinion`).
@@ -1121,6 +1221,64 @@ mod tests {
             sim.abilities_of(npc).unwrap().scores
         };
         assert_eq!(first_scores(), first_scores(), "same seed → identical rolled stats");
+    }
+
+    // --- Party layer ---
+
+    #[test]
+    fn a_recruited_companion_follows_and_stops_acting() {
+        let mut sim = Simulation::new(Setup {
+            width: 40,
+            height: 30,
+            seed: 2026,
+            npcs: 30,
+            rpg: true,
+            party: true,
+            // Trivial difficulty so the check always passes — this tests the mechanics, not the roll.
+            party_cfg: PartyConfig { recruit_difficulty: -100, ..Default::default() },
+            ..Default::default()
+        });
+        let _avatar = sim.spawn_player(None);
+        let target = sim.any_npc().expect("npcs spawned");
+
+        assert!(sim.player_recruit(target), "the recruit check passes at trivial difficulty");
+        assert!(sim.is_party_member(target) && sim.party_size() == 1);
+        assert_eq!(sim.party_roster(), vec![target]);
+
+        // Snapped to the avatar's side, and — being suspended — it stays there rather than
+        // wandering off on its own as the world ticks on around it.
+        let at = sim.player_position().unwrap();
+        assert_eq!(sim.position_of(target), Some(at), "the companion is at the avatar's side");
+        sim.run(5);
+        assert_eq!(
+            sim.position_of(target),
+            sim.player_position(),
+            "a suspended follower holds station at the avatar",
+        );
+
+        // Dismissing returns it to autonomy.
+        assert!(sim.dismiss(target));
+        assert!(!sim.is_party_member(target) && sim.party_size() == 0);
+    }
+
+    #[test]
+    fn recruiting_is_gated_by_the_check() {
+        // The same world, but an honestly hard difficulty an average avatar can't clear with a
+        // neutral stranger — so the recruit is refused and the party stays empty.
+        let mut sim = Simulation::new(Setup {
+            width: 40,
+            height: 30,
+            seed: 2026,
+            npcs: 30,
+            rpg: true,
+            party: true,
+            party_cfg: PartyConfig { recruit_difficulty: 100, ..Default::default() },
+            ..Default::default()
+        });
+        let _ = sim.spawn_player(None);
+        let target = sim.any_npc().unwrap();
+        assert!(!sim.player_recruit(target), "an impossible check refuses the recruit");
+        assert!(sim.party_size() == 0 && !sim.is_party_member(target));
     }
 
     #[test]
