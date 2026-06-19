@@ -596,6 +596,7 @@ pub(crate) fn people_execute(
     reg: Res<Registry>,
     econ: Res<EconRes>,
     needs_cfg: Res<NeedsRes>,
+    hunger: Option<Res<crate::HungerModel>>,
     mut world_affordances: ResMut<WorldAffordances>,
     mut throne: Option<ResMut<Throne>>,
     mut events: ResMut<EventQueue>,
@@ -631,8 +632,18 @@ pub(crate) fn people_execute(
                 }
             }
             Step::Graze => {
+                // Spatial subsistence under the survival layer: you graze only what the tile bears
+                // (barren wastes give nothing, lush land sustains). Flat relief otherwise — the
+                // unchanged economy default, so a world without survival is byte-identical.
+                let relief = match hunger.as_deref().copied().unwrap_or_default() {
+                    crate::HungerModel::Flat => needs_cfg.eat_grass_relief,
+                    crate::HungerModel::TileBiomass => {
+                        let frac = (substrate.0.plant_biomass(pos.0) / substrate.0.params().biomass_max).clamp(0.0, 1.0);
+                        needs_cfg.eat_grass_relief * frac
+                    }
+                };
                 substrate.0.graze(pos.0, 1.0);
-                needs.sustenance = (needs.sustenance + needs_cfg.eat_grass_relief).min(100.0);
+                needs.sustenance = (needs.sustenance + relief).min(100.0);
                 true
             }
             Step::Rest => {
@@ -841,7 +852,7 @@ pub(crate) fn mood_decay(mut people: Query<&mut Mood, With<Npc>>, reg: Res<Regis
 
 /// Drain needs each step; remove anyone who runs out of sustenance (vacating the
 /// throne if the one who starved was holding it).
-pub(crate) fn people_metabolism(
+pub fn people_metabolism(
     mut commands: Commands,
     mut npcs: Query<(Entity, &mut Needs), With<Npc>>,
     cfg: Res<NeedsRes>,

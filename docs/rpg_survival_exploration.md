@@ -74,7 +74,19 @@ whoever owns the world (the app), not bundled into the agent driver.
 **Progress:** Phase 0 (agent_core extraction) ✅ byte-identical · Phase 1 (US-scale world + the seam
 above) ✅ · Phase 2 (rpg crate + NPC/avatar wiring, `Setup.rpg`) ✅ · Phase 3 (party crate +
 `player_recruit`, the `Suspended`/`Follower` agent_core seams, `Setup.party`) ✅ · Phase 4
-(speech-skill scaling + Notice→sight) ✅. Phases 5–7 pending.
+(speech-skill scaling + Notice→sight) ✅ · Phase 5 (survival crate: Vitals + tile-driven per-day
+drain, the `HungerModel` tile-hunger seam, `Setup.survival`) ✅. Phases 6–7 pending.
+
+**Survival (Phase 5):** new `survival` crate — `Vitals{thirst, warmth, stamina}` on every body,
+drained per day from the tile (`survival_metabolism`, added to the schedule `.before(people_metabolism)`
+when on); thirst rises with heat/aridity and is slaked by surface water, warmth falls with cold and
+is halved by a shelter/gear flag, stamina is a non-lethal travel buffer. Constitution + the Survive
+skill blunt the drain; thirst/warmth bottoming out kills an NPC (the avatar is left at the floor for
+the game). The `HungerModel` seam makes grazing tile-dependent (lush land sustains, wastes starve) —
+flat when off, so byte-identical. **Known gap (flagged):** NPCs have no water/shelter-seeking goals
+yet, so a survival-on autonomous world depopulates (demo: 200 → ~16 over 90 days). Enabling survival
+world-wide in the app needs an NPC survival-AI (GOAP goals) first; until then it's a player/party
+layer. Also deferred: party provisioning (feeding companions), gear items (Phase 6).
 
 **Speech + world-interaction (Phase 4):** dialogue `apply_moves`/`perform` gained `*_scaled`
 variants (move deltas × a persuasion strength; `1.0` = unscaled canon, so existing speech is

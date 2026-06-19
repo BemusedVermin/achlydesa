@@ -32,6 +32,8 @@ pub use agent_core::*;
 pub use rpg::{Abilities, Archetype, CheckOutcome, FociHeld, Flags, PowerTier, Proficiencies, Rolled, RpgData, Save};
 // The party layer (recruited companions that travel with the avatar) is its own crate.
 pub use party::{Party, PartyConfig, PartyMember};
+// The survival layer (per-tile, per-day vital drain on every body) is its own crate.
+pub use survival::{SurvivalConfig, Vitals};
 
 /// Seed for the RPG layer's dedicated RNG stream, kept so the avatar can be rolled from it in
 /// [`Simulation::spawn_player`] (after the NPCs were rolled at construction). Present as a
@@ -135,6 +137,13 @@ pub struct Setup {
     pub party: bool,
     /// Recruitment knobs (base difficulty, disposition weight, size cap).
     pub party_cfg: PartyConfig,
+    /// Wake the **survival layer**: every body (NPCs and the avatar) carries `Vitals` (thirst,
+    /// warmth, stamina) drained per day by the tile it stands on, and grazing yields only what
+    /// the tile bears. Constitution + the Survive skill + gear blunt the drain. Off by default →
+    /// byte-identical. Needs the RPG layer for the skill/stat mitigation (works without it, unblunted).
+    pub survival: bool,
+    /// Survival drain/mitigation knobs.
+    pub survival_cfg: SurvivalConfig,
 }
 
 impl Default for Setup {
@@ -177,6 +186,8 @@ impl Default for Setup {
             rpg: false,
             party: false,
             party_cfg: PartyConfig::default(),
+            survival: false,
+            survival_cfg: SurvivalConfig::default(),
         }
     }
 }
@@ -319,6 +330,21 @@ impl Simulation {
             world.insert_resource(setup.party_cfg);
         }
 
+        // Wake the survival layer, if asked: every NPC carries Vitals, grazing becomes
+        // tile-dependent (the HungerModel seam), and the per-day drain system is added to the
+        // schedule below. Off → no Vitals, no resources, flat hunger — byte-identical.
+        if setup.survival {
+            world.insert_resource(agent_core::HungerModel::TileBiomass);
+            world.insert_resource(setup.survival_cfg);
+            let npcs: Vec<Entity> = {
+                let mut q = world.query_filtered::<Entity, With<people::Npc>>();
+                q.iter(&world).collect()
+            };
+            for e in npcs {
+                world.entity_mut(e).insert(survival::Vitals::default());
+            }
+        }
+
         // Wake the narrative director, if asked. Its `enabled` is the OR of the
         // convenience switch and the config's own flag. When enabled, the first NPC
         // becomes the protagonist it stages drama for; when not, the resources are
@@ -380,8 +406,12 @@ impl Simulation {
         world.insert_resource(setup.appraisals);
         world.insert_resource(events::EventQueue::default());
 
-        // The fixed-order, single-threaded per-step schedule is owned by `agent_core`.
-        let schedule = agent_core::build_schedule();
+        // The fixed-order, single-threaded per-step schedule is owned by `agent_core`; the
+        // survival layer (when on) adds its per-day drain just before the core metabolism.
+        let mut schedule = agent_core::build_schedule();
+        if setup.survival {
+            schedule.add_systems(survival::survival_metabolism.before(agent_core::people::people_metabolism));
+        }
 
         Self { world, schedule }
     }
@@ -678,6 +708,10 @@ impl Simulation {
                 st.set_perceptive(notice >= 2);
             }
         }
+        // The avatar is a body in the world too: give it Vitals when the survival layer is on.
+        if self.world.get_resource::<survival::SurvivalConfig>().is_some() {
+            self.world.entity_mut(avatar).insert(survival::Vitals::default());
+        }
         avatar
     }
 
@@ -958,6 +992,18 @@ impl Simulation {
             party.remove(e);
         }
         true
+    }
+
+    // --- Survival ---
+
+    /// Whether the survival layer is awake (every body carries `Vitals`, drained per day).
+    pub fn survival_enabled(&self) -> bool {
+        self.world.get_resource::<SurvivalConfig>().is_some()
+    }
+
+    /// A body's survival meters (thirst / warmth / stamina), if it carries them.
+    pub fn vitals_of(&self, e: bevy_ecs::entity::Entity) -> Option<&Vitals> {
+        self.world.get::<Vitals>(e)
     }
 
     /// `who`'s opinion of `toward` (`-1..1`; `0` if they have no opinion or no `Opinion`).
@@ -1362,6 +1408,37 @@ mod tests {
         assert_eq!(on.player_sight(), (3 + notice as i32).max(1), "sight tracks Notice");
         assert_eq!(on.player_perceptive(), notice >= 2, "a trained scout (Notice ≥ 2) is perceptive");
         assert!(!off.player_perceptive(), "no RPG layer → not perceptive (active search only)");
+    }
+
+    // --- Survival layer ---
+
+    #[test]
+    fn no_survival_means_no_vitals() {
+        let mut sim = economy(20);
+        assert!(!sim.survival_enabled());
+        let npc = sim.any_npc().unwrap();
+        assert!(sim.vitals_of(npc).is_none(), "no survival layer → no vitals (byte-identical)");
+    }
+
+    #[test]
+    fn survival_drains_vitals_on_every_body() {
+        let mut sim = Simulation::new(Setup {
+            width: 40,
+            height: 30,
+            seed: 2026,
+            npcs: 20,
+            rpg: true,
+            survival: true,
+            ..Default::default()
+        });
+        assert!(sim.survival_enabled());
+        let npc = sim.any_npc().unwrap();
+        assert_eq!(sim.vitals_of(npc).unwrap().stamina, 100.0, "vitals start full");
+        let avatar = sim.spawn_player(None);
+        assert!(sim.vitals_of(avatar).is_some(), "the avatar is a body too — it carries vitals");
+        sim.run(10);
+        // Stamina has no relief, so it falls with the days for anyone still alive.
+        assert!(sim.vitals_of(npc).is_some_and(|v| v.stamina < 100.0), "vitals drain over time");
     }
 
     #[test]
