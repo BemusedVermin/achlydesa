@@ -43,6 +43,34 @@ pub use explore::{ExploreConfig, Gear, Roads};
 #[derive(Resource, Clone, Copy)]
 struct RpgSeed(u64);
 
+/// The short verb phrase the Use action offers for an affordance, by its effect — generic by kind
+/// (the site carries only its effect, not the authored action word), which the feature's own name in
+/// the inspect read-out already colours ("the hot springs", "the oasis").
+fn affordance_verb(effect: agent_core::AffordEffect) -> String {
+    use agent_core::{AffordEffect, Need};
+    match effect {
+        AffordEffect::Relieve { need: Need::Rest, .. } => "rest here".into(),
+        AffordEffect::Relieve { need: Need::Sustenance, .. } => "tend yourself".into(),
+        AffordEffect::Yield { .. } => "work the place".into(),
+        AffordEffect::Teach { .. } => "watch the craft".into(),
+    }
+}
+
+/// A plain-language read of what an NPC pursuing `goal` is *doing*, for the inspect read-out — so a
+/// place reads as peopled and alive rather than as a bare list of names. Unknown goals fall through
+/// to a neutral phrase, so authoring a new goal never breaks the surface.
+fn activity_phrase(goal: &str) -> &'static str {
+    match goal {
+        "sustained" => "looking for food",
+        "rested" => "seeking rest",
+        "stocked" => "laying in stores",
+        "solvent" => "chasing coin",
+        "rule" => "reaching for power",
+        "avenge" => "nursing a grudge",
+        _ => "about its business",
+    }
+}
+
 // --- Scenario ---
 
 /// Everything that defines one run. Defaults to an empty 36×26 world; fill in
@@ -723,6 +751,136 @@ impl Simulation {
     /// The stable epithet a soul is known by in conversation (matches the dialogue log).
     pub fn display_name(&self, e: bevy_ecs::entity::Entity) -> String {
         dialogue::display_name(&self.world, e)
+    }
+
+    /// The arc-aware **honorific** a soul has earned in the director's live threads — "the Betrayed",
+    /// "the Faithless" — or `None` for a soul not woven into a story (or the director asleep).
+    /// Surface flavour for the HUD and conversation; never affects the sim.
+    pub fn npc_epithet(&self, e: bevy_ecs::entity::Entity) -> Option<String> {
+        self.world.get_resource::<Director>()?.epithet_of(e).map(str::to_string)
+    }
+
+    /// The soul's own most-recent **forced line** — words the director lately put in its mouth (a
+    /// `Voice` beat), the manufactured drama *heard* — when one landed within the recent past.
+    /// `None` otherwise. Used to open a conversation on the soul's own voice. Read-only.
+    pub fn npc_voiced_line(&self, e: bevy_ecs::entity::Entity) -> Option<String> {
+        let now = self.substrate().tick();
+        self.dialogue_log()
+            .iter()
+            .rev()
+            .find(|u| u.speaker == e && u.forced && now.saturating_sub(u.tick) <= 40)
+            .map(|u| u.surface.clone())
+    }
+
+    /// A short, present-tense **situational** fragment naming a thread figure's plight ("still raw
+    /// from a trusted friend's turning."), for a conversation to open on as narration. `None` for an
+    /// ordinary soul (or the director asleep). Surface flavour; moves no state.
+    pub fn npc_situation(&self, e: bevy_ecs::entity::Entity) -> Option<String> {
+        self.world.get_resource::<Director>()?.situation_of(e).map(str::to_string)
+    }
+
+    /// The souls standing on tile `c` and what each is about — "Aldric, the Betrayed — chasing coin"
+    /// — so an inspected place reads as *peopled and alive*, not just terrain. Each line is the
+    /// soul's name, any arc honorific, and a plain-language read of the goal it is pursuing.
+    /// Read-only over the world (the query needs `&mut`, as the other inspection accessors do).
+    pub fn souls_at(&mut self, c: Coord) -> Vec<String> {
+        // Collect present NPCs and their current goal index (releasing the query borrow), copy the
+        // goal names out, then turn each into words via the name/epithet accessors.
+        let here: Vec<(bevy_ecs::entity::Entity, Option<usize>)> = {
+            let mut q = self
+                .world
+                .query_filtered::<(bevy_ecs::entity::Entity, &agent_core::Position, &people::Plan), With<people::Npc>>();
+            q.iter(&self.world).filter(|(_, p, _)| p.0 == c).map(|(e, _, plan)| (e, plan.goal)).collect()
+        };
+        let goal_names: Vec<String> = self.world.resource::<Goals>().0.iter().map(|g| g.name.clone()).collect();
+        here.into_iter()
+            .map(|(e, goal)| {
+                let name = self.display_name(e);
+                let titled = match self.npc_epithet(e) {
+                    Some(ep) => format!("{name}, {ep}"),
+                    None => name,
+                };
+                let doing = goal.and_then(|i| goal_names.get(i)).map(|n| activity_phrase(n)).unwrap_or("at rest");
+                format!("{titled} — {doing}")
+            })
+            .collect()
+    }
+
+    /// What the avatar can **do** at the place it stands — the available, discovered affordances on
+    /// its tile, each `(index, verb)` where the verb is a short phrase ("rest here", "tend
+    /// yourself"). Empty when there is nothing to engage. Drives the Use action and its read-out;
+    /// called every frame for the button gate, so it borrows rather than clones the avatar's `Known`.
+    pub fn affordances_here(&self) -> Vec<(usize, String)> {
+        let Some(avatar) = self.world.resource::<player::PlayerState>().avatar() else { return Vec::new() };
+        let Some(at) = self.world.get::<agent_core::Position>(avatar).map(|p| p.0) else { return Vec::new() };
+        let known = self.world.get::<people::Known>(avatar);
+        let aff = self.world.resource::<people::WorldAffordances>();
+        aff.0
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| s.at == at && s.available() && (!s.needs_discovery || known.is_some_and(|k| k.0.contains(&s.tile))))
+            .map(|(i, s)| (i, affordance_verb(s.effect)))
+            .collect()
+    }
+
+    /// **Use the affordance** `idx` where the avatar stands: engage the smart-object (refreshing the
+    /// avatar's body where the survival layer gives it `Vitals`), draw the site down one use, and let
+    /// the world live a tick around the act (one action = one tick). Returns a line describing what
+    /// happened, or `None` if the site is gone, worked out, or out of reach. The avatar is no
+    /// economic agent, so `Yield`/`Teach` sites give only the fiction and the spent moment — full
+    /// participation in the goods/skills economy is a later step (`docs/narrative_surfacing.md`).
+    pub fn player_use_affordance(&mut self, idx: usize) -> Option<String> {
+        let avatar = self.world.resource::<player::PlayerState>().avatar()?;
+        let at = self.world.get::<agent_core::Position>(avatar)?.0;
+        let known = self.world.get::<people::Known>(avatar).map(|k| k.0.clone()).unwrap_or_default();
+        let effect = {
+            let aff = self.world.resource::<people::WorldAffordances>();
+            let s = aff.0.get(idx)?;
+            if s.at != at || !s.available() || (s.needs_discovery && !known.contains(&s.tile)) {
+                return None;
+            }
+            s.effect
+        };
+        let outcome = self.apply_affordance_to_avatar(avatar, effect);
+        if let Some(s) = self.world.resource_mut::<people::WorldAffordances>().0.get_mut(idx) {
+            s.uses += 1;
+            if s.capacity > 0 {
+                s.remaining -= 1.0;
+            }
+        }
+        self.step(); // engaging a place is an action; the world lives a moment on
+        Some(outcome)
+    }
+
+    /// Apply an affordance's effect to the **avatar** where it maps: a relief site refreshes its
+    /// `Vitals` (the survival layer); a `Yield`/`Teach` site the avatar can't truly join gives only
+    /// the fiction. Returns the line to show.
+    fn apply_affordance_to_avatar(&mut self, avatar: bevy_ecs::entity::Entity, effect: agent_core::AffordEffect) -> String {
+        use agent_core::{AffordEffect, Need};
+        match effect {
+            AffordEffect::Relieve { need, .. } => {
+                if let Some(mut v) = self.world.get_mut::<Vitals>(avatar) {
+                    match need {
+                        Need::Rest => {
+                            v.stamina = (v.stamina + 35.0).min(100.0);
+                            v.warmth = (v.warmth + 15.0).min(100.0);
+                        }
+                        Need::Sustenance => {
+                            v.thirst = (v.thirst + 30.0).min(100.0);
+                            v.stamina = (v.stamina + 10.0).min(100.0);
+                        }
+                    }
+                }
+                match need {
+                    Need::Rest => "You take your rest here, and the ache eases from your limbs.".into(),
+                    Need::Sustenance => "You tend your body here; water and forage ease the day's wear.".into(),
+                }
+            }
+            AffordEffect::Yield { .. } => {
+                "You work the place a while — the labour is not yours to keep, but its rhythm steadies you.".into()
+            }
+            AffordEffect::Teach { .. } => "You watch the craft worked here, and something of it stays with you.".into(),
+        }
     }
 
     // --- Exploration: the player avatar (an ordinary body in the world) ---
