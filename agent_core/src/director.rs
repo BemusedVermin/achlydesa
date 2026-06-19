@@ -232,6 +232,80 @@ impl Director {
     pub fn threads(&self) -> &[Thread] {
         &self.threads
     }
+
+    /// The arc-aware **epithet** a soul has earned by being cast in a live thread — "the Betrayed",
+    /// "the Faithless" — or `None` for a soul the director has not yet woven into a story. The
+    /// register of the thread it stars in, and whether it is the lead or the pinned counterpart,
+    /// name it: this is how a prominent soul becomes *legible in the world*, met not as "a villager"
+    /// but as the figure a story turns on. Surface only — never read by the tick.
+    pub fn epithet_of(&self, e: Entity) -> Option<&'static str> {
+        let t = self.threads.iter().find(|t| t.lead == e || t.other == Some(e))?;
+        Some(epithet_for(t.spine, t.lead == e))
+    }
+
+    /// A short, present-tense **opener** naming a thread figure's plight by its register — the
+    /// soul's situation in a single line, for a conversation to open on. `None` for a soul not in a
+    /// live thread. Surface flavour only; moves no state.
+    pub fn situation_of(&self, e: Entity) -> Option<&'static str> {
+        let t = self.threads.iter().find(|t| t.lead == e || t.other == Some(e))?;
+        Some(situation_for(t.spine, t.lead == e))
+    }
+}
+
+/// The authored epithet lexicon (the "authored" half of the naming): a hand-tuned honorific per
+/// register, split by whether the soul is the thread's **lead** or its pinned **other**. Registers
+/// without a tuned pair fall through to a generic "the Storied" — the generated half being the
+/// register/role composition itself.
+fn epithet_for(spine: Register, is_lead: bool) -> &'static str {
+    use Register::*;
+    match (spine, is_lead) {
+        (Betrayal, true) => "the Betrayed",
+        (Betrayal, false) => "the Faithless",
+        (Vengeance, true) => "the Avenger",
+        (Vengeance, false) => "the Hunted",
+        (Ambition, true) => "the Ambitious",
+        (Ambition, false) => "the Rival",
+        (War, true) => "the Warlord",
+        (War, false) => "the Enemy",
+        (Disaster, true) => "the Stricken",
+        (Disaster, false) => "the Bereaved",
+        (Persecution, true) => "the Hunted",
+        (Persecution, false) => "the Persecutor",
+        (Romance, true) => "the Beloved",
+        (Romance, false) => "the Lover",
+        (Triumph, true) => "the Triumphant",
+        (Triumph, false) => "the Eclipsed",
+        (Wonder, true) => "the Seeker",
+        (Wonder, false) => "the Awed",
+        (_, _) => "the Storied",
+    }
+}
+
+/// The matching one-line situational opener — the soul's plight, present-tense, for a conversation
+/// to begin on. Short by design (never a wall of text): the player learns the story by *meeting* it.
+fn situation_for(spine: Register, is_lead: bool) -> &'static str {
+    use Register::*;
+    match (spine, is_lead) {
+        (Betrayal, true) => "still raw from a trusted friend's turning.",
+        (Betrayal, false) => "something unconfessed moving behind its eyes.",
+        (Vengeance, true) => "cold with a purpose it means to see through.",
+        (Vengeance, false) => "watchful, as one who knows it is hunted.",
+        (Ambition, true) => "hungry for a seat it does not yet hold.",
+        (Ambition, false) => "wary of a rival climbing past it.",
+        (War, true) => "hardened by a war it cannot lay down.",
+        (War, false) => "an enemy's shadow never far from its mind.",
+        (Disaster, true) => "hollowed by a ruin that fell on its house.",
+        (Disaster, false) => "grieving a loss the famine took.",
+        (Persecution, true) => "flinching, as the cornered do.",
+        (Persecution, false) => "certain of its right to hound the weak.",
+        (Romance, true) => "lit, for once, by something like joy.",
+        (Romance, false) => "tender toward one it should not love.",
+        (Triumph, true) => "borne up by a triumph still warm.",
+        (Triumph, false) => "smarting, eclipsed by another's rise.",
+        (Wonder, true) => "haunted by a marvel it half-understands.",
+        (Wonder, false) => "awed by something it cannot name.",
+        (_, _) => "a story heavy on its shoulders.",
+    }
 }
 
 impl Default for Director {
@@ -338,6 +412,25 @@ fn region(topo: &Topology, centre: Coord, radius: i32) -> (Vec<Coord>, HashSet<u
     let coords = order.iter().map(|&i| topo.coord(i)).collect();
     (coords, seen, order)
 }
+
+/// Wrapped Chebyshev hex distance (the world wraps east–west) — the cheap proximity the
+/// avatar-draw bias reads to keep the staged drama within the player's reach.
+fn hex_dist(a: Coord, b: Coord, width: i32) -> i32 {
+    let drow = (a.row - b.row).abs();
+    let dcol = {
+        let d = (a.col - b.col).abs();
+        d.min(width - d)
+    };
+    drow.max(dcol)
+}
+
+/// How strongly the director prefers casting near the **avatar** (when one is in the world): a
+/// soul within the stage radius gets this added to its selection score, so the protagonist and the
+/// thread leads — and thus the whole staged season — gather where the player can *encounter* it.
+/// Large enough to dominate prominence/ambition (proximity wins), but ties among the near still
+/// break on prominence. **Avatar-gated**: with no avatar (every headless run) the bonus is never
+/// added, so a player-less run is byte-identical and the director's V&V baseline is untouched.
+const AVATAR_DRAW: f32 = 1000.0;
 
 /// Try to cast every role a beat needs from the protagonist's social world. The thread's
 /// pinned counterpart (`pin`) is seated first into the beat's principal counterpart role,
@@ -563,6 +656,10 @@ pub(crate) fn director_step(
     throne: Option<Res<Throne>>,
     mut director: ResMut<Director>,
     mut dialogue: Option<ResMut<Dialogue>>,
+    // The player avatar (if any) and a read of every body's tile — so the director can draw its
+    // casting toward the avatar. Both inert in a headless run: no avatar → no draw → byte-identical.
+    player: Option<Res<crate::player::PlayerState>>,
+    positions: Query<&Position>,
     protagonist: Query<Entity, With<Protagonist>>,
     mut people: Query<
         (
@@ -585,6 +682,18 @@ pub(crate) fn director_step(
     let tick = substrate.0.tick();
     let proto = protagonist.iter().next();
     let moods = MoodIds::resolve(&reg);
+
+    // Where the player stands, and the per-tile draw toward it (0 with no avatar). This is the
+    // whole avatar-bias: a soul within the stage radius scores `AVATAR_DRAW` higher when the
+    // director picks a protagonist or a thread's lead, so the spotlight gathers near the player.
+    let width = substrate.0.topology().width();
+    let reach = cfg.reach;
+    let avatar_pos: Option<Coord> =
+        player.as_ref().and_then(|p| p.avatar()).and_then(|a| positions.get(a).ok()).map(|p| p.0);
+    let draw = |c: Coord| match avatar_pos {
+        Some(ap) if hex_dist(ap, c, width) <= reach => AVATAR_DRAW,
+        _ => 0.0,
+    };
 
     // --- Read pass: every living person's qualities, owned.
     let amb = reg.trait_id("ambition");
@@ -643,8 +752,10 @@ pub(crate) fn director_step(
             let next = cands
                 .iter()
                 .max_by(|a, b| {
-                    let pa = director.prominence_of(a.e) + a.ambition;
-                    let pb = director.prominence_of(b.e) + b.ambition;
+                    // Prominence + ambition, plus the avatar draw, so the heir to a dead lead is
+                    // chosen near the player when one is about (no avatar → draw 0 → unchanged).
+                    let pa = director.prominence_of(a.e) + a.ambition + draw(a.pos);
+                    let pb = director.prominence_of(b.e) + b.ambition + draw(b.pos);
                     pa.partial_cmp(&pb).unwrap().then(a.e.cmp(&b.e))
                 })
                 .map(|c| c.e);
@@ -659,6 +770,30 @@ pub(crate) fn director_step(
         director.staged_total += director.gratuitous_now as f64;
         return;
     };
+
+    // Draw the *stage* to the player: if the protagonist has wandered well beyond the avatar's
+    // reach and a prominent soul stands near it, move the spotlight there so the headline drama is
+    // encountered rather than unfolding off-map. The 2× hysteresis keeps it from flitting as the
+    // avatar steps about; gated on an avatar, so a player-less run never re-seats (byte-identical).
+    let proto = match (avatar_pos, idx_of.get(&proto)) {
+        (Some(ap), Some(&pi0)) if hex_dist(ap, cands[pi0].pos, width) > 2 * reach.max(1) => {
+            let near = cands
+                .iter()
+                .filter(|c| hex_dist(ap, c.pos, width) <= reach)
+                .max_by(|a, b| director.prominence_of(a.e).partial_cmp(&director.prominence_of(b.e)).unwrap().then(a.e.cmp(&b.e)))
+                .map(|c| c.e);
+            match near {
+                Some(n) if n != proto => {
+                    commands.entity(proto).remove::<Protagonist>();
+                    commands.entity(n).insert(Protagonist);
+                    n
+                }
+                _ => proto,
+            }
+        }
+        _ => proto,
+    };
+
     let Some(&pi) = idx_of.get(&proto) else {
         director.gratuitous_total += director.gratuitous_now as f64;
         director.staged_total += director.gratuitous_now as f64;
@@ -720,9 +855,10 @@ pub(crate) fn director_step(
                 .iter()
                 .filter(|c| !used.contains(&c.e))
                 .max_by(|a, b| {
-                    director
-                        .prominence_of(a.e)
-                        .partial_cmp(&director.prominence_of(b.e))
+                    // The tributary threads, too, gather their leads near the player (draw 0 when
+                    // there is no avatar, so the headless thread-spawn order is unchanged).
+                    (director.prominence_of(a.e) + draw(a.pos))
+                        .partial_cmp(&(director.prominence_of(b.e) + draw(b.pos)))
                         .unwrap()
                         .then(a.e.cmp(&b.e))
                 })
