@@ -72,11 +72,22 @@ pub struct PlayerState {
     /// How many hexes the player sees around itself, and how many it walks per tick.
     sight: i32,
     speed: u32,
+    /// Set by the assembler when the avatar's Notice is keen enough: it then passively spots
+    /// (lore-met) Secret features as it travels, instead of having to stop and actively search.
+    perceptive: bool,
 }
 
 impl PlayerState {
     fn fresh() -> Self {
-        Self { avatar: None, path: VecDeque::new(), destination: None, explored: HashSet::new(), sight: 3, speed: 1 }
+        Self {
+            avatar: None,
+            path: VecDeque::new(),
+            destination: None,
+            explored: HashSet::new(),
+            sight: 3,
+            speed: 1,
+            perceptive: false,
+        }
     }
     /// The avatar entity, if one has been spawned.
     pub fn avatar(&self) -> Option<Entity> {
@@ -120,6 +131,14 @@ impl PlayerState {
     /// The avatar's current sight radius.
     pub fn sight(&self) -> i32 {
         self.sight
+    }
+    /// Whether the avatar passively spots lore-met Secret features as it travels (set from a keen
+    /// Notice skill). Off by default — it must actively `search` to uncover them.
+    pub fn perceptive(&self) -> bool {
+        self.perceptive
+    }
+    pub fn set_perceptive(&mut self, on: bool) {
+        self.perceptive = on;
     }
 }
 
@@ -256,6 +275,28 @@ fn uncover(world: &mut World, avatar: Entity, at: Coord) {
             feat.discover_at_index(cat, here, Discovery::Hidden);
         }
     });
+    // A perceptive avatar (keen Notice) also spots the Secrets it already knows to look for as it
+    // passes — the same lore-gated reveal an active search does, so it never bypasses a lore gate.
+    // Off by default, so a world without the RPG layer reveals exactly what it did before.
+    if world.resource::<PlayerState>().perceptive {
+        let lore = world.resource::<PlayerKnowledge>().lore.clone();
+        let found: Vec<FeatureId> = world.resource_scope::<Features, Vec<FeatureId>>(|w, mut feat| {
+            match w.get_resource::<FeatureCatalog>() {
+                Some(cat) => feat.search_at_index(cat, here, &lore),
+                None => Vec::new(),
+            }
+        });
+        if !found.is_empty() {
+            let reveals: Vec<String> = {
+                let cat = world.resource::<FeatureCatalog>();
+                found.iter().flat_map(|k| cat.def(*k).reveals.iter().cloned()).collect()
+            };
+            let mut kn = world.resource_mut::<PlayerKnowledge>();
+            for r in reveals {
+                kn.lore.insert(r);
+            }
+        }
+    }
     world.resource_mut::<PlayerState>().explored.extend(ring_idx);
 }
 

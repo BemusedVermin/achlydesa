@@ -624,6 +624,11 @@ impl Simulation {
         self.world.resource::<player::PlayerState>().sight()
     }
 
+    /// Whether the avatar passively spots lore-met Secret features as it travels (a keen Notice).
+    pub fn player_perceptive(&self) -> bool {
+        self.world.resource::<player::PlayerState>().perceptive()
+    }
+
     /// The NPCs within the avatar's sight, nearest first — who the player could turn and
     /// speak to. Empty if there is no avatar.
     pub fn player_nearby_npcs(&mut self) -> Vec<(bevy_ecs::entity::Entity, Coord)> {
@@ -664,9 +669,14 @@ impl Simulation {
                 rolled.power,
                 rpg::Archetype(rolled.edge),
             ));
-            // World-interaction skill: a keener Notice reveals more of the map each step.
+            // World-interaction skill: a keener Notice reveals more of the map each step, and a
+            // trained scout (Notice ≥ 2) passively spots the Secrets it already knows to look for.
             let notice = self.proficiency_of(avatar, "Notice").unwrap_or(rpg::PROF_UNSKILLED) as i32;
-            self.world.resource_mut::<player::PlayerState>().set_sight(3 + notice);
+            {
+                let mut st = self.world.resource_mut::<player::PlayerState>();
+                st.set_sight(3 + notice);
+                st.set_perceptive(notice >= 2);
+            }
         }
         avatar
     }
@@ -1350,6 +1360,8 @@ mod tests {
         let avatar = on.spawn_player(None);
         let notice = on.proficiency_of(avatar, "Notice").unwrap();
         assert_eq!(on.player_sight(), (3 + notice as i32).max(1), "sight tracks Notice");
+        assert_eq!(on.player_perceptive(), notice >= 2, "a trained scout (Notice ≥ 2) is perceptive");
+        assert!(!off.player_perceptive(), "no RPG layer → not perceptive (active search only)");
     }
 
     #[test]
