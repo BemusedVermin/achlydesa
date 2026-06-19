@@ -88,6 +88,13 @@ pub struct Suspended;
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Follower;
 
+/// Per-tile **entry cost in days** (≈ a day's forest walk = 1.0), indexed by topology index —
+/// the field the avatar's day-budget travel reads so a road hex is crossed in a fraction of a day
+/// and a mountain hex takes several. Inserted only by the exploration layer; **absent → every hex
+/// costs one day (one hex per tick), so a world without it is byte-identical.**
+#[derive(Resource)]
+pub struct TravelCost(pub Vec<f32>);
+
 /// How hunger drains in `people_metabolism`. `Flat` (the default) is the original
 /// constant rate, so an economy run is byte-identical; the survival layer flips this to
 /// `TileBiomass` to make sustenance spatial. Held as a resource so the assembler can set

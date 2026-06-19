@@ -34,6 +34,8 @@ pub use rpg::{Abilities, Archetype, CheckOutcome, FociHeld, Flags, PowerTier, Pr
 pub use party::{Party, PartyConfig, PartyMember};
 // The survival layer (per-tile, per-day vital drain on every body) is its own crate.
 pub use survival::{SurvivalConfig, Vitals};
+// The exploration layer (roads, gear, weighted/cost-paced travel) — `explore` over the pure `travel`.
+pub use explore::{ExploreConfig, Gear, Roads};
 
 /// Seed for the RPG layer's dedicated RNG stream, kept so the avatar can be rolled from it in
 /// [`Simulation::spawn_player`] (after the NPCs were rolled at construction). Present as a
@@ -144,6 +146,13 @@ pub struct Setup {
     pub survival: bool,
     /// Survival drain/mitigation knobs.
     pub survival_cfg: SurvivalConfig,
+    /// Wake the **exploration layer**: lay a road network between settlements, price travel by
+    /// terrain and slope (a road hex is a fraction of a day, a mountain hex several days), and
+    /// gate steep edges (climbing gear + a proficient share of the party) and deep water (a boat).
+    /// Off by default → byte-identical (BFS travel, one hex per tick).
+    pub exploration: bool,
+    /// Exploration cost-model + climbing-gate knobs.
+    pub explore_cfg: ExploreConfig,
 }
 
 impl Default for Setup {
@@ -188,6 +197,8 @@ impl Default for Setup {
             party_cfg: PartyConfig::default(),
             survival: false,
             survival_cfg: SurvivalConfig::default(),
+            exploration: false,
+            explore_cfg: ExploreConfig::default(),
         }
     }
 }
@@ -343,6 +354,18 @@ impl Simulation {
             for e in npcs {
                 world.entity_mut(e).insert(survival::Vitals::default());
             }
+        }
+
+        // Wake the exploration layer, if asked: lay a road network between the settlements and
+        // build the per-tile travel cost field from it. Off → no Roads/TravelCost, so the avatar
+        // travels BFS at one hex per tick (byte-identical).
+        if setup.exploration {
+            let hubs = features.tiles_of(&setup.features, Category::Community, substrate.topology());
+            let roads = travel::build_roads(&substrate, &setup.explore_cfg.cost, &hubs);
+            let cost = travel::cost_field(&substrate, &setup.explore_cfg.cost, &|i| roads.contains(&i));
+            world.insert_resource(explore::Roads(roads));
+            world.insert_resource(setup.explore_cfg);
+            world.insert_resource(TravelCost(cost));
         }
 
         // Wake the narrative director, if asked. Its `enabled` is the OR of the
@@ -712,6 +735,10 @@ impl Simulation {
         if self.world.get_resource::<survival::SurvivalConfig>().is_some() {
             self.world.entity_mut(avatar).insert(survival::Vitals::default());
         }
+        // Exploration on: the avatar can carry gear (climbing gear, a boat, …) — start empty.
+        if self.world.get_resource::<ExploreConfig>().is_some() {
+            self.world.entity_mut(avatar).insert(Gear::default());
+        }
         avatar
     }
 
@@ -729,13 +756,22 @@ impl Simulation {
         })
     }
 
-    /// Order the avatar to walk to `to`, auto-routing over land. It then advances along the
-    /// route as the world ticks ([`Self::step`]/[`Self::run`]). Returns `false` if there is
-    /// no avatar, or `to` is unreachable on foot (e.g. across water).
+    /// Order the avatar to walk to `to`, auto-routing over land. It then advances along the route
+    /// as the world ticks ([`Self::step`]/[`Self::run`]). With the exploration layer on the route
+    /// is **weighted** — it prefers roads, avoids the steepest ground, and won't cross an edge the
+    /// party can't (a climb without gear + a proficient share, deep water without a boat); cost
+    /// then paces the walk (roads several hexes a day, mountains several days a hex). Returns
+    /// `false` if there is no avatar or `to` is unreachable with the party's capabilities.
     pub fn player_travel_to(&mut self, to: Coord) -> bool {
         let Some(avatar) = self.world.resource::<player::PlayerState>().avatar() else { return false };
         let Some(from) = self.world.get::<Position>(avatar).map(|p| p.0) else { return false };
-        let path = {
+        let path = if let Some(cfg) = self.world.get_resource::<ExploreConfig>().copied() {
+            let caps = self.party_caps(cfg);
+            let roads = self.world.get_resource::<Roads>();
+            let is_road = |i: usize| roads.is_some_and(|r| r.has(i));
+            let gw = &self.world.resource::<Substrate>().0;
+            travel::route(gw, &cfg.cost, &is_road, from, to, caps).map(std::collections::VecDeque::from)
+        } else {
             let mg = self.world.resource::<people::MoveGraph>();
             let gw = &self.world.resource::<Substrate>().0;
             player::path_to(mg, gw.topology(), from, to)
@@ -746,6 +782,26 @@ impl Simulation {
                 true
             }
             None => false,
+        }
+    }
+
+    /// The party's travel capabilities, read across the avatar and its companions: climbing (the
+    /// roster holds climbing gear **and** a `climb_share` fraction carry the `climbing_proficient`
+    /// flag) and a boat (the roster holds one).
+    fn party_caps(&self, cfg: ExploreConfig) -> travel::Caps {
+        let mut roster: Vec<bevy_ecs::entity::Entity> = Vec::new();
+        if let Some(a) = self.player_avatar() {
+            roster.push(a);
+        }
+        if let Some(p) = self.world.get_resource::<Party>() {
+            roster.extend(p.members.iter().copied());
+        }
+        let has_gear = |g: &str| roster.iter().any(|&e| self.world.get::<Gear>(e).is_some_and(|gr| gr.has(g)));
+        let climbers = roster.iter().filter(|&&e| self.world.get::<Flags>(e).is_some_and(|f| f.has("climbing_proficient"))).count();
+        let share = if roster.is_empty() { 0.0 } else { climbers as f32 / roster.len() as f32 };
+        travel::Caps {
+            climbing: has_gear("climbing_gear") && share >= cfg.climb_share,
+            boat: has_gear("boat"),
         }
     }
 
@@ -1004,6 +1060,48 @@ impl Simulation {
     /// A body's survival meters (thirst / warmth / stamina), if it carries them.
     pub fn vitals_of(&self, e: bevy_ecs::entity::Entity) -> Option<&Vitals> {
         self.world.get::<Vitals>(e)
+    }
+
+    // --- Exploration (travel cost, roads, gear) ---
+
+    /// Whether the exploration layer is on (weighted, cost-paced travel; roads; edge gates).
+    pub fn exploration_enabled(&self) -> bool {
+        self.world.get_resource::<ExploreConfig>().is_some()
+    }
+
+    /// Every tile carrying a road (empty if the layer is off) — for a renderer to draw the network.
+    pub fn road_tiles(&self) -> Vec<Coord> {
+        let Some(roads) = self.world.get_resource::<Roads>() else { return Vec::new() };
+        let topo = self.world.resource::<Substrate>().0.topology();
+        roads.0.iter().map(|&i| topo.coord(i)).collect()
+    }
+
+    /// Days to enter a tile under the current cost field (≈1.0 a forest day; roads cheaper, peaks
+    /// dearer). `1.0` when the exploration layer is off.
+    pub fn travel_cost_at(&self, c: Coord) -> f32 {
+        let topo = self.world.resource::<Substrate>().0.topology();
+        self.world.get_resource::<TravelCost>().and_then(|tc| tc.0.get(topo.index_of(c)).copied()).unwrap_or(1.0)
+    }
+
+    /// Give the avatar a piece of gear (`"climbing_gear"`, `"boat"`, `"warm_gear"`, …). Returns
+    /// false if there is no avatar.
+    pub fn player_equip(&mut self, item: &str) -> bool {
+        let Some(avatar) = self.player_avatar() else { return false };
+        let mut em = self.world.entity_mut(avatar);
+        match em.get_mut::<Gear>() {
+            Some(mut g) => {
+                g.0.insert(item.to_string());
+            }
+            None => {
+                em.insert(Gear(std::collections::HashSet::from([item.to_string()])));
+            }
+        }
+        true
+    }
+
+    /// Whether the avatar carries a piece of gear.
+    pub fn player_has_gear(&self, item: &str) -> bool {
+        self.player_avatar().is_some_and(|a| self.world.get::<Gear>(a).is_some_and(|g| g.has(item)))
     }
 
     /// `who`'s opinion of `toward` (`-1..1`; `0` if they have no opinion or no `Opinion`).
@@ -1443,6 +1541,36 @@ mod tests {
                 assert!((0.0..=100.0).contains(&m), "a vital left its range: {m}");
             }
         }
+    }
+
+    // --- Exploration layer (travel cost, roads, gear) ---
+
+    #[test]
+    fn no_exploration_keeps_flat_costless_travel() {
+        let mut sim = economy(20);
+        assert!(!sim.exploration_enabled());
+        assert!(sim.road_tiles().is_empty(), "no roads without the layer");
+        let c = sim.substrate().topology().coord(0);
+        assert_eq!(sim.travel_cost_at(c), 1.0, "no cost field → a flat day per hex (byte-identical)");
+    }
+
+    #[test]
+    fn exploration_lays_roads_paces_travel_and_carries_gear() {
+        let mut sim = Simulation::new(Setup {
+            width: 48,
+            height: 36,
+            seed: 7,
+            npcs: 40,
+            exploration: true,
+            ..Default::default()
+        });
+        let _ = sim.spawn_player(None);
+        assert!(sim.exploration_enabled());
+        assert!(!sim.road_tiles().is_empty(), "roads were laid between the settlements");
+        assert!(sim.road_tiles().iter().any(|&c| sim.travel_cost_at(c) < 1.0), "roads make some tiles the fast lane");
+        // Gear can be equipped — the climbing/boat gates read it.
+        assert!(!sim.player_has_gear("climbing_gear"));
+        assert!(sim.player_equip("climbing_gear") && sim.player_has_gear("climbing_gear"));
     }
 
     #[test]

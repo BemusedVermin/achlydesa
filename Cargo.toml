@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["app", "agent_core", "agents", "config", "game_sim", "party", "rpg", "sim", "survival", "voice"]
+members = ["app", "agent_core", "agents", "config", "explore", "game_sim", "party", "rpg", "sim", "survival", "travel", "voice"]
 
 [workspace.dependencies]
 hexx = "0.24"

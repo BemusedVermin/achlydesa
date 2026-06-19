@@ -1,0 +1,11 @@
+[package]
+name = "travel"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+game_sim = { path = "../game_sim" }
+pathfinding = "4.15"
+
+[dev-dependencies]
+config = { path = "../config" }

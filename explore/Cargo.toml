@@ -1,0 +1,8 @@
+[package]
+name = "explore"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bevy_ecs = { version = "0.18.1", features = ["multi_threaded"] }
+travel = { path = "../travel" }

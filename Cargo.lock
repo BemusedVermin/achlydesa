@@ -103,11 +103,13 @@ dependencies = [
  "bevy_ecs",
  "bevy_tasks",
  "config",
+ "explore",
  "game_sim",
  "party",
  "rpg",
  "sim",
  "survival",
+ "travel",
 ]
 
 [[package]]
@@ -2854,6 +2856,14 @@ checksum = "8be9f3dfaaffdae2972880079a491a1a8bb7cbed0b8dd7a347f668b4150a3b93"
 dependencies = [
  "event-listener",
  "pin-project-lite",
+]
+
+[[package]]
+name = "explore"
+version = "0.1.0"
+dependencies = [
+ "bevy_ecs",
+ "travel",
 ]
 
 [[package]]
@@ -6766,6 +6776,15 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "travel"
+version = "0.1.0"
+dependencies = [
+ "config",
+ "game_sim",
+ "pathfinding",
 ]
 
 [[package]]

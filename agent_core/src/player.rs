@@ -75,6 +75,8 @@ pub struct PlayerState {
     /// Set by the assembler when the avatar's Notice is keen enough: it then passively spots
     /// (lore-met) Secret features as it travels, instead of having to stop and actively search.
     perceptive: bool,
+    /// Carried fractional day-budget for cost-paced travel (the exploration layer); `0` otherwise.
+    travel_residual: f32,
 }
 
 impl PlayerState {
@@ -87,6 +89,7 @@ impl PlayerState {
             sight: 3,
             speed: 1,
             perceptive: false,
+            travel_residual: 0.0,
         }
     }
     /// The avatar entity, if one has been spawned.
@@ -389,6 +392,8 @@ pub(crate) fn player_travel(
     substrate: Res<Substrate>,
     catalog: Option<Res<FeatureCatalog>>,
     mut features: Option<ResMut<Features>>,
+    mut knowledge: ResMut<PlayerKnowledge>,
+    cost: Option<Res<crate::TravelCost>>,
     mut avatars: Query<(&mut Position, &mut Known), With<Player>>,
     // Party members travel as a stack: snap them to the avatar's tile each step it walks.
     // Empty when the party layer is off, so a partyless world is byte-identical.
@@ -401,23 +406,63 @@ pub(crate) fn player_travel(
     }
     let Ok((mut pos, mut known)) = avatars.get_mut(avatar) else { return };
     let topo = substrate.0.topology();
-    let (sight, speed) = (state.sight, state.speed.max(1));
-    for _ in 0..speed {
-        let Some(next) = state.path.pop_front() else { break };
+    let sight = state.sight;
+
+    // How far to advance this tick. With a cost field (exploration layer), spend a day's budget —
+    // plus any carried residual — crossing hexes by their day-cost: roads several per day, a
+    // mountain hex over several days. Without one, the classic one (or `speed`) hex per tick, so a
+    // world without the layer is byte-identical.
+    let steps: Vec<Coord> = match cost.as_deref() {
+        Some(tc) => {
+            state.travel_residual += 1.0;
+            let mut hexes = Vec::new();
+            while let Some(&next) = state.path.front() {
+                let c = tc.0.get(topo.index_of(next)).copied().unwrap_or(1.0).max(0.01);
+                if state.travel_residual + 1e-6 >= c {
+                    state.travel_residual -= c;
+                    hexes.push(state.path.pop_front().unwrap());
+                } else {
+                    break;
+                }
+            }
+            hexes
+        }
+        None => {
+            let mut hexes = Vec::new();
+            for _ in 0..state.speed.max(1) {
+                match state.path.pop_front() {
+                    Some(n) => hexes.push(n),
+                    None => break,
+                }
+            }
+            hexes
+        }
+    };
+
+    for next in steps {
         pos.0 = next;
         let i = topo.index_of(next);
         known.0.insert(i);
         if let (Some(cat), Some(feat)) = (catalog.as_deref(), features.as_deref_mut()) {
             feat.discover_at_index(cat, i, Discovery::Hidden);
+            // A perceptive avatar spots lore-met Secrets as it passes (knowledge-gated, never a
+            // bypass) — the same reveal `uncover` does at spawn, now along the road too.
+            if state.perceptive {
+                for k in feat.search_at_index(cat, i, &knowledge.lore) {
+                    for r in cat.def(k).reveals.iter() {
+                        knowledge.lore.insert(r.clone());
+                    }
+                }
+            }
         }
         for c in ring(topo, next, sight) {
             state.explored.insert(topo.index_of(c));
         }
-        if state.path.is_empty() {
-            state.destination = None;
-            break;
-        }
     }
+    if state.path.is_empty() {
+        state.destination = None;
+    }
+
     let here = pos.0;
     for mut fpos in &mut followers {
         fpos.0 = here;

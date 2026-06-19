@@ -75,7 +75,22 @@ whoever owns the world (the app), not bundled into the agent driver.
 above) ✅ · Phase 2 (rpg crate + NPC/avatar wiring, `Setup.rpg`) ✅ · Phase 3 (party crate +
 `player_recruit`, the `Suspended`/`Follower` agent_core seams, `Setup.party`) ✅ · Phase 4
 (speech-skill scaling + Notice→sight) ✅ · Phase 5 (survival crate: Vitals + tile-driven per-day
-drain, the `HungerModel` tile-hunger seam, `Setup.survival`) ✅. Phases 6–7 pending.
+drain, the `HungerModel` tile-hunger seam, `Setup.survival`) ✅ · Phase 6 (travel + explore crates: weighted
+cost-paced travel, roads, edge gates, gear; `Setup.exploration`) ✅. Phase 7 pending.
+
+**Travel + exploration (Phase 6):** new pure **`travel`** crate (cost model: a forest hex ≈ a day,
+roads ×0.35, wastes/rainforest dearer, slope adds; weighted Dijkstra route; greedy road-tree
+builder; climbing/boat edge gates) and a thin **`explore`** crate (`Roads`, `Gear`, `ExploreConfig`).
+`agent_core` gained a `TravelCost` field + a **day-budget** in `player_travel` (roads → several hexes
+a day, a mountain hex → several days; `PlayerState.travel_residual` carries the fraction) — absent ⇒
+one hex per tick, byte-identical. `agents` lays the road network between settlements at world-gen,
+routes the avatar with `travel::route` honoring the **party's capabilities** (climbing gear + a
+`climb_share` of the roster carrying `climbing_proficient`; a boat for deep water), and exposes
+`player_equip`/`road_tiles`/`travel_cost_at`. Also **fixed a Phase-4 gap**: the perceptive Secret
+reveal now fires while travelling, not only at spawn. **Deferred (flagged):** POI *interaction* and
+carts/paid-passage — both need the avatar to be an economic/needs actor (it has no inventory/money
+yet), and invariant-safe payment needs the avatar's coins counted in `total_money()`. River
+mechanics beyond the boat gate also deferred.
 
 **Survival (Phase 5):** new `survival` crate — `Vitals{thirst, warmth, stamina}` on every body,
 drained per day from the tile (`survival_metabolism`, added to the schedule `.before(people_metabolism)`
