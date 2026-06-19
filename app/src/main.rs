@@ -18,20 +18,21 @@ use agents::{Coord, FindState, Goals, Registry, Setup, Simulation};
 use bevy::asset::AssetPlugin;
 use bevy::input::ButtonState;
 use bevy::input::keyboard::{Key, KeyboardInput};
-use bevy::input::mouse::AccumulatedMouseScroll;
+use bevy::input::mouse::{AccumulatedMouseMotion, AccumulatedMouseScroll};
 use bevy::prelude::*;
 use bevy::render::view::screenshot::{save_to_disk, Screenshot};
 use bevy::text::Font;
 use bevy::ui::widget::{ImageNode, NodeImageMode};
 use bevy::ui::{BorderRadius, BoxShadow, GlobalZIndex};
 use bevy::window::WindowResolution;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use app::theme::{self, ThemeFonts};
 
 mod convo_ui;
 mod fauna_art;
 mod feature_art;
+mod ground;
 mod hud;
 mod layout;
 mod mesh;
@@ -136,7 +137,6 @@ struct Game {
     /// The smoothed world position the camera and the avatar figure glide toward — eased each
     /// frame to the tile the avatar stands on, so movement reads as a walk, not a hex-step.
     avatar_render: Vec3,
-    last_explored: usize,
     last_tick: u64,
     /// The world tick the rendered fauna were last synced to (so creatures only
     /// re-target when the world has actually moved).
@@ -169,9 +169,15 @@ struct Game {
     sheet_subject: Option<Entity>,
     /// The cursor row within the System tab (Resume/Quit).
     sys_cursor: usize,
-    /// The explored-tile count the pause-menu Map tab was last rendered for — so it only
-    /// re-renders when the fog has actually lifted from new ground.
-    last_map_explored: usize,
+    /// The Map tab's view: the world point at the frame's centre, the zoom (world units per pixel),
+    /// and whether a drag is in progress. Re-centred on the avatar each time the tab opens, then
+    /// pannable by dragging and zoomable by scroll.
+    map_center: Vec2,
+    map_zoom: f32,
+    map_dragging: bool,
+    /// A key of what the Map tab was last rendered for (centre, zoom, explored count), so it only
+    /// re-renders when the view or the fog actually changed.
+    last_map_render: Option<(i32, i32, i32, usize)>,
     /// The explored count + avatar tile the always-on HUD minimap was last drawn for, so it only
     /// re-renders when new ground is uncovered or the avatar moves (the pip follows).
     last_hud_explored: usize,
@@ -251,7 +257,6 @@ fn main() {
         sim,
         avatar_pos,
         avatar_render,
-        last_explored: usize::MAX,
         last_tick: u64::MAX,
         last_fauna_tick: u64::MAX,
         accum: 0.0,
@@ -268,7 +273,10 @@ fn main() {
         menu_tab: std::env::var("ACHLYDESA_TAB").ok().and_then(|s| s.parse().ok()).unwrap_or(0),
         sheet_subject: None,
         sys_cursor: 0,
-        last_map_explored: usize::MAX,
+        map_center: Vec2::ZERO,
+        map_zoom: MAP_WPP_DEFAULT,
+        map_dragging: false,
+        last_map_render: None,
         last_hud_explored: usize::MAX,
         last_hud_avatar: Coord::new(i32::MIN, i32::MIN),
     };
@@ -304,7 +312,9 @@ fn main() {
             search_input,
             journal_input,
             ui::tile_interact,
-            rebuild_map,
+            // Diff the explored set once up front; the builders below read this frame's delta + set.
+            ground::track_explored,
+            ground::rebuild_ground,
             scatter_props,
             build_features,
             rebuild_markers,
@@ -335,7 +345,7 @@ fn main() {
     // The pause layer: Esc/back + menu nav run *before* `talk_input` (which also reads Esc, to
     // leave a conversation), then the overlay's visibility + the dev screenshot hook.
     .add_systems(Update, (pause_input, menu_input).chain().before(talk_input))
-    .add_systems(Update, (update_menu, update_map, hide_overlays_when_paused, dev_capture, dev_open_convo, dev_talk_pick))
+    .add_systems(Update, (update_menu, update_map, map_drag, hide_overlays_when_paused, dev_capture, dev_open_convo, dev_talk_pick, dev_walk))
     // The framed HUD: keep the whole frame scaled to the window, then refresh the trays.
     .add_systems(
         Update,
@@ -350,6 +360,10 @@ fn main() {
             hud::portrait_click,
         ),
     )
+    .init_resource::<ground::Ground>()
+    .init_resource::<ground::Explored>()
+    .init_resource::<ui::LabelCache>()
+    .init_resource::<NpcMarkers>()
     .init_resource::<CaptureClock>();
     app.world_mut().insert_non_send_resource(game);
     app.run();
@@ -387,7 +401,9 @@ fn build_world() -> Simulation {
     // keeps mountain belts from thinning to ribbons at this scale — then hand it to the
     // agent simulation via `from_world`. Worldgen itself lives in `game_sim`; `agents` only
     // drives the substrate it is given. (Starting values — tune to taste.)
-    let (width, height, seed) = (192, 144, 7);
+    // Dev knobs to isolate the per-tick cost (default to the shipping values).
+    let env = |k: &str, d: usize| std::env::var(k).ok().and_then(|s| s.parse().ok()).unwrap_or(d);
+    let (width, height, seed) = (env("ACHLYDESA_W", 192) as i32, env("ACHLYDESA_H", 144) as i32, 7);
     let mut params = config::tunables::params();
     params.plates = 5; // few plates → a few huge continents
     params.uplift_falloff = 16.0; // wider mountain belts to match the larger scale
@@ -404,9 +420,9 @@ fn build_world() -> Simulation {
             // The wild — herds and the packs that hunt them, sorted into the biomes that
             // suit them. Spawned generously across the vast map; many die sorting into the
             // harsh world, and only those on explored tiles are drawn, so survivors are met.
-            fauna: 1000,
-            carnivores: 200,
-            npcs: 300,
+            fauna: env("ACHLYDESA_FAUNA", 1000),
+            carnivores: env("ACHLYDESA_CARN", 200),
+            npcs: env("ACHLYDESA_NPCS", 300),
             markets: 12,
             markets_on_settlements: true,
             dialogue: true,
@@ -422,11 +438,27 @@ fn build_world() -> Simulation {
             // on their own — the world-wide variant (`survival_everyone: true`) waits on that AI.
             survival: true,
             survival_everyone: false,
+            // Level-of-detail: NPCs within this many hexes of the avatar simulate in full every
+            // tick; farther ones run on a coarse clock (one tick in `sim_far_stride`), so a heavily
+            // peopled world stays smooth as you walk while the distant populace still lives, slowly.
+            // The director sees every soul each tick, so drama is intact. `ACHLYDESA_LOD=N` sets the
+            // radius (`off` disables); `ACHLYDESA_STRIDE=N` sets the coarse stride.
+            sim_radius: lod_radius(),
+            sim_far_stride: std::env::var("ACHLYDESA_STRIDE").ok().and_then(|s| s.parse().ok()).unwrap_or(12),
             goals,
             registry: reg,
             ..Default::default()
         },
     )
+}
+
+/// The level-of-detail radius for the app, overridable with `ACHLYDESA_LOD` (`off` to disable).
+fn lod_radius() -> Option<i32> {
+    match std::env::var("ACHLYDESA_LOD") {
+        Ok(s) if s.eq_ignore_ascii_case("off") => None,
+        Ok(s) => s.parse().ok().or(Some(26)),
+        Err(_) => Some(26),
+    }
 }
 
 // =====================================================================================
@@ -455,7 +487,6 @@ fn setup(
     // One procedural creature mesh per species, sharing the matte vertex-colour material.
     let fauna_art = fauna_art::build_fauna_art(&mut meshes, map_mat.clone(), game.sim.bestiary());
     commands.insert_resource(fauna_art);
-    commands.init_resource::<scatter::Decorated>();
     commands.init_resource::<feature_art::Built>();
     let avatar_mesh = meshes.add(Capsule3d::new(0.5, 1.8));
     commands.insert_resource(RenderAssets {
@@ -629,11 +660,12 @@ fn spawn_pause_menu(commands: &mut Commands, f: &ThemeFonts, parchment: Handle<I
                             p.spawn(theme::serif(f, "The Grey Country", theme::T_TITLE, PARCH_INK));
                             p.spawn((
                                 MapImageNode,
+                                Button, // so it reports hover/press for drag-to-pan and scroll-to-zoom
                                 ImageNode { image: Handle::default(), image_mode: NodeImageMode::Stretch, ..default() },
                                 Node { width: Val::Px(440.0), height: Val::Px(300.0), border: UiRect::all(Val::Px(theme::BORDER_W)), ..default() },
                                 BorderColor::all(Color::srgb(0.36, 0.28, 0.16)),
                             ));
-                            p.spawn(theme::mono(f, "gold: a court   pale: a town   dun: a ruin   cyan: a wonder", theme::T_LABEL, PARCH_DIM));
+                            p.spawn(theme::mono(f, "drag to pan · scroll to zoom · gold court · pale town · dun ruin · cyan wonder", theme::T_LABEL, PARCH_DIM));
                         });
                     // 4 — System.
                     content
@@ -901,22 +933,74 @@ fn update_menu(
     }
 }
 
-/// Re-render the minimap into the Map tab's image when the tab is open and new ground is known.
+/// The Map tab's view defaults and zoom limits (world units per texture pixel; smaller = closer).
+const MAP_WPP_DEFAULT: f32 = 0.7;
+const MAP_WPP_MIN: f32 = 0.18;
+const MAP_WPP_MAX: f32 = 3.5;
+/// The Map tab's rendered image size (texels).
+const MAP_W: u32 = 440;
+const MAP_H: u32 = 300;
+
+/// Re-render the Map tab's image when its view (centre/zoom) or the explored set changes.
 fn update_map(mut game: NonSendMut<Game>, mut images: ResMut<Assets<Image>>, mut q: Query<&mut ImageNode, With<MapImageNode>>) {
     if !game.paused || game.menu_tab != TAB_MAP {
         return;
     }
     let count = game.sim.player_explored_count();
-    if count == game.last_map_explored {
+    let key = ((game.map_center.x * 2.0) as i32, (game.map_center.y * 2.0) as i32, (game.map_zoom * 100.0) as i32, count);
+    if game.last_map_render == Some(key) {
         return;
     }
-    let avatar = game.avatar_pos;
-    let img = minimap::render(&game.sim, avatar, 440, 300);
+    let img = minimap::render(&game.sim, game.map_center, game.map_zoom, game.avatar_pos, MAP_W, MAP_H);
     let handle = images.add(img);
     if let Ok(mut node) = q.single_mut() {
         node.image = handle;
     }
-    game.last_map_explored = count;
+    game.last_map_render = Some(key);
+}
+
+/// Pan (drag) and zoom (scroll) the Map tab, and re-centre it on the avatar each time it opens.
+fn map_drag(
+    mouse: Res<ButtonInput<MouseButton>>,
+    motion: Res<AccumulatedMouseMotion>,
+    scroll: Res<AccumulatedMouseScroll>,
+    ui_scale: Res<bevy::ui::UiScale>,
+    map_q: Query<&Interaction, With<MapImageNode>>,
+    mut game: NonSendMut<Game>,
+    mut was_open: Local<bool>,
+) {
+    let open = game.paused && game.menu_tab == TAB_MAP;
+    // On opening the tab, re-centre on the avatar at the default zoom.
+    if open && !*was_open {
+        let aw = tile_world(game.avatar_pos.col, game.avatar_pos.row);
+        game.map_center = aw;
+        game.map_zoom = MAP_WPP_DEFAULT;
+        game.map_dragging = false;
+    }
+    *was_open = open;
+    if !open {
+        game.map_dragging = false;
+        return;
+    }
+
+    let over = map_q.single().map(|i| !matches!(i, Interaction::None)).unwrap_or(false);
+    // Scroll over the map zooms toward/away.
+    if over && scroll.delta.y != 0.0 {
+        game.map_zoom = (game.map_zoom * (1.0 - scroll.delta.y * 0.12)).clamp(MAP_WPP_MIN, MAP_WPP_MAX);
+    }
+    // Press over the map starts a drag; it continues until the button is released, even off-image.
+    if mouse.just_pressed(MouseButton::Left) && over {
+        game.map_dragging = true;
+    }
+    if !mouse.pressed(MouseButton::Left) {
+        game.map_dragging = false;
+    }
+    if game.map_dragging && motion.delta != Vec2::ZERO {
+        // Window-logical px → texture px (UiScale), then → world: drag moves the map under the cursor.
+        let s = ui_scale.0.max(0.01);
+        let world = motion.delta / s * game.map_zoom;
+        game.map_center -= world;
+    }
 }
 
 #[derive(Resource, Default)]
@@ -947,6 +1031,48 @@ fn dev_open_convo(mut game: NonSendMut<Game>) {
     if let Some(npc) = game.sim.any_npc() {
         let g = &mut *game;
         open_conversation_with(g, npc);
+    }
+}
+
+/// Dev hook: with `ACHLYDESA_WALK=N` set, march the avatar through N rounds of frontier-walking
+/// once at startup to uncover a swath of map — so the windowed minimap / Map tab (and the chunked
+/// ground) can be eyeballed with real exploration headlessly. Travel only routes over explored
+/// ground, so each round heads to the south-most known tile and the fog lifts a little further.
+fn dev_walk(mut game: NonSendMut<Game>, mut done: Local<bool>) {
+    if *done {
+        return;
+    }
+    let Some(rounds) = std::env::var("ACHLYDESA_WALK").ok().and_then(|s| s.parse::<u32>().ok()) else {
+        return;
+    };
+    *done = true;
+    let g = &mut *game;
+    let mut last = None;
+    let (mut tot, mut mx, mut steps) = (std::time::Duration::ZERO, std::time::Duration::ZERO, 0u32);
+    for _ in 0..rounds {
+        let Some(target) = g.sim.player_explored().into_iter().max_by_key(|c| c.row) else { break };
+        if Some(target) == last || !g.sim.player_travel_to(target) {
+            break; // the frontier has stopped advancing
+        }
+        last = Some(target);
+        for _ in 0..400 {
+            if !g.sim.player_traveling() {
+                break;
+            }
+            let t = std::time::Instant::now();
+            g.sim.step();
+            let d = t.elapsed();
+            tot += d;
+            if d > mx {
+                mx = d;
+            }
+            steps += 1;
+        }
+    }
+    let avg_ms = if steps > 0 { tot.as_secs_f64() * 1000.0 / steps as f64 } else { 0.0 };
+    eprintln!("[WALK] {steps} sim.step()s · avg {:.3} ms · max {:.3} ms · explored now {}", avg_ms, mx.as_secs_f64() * 1000.0, g.sim.player_explored_count());
+    if let Some(p) = g.sim.player_position() {
+        g.avatar_pos = p;
     }
 }
 
@@ -1329,55 +1455,70 @@ fn tick_typewriter(time: Res<Time>, mut game: NonSendMut<Game>) {
 // Rendering the world
 // =====================================================================================
 
-fn rebuild_map(
+/// Dress each tile revealed this frame with its trees, scrub, and rock (one-shot per tile).
+fn scatter_props(mut commands: Commands, lib: Res<props::PropLibrary>, game: NonSend<Game>, ex: Res<ground::Explored>) {
+    scatter::decorate_fresh(&mut commands, &lib, &game.sim, &ex.fresh);
+}
+
+/// Raise the buildings for features as the player discovers them (settlements, courts, ruins) — on
+/// the freshly-revealed tiles, plus the avatar's own tile so a feature uncovered by *searching* an
+/// already-explored tile gets built too.
+fn build_features(mut commands: Commands, lib: Res<props::PropLibrary>, game: NonSend<Game>, ex: Res<ground::Explored>, mut built: ResMut<feature_art::Built>) {
+    let tiles = ex.fresh.iter().copied().chain(std::iter::once(game.avatar_pos));
+    feature_art::build_on(&mut commands, &lib, &game.sim, &mut built, tiles);
+}
+
+/// A reused pool of NPC marker entities — repositioned each world tick (never despawned/respawned),
+/// so a peopled, well-explored map doesn't churn hundreds of entities per step.
+#[derive(Resource, Default)]
+struct NpcMarkers(Vec<Entity>);
+
+/// Reposition the NPC markers each world tick: the populace shows only where the fog is lifted
+/// (O(1) checks against the shared explored set), and markers glide in from the pool instead of
+/// being torn down and rebuilt.
+fn rebuild_markers(
     mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
     ra: Res<RenderAssets>,
+    ex: Res<ground::Explored>,
+    mut pool: ResMut<NpcMarkers>,
     mut game: NonSendMut<Game>,
-    old: Query<Entity, With<MapMesh>>,
+    mut q: Query<(&mut Transform, &mut Visibility), With<Marker>>,
 ) {
-    let count = game.sim.player_explored_count();
-    if count == game.last_explored {
-        return;
-    }
-    game.last_explored = count;
-    for e in &old {
-        commands.entity(e).despawn();
-    }
-    let mesh = world_mesh::build_ground_mesh(&game.sim);
-    commands.spawn((MapMesh, Mesh3d(meshes.add(mesh)), MeshMaterial3d(ra.map_mat.clone()), Transform::IDENTITY));
-}
-
-/// Dress each newly-revealed tile with its trees, scrub, and rock (one-shot per tile).
-fn scatter_props(mut commands: Commands, lib: Res<props::PropLibrary>, game: NonSend<Game>, mut done: ResMut<scatter::Decorated>) {
-    scatter::decorate_newly_explored(&mut commands, &lib, &game.sim, &mut done);
-}
-
-/// Raise the buildings for features as the player discovers them (settlements, courts, ruins).
-fn build_features(mut commands: Commands, lib: Res<props::PropLibrary>, game: NonSend<Game>, mut built: ResMut<feature_art::Built>) {
-    feature_art::build_discovered(&mut commands, &lib, &game.sim, &mut built);
-}
-
-fn rebuild_markers(mut commands: Commands, ra: Res<RenderAssets>, mut game: NonSendMut<Game>, old: Query<Entity, With<Marker>>) {
     let tick = game.sim.substrate().tick();
     if tick == game.last_tick {
         return;
     }
     game.last_tick = tick;
-    for e in &old {
-        commands.entity(e).despawn();
-    }
     let g = &mut *game;
-    // The avatar is a persistent figure (`AvatarFig`), glided by `smooth_follow` — not rebuilt here.
-    // The populace — only where the player has been (where the fog is lifted).
-    let explored: HashSet<(i32, i32)> = g.sim.player_explored().iter().map(|c| (c.col, c.row)).collect();
-    for c in g.sim.npc_positions() {
-        if !explored.contains(&(c.col, c.row)) {
-            continue;
+    // The avatar is a persistent figure (`AvatarFig`), glided by `smooth_follow` — not handled here.
+    let npcs = g.sim.npc_positions();
+    let positions: Vec<Vec3> = npcs
+        .into_iter()
+        .filter(|c| ex.set.contains(&(c.col, c.row)))
+        .map(|c| {
+            let top = tile_top(g.sim.substrate(), c);
+            let w = tile_world(c.col, c.row);
+            Vec3::new(w.x, top + 0.3, w.y)
+        })
+        .collect();
+    // Place each visible NPC on a pooled marker, growing the pool as the map fills; hide the rest.
+    for (i, &pos) in positions.iter().enumerate() {
+        if let Some(&e) = pool.0.get(i) {
+            if let Ok((mut tf, mut vis)) = q.get_mut(e) {
+                tf.translation = pos;
+                *vis = Visibility::Inherited;
+            }
+        } else {
+            let e = commands
+                .spawn((Marker, Mesh3d(ra.npc_mesh.clone()), MeshMaterial3d(ra.npc_mat.clone()), Transform::from_translation(pos)))
+                .id();
+            pool.0.push(e);
         }
-        let top = tile_top(g.sim.substrate(), c);
-        let w = tile_world(c.col, c.row);
-        commands.spawn((Marker, Mesh3d(ra.npc_mesh.clone()), MeshMaterial3d(ra.npc_mat.clone()), Transform::from_xyz(w.x, top + 0.3, w.y)));
+    }
+    for i in positions.len()..pool.0.len() {
+        if let Ok((_, mut vis)) = q.get_mut(pool.0[i]) {
+            *vis = Visibility::Hidden;
+        }
     }
 }
 
@@ -1388,6 +1529,7 @@ fn rebuild_markers(mut commands: Commands, ra: Res<RenderAssets>, mut game: NonS
 fn sync_fauna(
     mut commands: Commands,
     art: Res<fauna_art::FaunaArt>,
+    ex: Res<ground::Explored>,
     mut game: NonSendMut<Game>,
     mut existing: Query<(Entity, &mut fauna_art::Fauna)>,
 ) {
@@ -1398,11 +1540,10 @@ fn sync_fauna(
     game.last_fauna_tick = tick;
     let g = &mut *game;
 
-    let explored: HashSet<(i32, i32)> = g.sim.player_explored().iter().map(|c| (c.col, c.row)).collect();
-    // id → (species, world ground position), explored tiles only.
+    // id → (species, world ground position), explored tiles only (O(1) checks, no per-tick rescan).
     let mut want: HashMap<u64, (usize, Vec3)> = HashMap::new();
     for (id, sp, c) in g.sim.fauna_census() {
-        if !explored.contains(&(c.col, c.row)) {
+        if !ex.set.contains(&(c.col, c.row)) {
             continue;
         }
         let top = tile_top(g.sim.substrate(), c);

@@ -9,28 +9,18 @@ use agents::{Coord, Simulation, Terrain};
 use bevy::prelude::*;
 use game_sim::World as GameWorld;
 use game_sim::fields::Formation;
-use std::collections::HashSet;
 use std::f32::consts::TAU;
 
 /// Tag for every scattered prop entity (trees, rocks, and — later — buildings).
 #[derive(Component)]
 pub struct Decor;
 
-/// Which tiles have already been dressed, so we never decorate one twice.
-#[derive(Resource, Default)]
-pub struct Decorated(pub HashSet<(i32, i32)>);
-
-/// Decorate every explored tile not yet done. Cheap to call each frame: it early-outs when the
-/// explored set hasn't grown.
-pub fn decorate_newly_explored(commands: &mut Commands, lib: &PropLibrary, sim: &Simulation, done: &mut Decorated) {
-    if done.0.len() >= sim.player_explored_count() {
-        return;
-    }
+/// Dress each tile revealed this frame (the `fresh` delta from [`crate::ground::Explored`]). The
+/// delta is already de-duplicated, so every tile is decorated exactly once with no per-frame rescan.
+pub fn decorate_fresh(commands: &mut Commands, lib: &PropLibrary, sim: &Simulation, fresh: &[Coord]) {
     let gw = sim.substrate();
-    for c in sim.player_explored() {
-        if done.0.insert((c.col, c.row)) {
-            decorate_tile(commands, lib, gw, c);
-        }
+    for &c in fresh {
+        decorate_tile(commands, lib, gw, c);
     }
 }
 

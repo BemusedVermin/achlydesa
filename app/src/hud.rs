@@ -607,14 +607,20 @@ pub fn portrait_click(mut game: NonSendMut<Game>, q: Query<(&PortraitSlot, &Inte
     }
 }
 
-/// Re-render the always-on corner minimap when new ground is uncovered or the avatar moves.
+/// The HUD minimap's zoom (world units per texture pixel) — a tight local window so it reads as
+/// the ground around you, not the whole continent.
+const HUD_WPP: f32 = 0.5;
+
+/// Re-render the always-on corner minimap when new ground is uncovered or the avatar moves. The
+/// window is centred on the avatar, so the minimap tracks the player.
 pub fn update_hud_minimap(mut game: NonSendMut<Game>, mut images: ResMut<Assets<Image>>, mut q: Query<&mut ImageNode, With<HudMinimap>>) {
     let count = game.sim.player_explored_count();
     let avatar = game.avatar_pos;
     if count == game.last_hud_explored && avatar == game.last_hud_avatar {
         return;
     }
-    let img = minimap::render(&game.sim, avatar, MINIMAP_D as u32, MINIMAP_D as u32);
+    let center = crate::layout::tile_world(avatar.col, avatar.row);
+    let img = minimap::render(&game.sim, center, HUD_WPP, avatar, MINIMAP_D as u32, MINIMAP_D as u32);
     let handle = images.add(img);
     if let Ok(mut node) = q.single_mut() {
         node.image = handle;

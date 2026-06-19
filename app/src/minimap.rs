@@ -1,7 +1,9 @@
-//! A small software-rasterised **hex minimap** for the pause menu's Map tab. Explored tiles are
-//! drawn as filled pointy-top hexagons coloured by terrain (sharing the 3D view's palette), with
-//! a marker per discovered feature and a bright pip + ring on the avatar's tile. Rendered to an
-//! `Image` on demand (only when the Map tab is open and the explored set has grown).
+//! A small software-rasterised **hex minimap**. Explored tiles are drawn as filled pointy-top
+//! hexagons coloured by terrain (sharing the 3D view's palette), with a marker per discovered
+//! feature and a bright pip + ring on the avatar's tile. Rendered to an `Image` over a **window**
+//! of the world — a `center` (world units) at a given `world_per_px` zoom — so the HUD minimap can
+//! track the player and the Map tab can be panned/zoomed, instead of cramming the whole explored
+//! continent into one unreadable frame.
 
 use agents::{Category, Coord, Simulation, Terrain};
 use bevy::asset::RenderAssetUsages;
@@ -17,55 +19,48 @@ const DEPTH_SCALE: f32 = 1500.0;
 /// The fog the unexplored frame is washed with.
 const FOG: [u8; 4] = [14, 16, 22, 255];
 
-/// Render the explored world to an `w`×`h` RGBA image, centred and scaled to fit.
-pub fn render(sim: &Simulation, avatar: Coord, w: u32, h: u32) -> Image {
+/// Render a `w`×`h` window of the explored world centred on `center` (world units) at `world_per_px`
+/// zoom (smaller = more zoomed in). The avatar's pip is drawn when it falls inside the window.
+pub fn render(sim: &Simulation, center: Vec2, world_per_px: f32, avatar: Coord, w: u32, h: u32) -> Image {
     let mut buf = vec![0u8; (w * h * 4) as usize];
     for px in buf.chunks_exact_mut(4) {
         px.copy_from_slice(&FOG);
     }
 
-    let explored = sim.player_explored();
-    if explored.is_empty() {
-        return image_from(buf, w, h);
-    }
-    let pts: Vec<(Coord, Vec2)> = explored.iter().map(|&c| (c, tile_world(c.col, c.row))).collect();
-
-    // Fit the explored span into the frame (uniform scale, centred), with a one-hex margin.
-    let (mut lo, mut hi) = (Vec2::splat(f32::MAX), Vec2::splat(f32::MIN));
-    for (_, p) in &pts {
-        lo = lo.min(*p);
-        hi = hi.max(*p);
-    }
-    lo -= Vec2::splat(1.2);
-    hi += Vec2::splat(1.2);
-    let span = (hi - lo).max(Vec2::splat(1.0));
-    let margin = 8.0;
-    let scale = ((w as f32 - 2.0 * margin) / span.x).min((h as f32 - 2.0 * margin) / span.y);
-    let origin = Vec2::new(
-        margin + (w as f32 - 2.0 * margin - span.x * scale) * 0.5,
-        margin + (h as f32 - 2.0 * margin - span.y * scale) * 0.5,
-    );
-    let to_px = |p: Vec2| origin + (p - lo) * scale;
-    let hex_r = scale * layout::HEX_R * 1.05; // a hair of overlap so the hexes tile seamlessly
-
     let gw = sim.substrate();
     let sea = gw.params().sea_level;
+    let wpp = world_per_px.max(1e-3);
+    let half = Vec2::new(w as f32, h as f32) * 0.5;
+    // World → texture pixel (the window maps `center` to the frame's middle).
+    let to_px = |p: Vec2| half + (p - center) / wpp;
+    let hex_r = (layout::HEX_R / wpp) * 1.05; // a hair of overlap so the hexes tile seamlessly
+    let cull = hex_r + 2.0;
+    let inside = |p: Vec2| p.x >= -cull && p.y >= -cull && p.x <= w as f32 + cull && p.y <= h as f32 + cull;
 
-    // Tiles.
-    for &(c, wp) in &pts {
-        fill_hex(&mut buf, w, h, to_px(wp), hex_r, tile_rgb(sim, c, sea));
+    let explored = sim.player_explored();
+    // Tiles in the window.
+    for &c in &explored {
+        let p = to_px(tile_world(c.col, c.row));
+        if inside(p) {
+            fill_hex(&mut buf, w, h, p, hex_r, tile_rgb(sim, c, sea));
+        }
     }
     // A marker per discovered feature, coloured by category.
     let cat = sim.feature_catalog();
-    for &(c, wp) in &pts {
-        if let Some(category) = sim.features_at(c).iter().find(|f| f.discovered).map(|f| cat.def(f.kind).category) {
-            disc(&mut buf, w, h, to_px(wp), (hex_r * 0.42).max(2.0), marker_rgb(category));
+    for &c in &explored {
+        let p = to_px(tile_world(c.col, c.row));
+        if inside(p)
+            && let Some(category) = sim.features_at(c).iter().find(|f| f.discovered).map(|f| cat.def(f.kind).category)
+        {
+            disc(&mut buf, w, h, p, (hex_r * 0.42).max(1.5), marker_rgb(category));
         }
     }
-    // The avatar: a gold pip in a white ring.
+    // The avatar: a gold pip in a white ring, when it's within the window.
     let ap = to_px(tile_world(avatar.col, avatar.row));
-    disc(&mut buf, w, h, ap, (hex_r * 0.5).max(2.5), [255, 214, 92]);
-    ring(&mut buf, w, h, ap, hex_r * 0.85, [250, 250, 250]);
+    if ap.x >= 0.0 && ap.y >= 0.0 && ap.x < w as f32 && ap.y < h as f32 {
+        disc(&mut buf, w, h, ap, (hex_r * 0.55).max(2.0), [255, 214, 92]);
+        ring(&mut buf, w, h, ap, (hex_r * 0.95).max(3.0), [250, 250, 250]);
+    }
 
     image_from(buf, w, h)
 }

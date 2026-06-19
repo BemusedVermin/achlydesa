@@ -1,17 +1,20 @@
-//! The ground itself: one merged, vertex-coloured mesh of hex columns (land, by compressed
-//! relief) and flat water faces (ocean, by depth), built from just the tiles the player has
-//! uncovered. Rebuilt only when the explored set grows.
+//! The ground itself: vertex-coloured hex columns (land, by compressed relief) and flat water
+//! faces (ocean, by depth), built from just the tiles the player has uncovered. To keep exposing
+//! new ground cheap as the map grows, the surface is split into fixed **chunks** (see `ground`):
+//! only the chunk a newly-revealed tile lands in (and its boundary neighbours) is rebuilt, never
+//! the whole world. This module provides the per-tile height and the per-chunk geometry build.
 //!
 //! Walls are **neighbour-aware**: each of a tile's six sides drops only to its neighbour's
 //! height — so equal tiles abut seamlessly, steps show a single clean cliff (no double-drawn,
-//! z-fighting walls), and the map's outer edge drops to a solid bedrock base so nothing reads
-//! as hollow.
+//! z-fighting walls), and an unrevealed edge drops to a solid bedrock base so nothing reads as
+//! hollow. The neighbour heights come from a shared map of *every* revealed tile, so chunk seams
+//! stay seamless even though each chunk is built on its own.
 
 use crate::layout::{hex_corners, land_height, tile_world};
 use crate::mesh::MeshBuf;
 use crate::palette::{self, SIDE_SHADE};
 use crate::props::tile_seed;
-use agents::{Simulation, Terrain};
+use agents::{Coord, Simulation, Terrain};
 use bevy::prelude::*;
 use std::collections::HashMap;
 
@@ -22,26 +25,26 @@ const BEDROCK: f32 = -2.5;
 
 /// Quantise a world centre to an integer key, so a tile's geometric neighbour can be looked up
 /// by position (centres are exact multiples, so this never collides).
-fn qkey(p: Vec2) -> (i32, i32) {
+pub fn qkey(p: Vec2) -> (i32, i32) {
     ((p.x * 64.0).round() as i32, (p.y * 64.0).round() as i32)
 }
 
-pub fn build_ground_mesh(sim: &Simulation) -> Mesh {
+/// A tile's top height in world units: 0 for ocean, the compressed relief for land.
+pub fn top_of(sim: &Simulation, c: Coord) -> f32 {
     let gw = sim.substrate();
     let sea = gw.params().sea_level;
-    let explored = sim.player_explored();
+    let elev = gw.elevation(c);
+    if Terrain::of(elev, sea) == Terrain::Ocean { 0.0 } else { land_height(elev - sea) }
+}
 
-    // Pass 1 — every explored tile's top height, keyed by its world centre.
-    let mut height: HashMap<(i32, i32), f32> = HashMap::with_capacity(explored.len());
-    for &c in &explored {
-        let elev = gw.elevation(c);
-        let top = if Terrain::of(elev, sea) == Terrain::Ocean { 0.0 } else { land_height(elev - sea) };
-        height.insert(qkey(tile_world(c.col, c.row)), top);
-    }
-
-    // Pass 2 — geometry.
+/// Build the merged mesh for a set of tiles (one chunk's worth), looking neighbour wall heights up
+/// in `heights` (keyed by [`qkey`]) — the shared height of *all* revealed tiles, so chunk-edge
+/// walls drop correctly to neighbours that live in other chunks.
+pub fn build_mesh(sim: &Simulation, coords: &[Coord], heights: &HashMap<(i32, i32), f32>) -> Mesh {
+    let gw = sim.substrate();
+    let sea = gw.params().sea_level;
     let mut b = MeshBuf::default();
-    for &c in &explored {
+    for &c in coords {
         let elev = gw.elevation(c);
         let terrain = Terrain::of(elev, sea);
         let centre = tile_world(c.col, c.row);
@@ -57,7 +60,7 @@ pub fn build_ground_mesh(sim: &Simulation) -> Mesh {
             (land_height(elev - sea), palette::vary(lit, tile_seed(c.col, c.row, 0x5EED)))
         };
         add_top(&mut b, centre, top, rgb);
-        add_walls(&mut b, centre, top, rgb, &height);
+        add_walls(&mut b, centre, top, rgb, heights);
     }
     b.into_mesh()
 }

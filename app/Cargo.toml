@@ -19,3 +19,12 @@ voice = ["dep:voice"]
 # GPU inference (NVIDIA). Build with `cargo run -p app --features cuda --release`; set
 # CUDA_COMPUTE_CAP=120 for an RTX 50-series (Blackwell). Needs CUDA Toolkit >= 12.8.
 cuda = ["voice/cuda"]
+# Profiling (debug tooling). `trace` turns on Bevy's `tracing` spans for every system — and thanks
+# to feature unification it also lights up the **sim's** `bevy_ecs` schedule, so `people_plan` &c.
+# appear in the timeline. Pick a backend:
+#   cargo run -p app --release --features trace_chrome   # writes trace-<ts>.json → open in https://ui.perfetto.dev
+#   cargo run -p app --release --features trace_tracy    # live profiling in the Tracy GUI
+# Lightweight per-tick planner stats are separate and always available via `ACHLYDESA_PLANSTAT=1`.
+trace = ["bevy/trace"]
+trace_chrome = ["trace", "bevy/trace_chrome"]
+trace_tracy = ["trace", "bevy/trace_tracy"]

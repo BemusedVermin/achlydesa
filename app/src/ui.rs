@@ -9,7 +9,7 @@ use crate::{CamRig, Game};
 use agents::{Category, Coord, Simulation, Terrain};
 use app::theme::{self, ThemeFonts};
 use bevy::prelude::*;
-use bevy::ui::BorderRadius;
+use bevy::ui::{BorderRadius, UiScale};
 use std::f32::consts::{FRAC_PI_3, FRAC_PI_6};
 
 const LABEL_POOL: usize = 28;
@@ -179,14 +179,22 @@ pub fn update_highlights(game: NonSend<Game>, mut q: Query<(&Ring, &mut Transfor
     }
 }
 
-/// Follow the cursor with a quick read of the hovered tile.
-pub fn update_tooltip(windows: Query<&Window>, game: NonSend<Game>, mut q: Query<(&mut Node, &mut Text, &mut Visibility), With<TooltipText>>) {
+/// Follow the cursor with a quick read of the hovered tile. The cursor is in *window* pixels but a
+/// `Node`'s `left/top` are UI-logical (scaled by [`UiScale`]), so divide by the scale or the tooltip
+/// drifts from the cursor as the UI is sized up.
+pub fn update_tooltip(
+    windows: Query<&Window>,
+    ui_scale: Res<UiScale>,
+    game: NonSend<Game>,
+    mut q: Query<(&mut Node, &mut Text, &mut Visibility), With<TooltipText>>,
+) {
     let Ok((mut node, mut text, mut vis)) = q.single_mut() else { return };
     let cursor = windows.single().ok().and_then(|w| w.cursor_position());
+    let s = ui_scale.0.max(0.01);
     match (game.hovered, cursor) {
         (Some(c), Some(cur)) if game.convo.is_none() => {
-            node.left = Val::Px(cur.x + 16.0);
-            node.top = Val::Px(cur.y + 16.0);
+            node.left = Val::Px(cur.x / s + 16.0);
+            node.top = Val::Px(cur.y / s + 16.0);
             text.0 = tooltip_text(&game.sim, c);
             *vis = Visibility::Visible;
         }
@@ -206,29 +214,56 @@ pub fn update_inspect(game: NonSend<Game>, mut q: Query<&mut Text, With<InspectT
     };
 }
 
-/// Project a name over each discovered settlement, nearest the avatar first, reusing the pool.
-pub fn update_labels(game: NonSend<Game>, cams: Query<(&Camera, &GlobalTransform), With<CamRig>>, mut q: Query<(&mut Node, &mut Text, &mut Visibility), With<MapLabel>>) {
+/// The discovered place-names to float over the map — accumulated as the fog lifts (never rescanned
+/// each frame), so the per-frame work is only re-projecting the handful of labels onto the screen.
+#[derive(Resource, Default)]
+pub struct LabelCache(pub Vec<(Coord, String)>);
+
+/// Project a name over each discovered settlement, nearest the avatar first, reusing the pool. The
+/// list grows from this frame's freshly-revealed tiles; positions are converted from *window* pixels
+/// to UI-logical (÷ [`UiScale`]) so the names stay pinned to their tile as the UI is sized.
+pub fn update_labels(
+    game: NonSend<Game>,
+    ex: Res<crate::ground::Explored>,
+    ui_scale: Res<UiScale>,
+    mut cache: ResMut<LabelCache>,
+    cams: Query<(&Camera, &GlobalTransform), With<CamRig>>,
+    mut q: Query<(&mut Node, &mut Text, &mut Visibility), With<MapLabel>>,
+) {
+    // Grow the cache from newly-revealed tiles only (a discovered settlement shows when its tile
+    // is uncovered — its `discovered` flag is set world-wide at gen).
+    if !ex.fresh.is_empty() {
+        let cat = game.sim.feature_catalog();
+        for &c in &ex.fresh {
+            for f in game.sim.features_at(c) {
+                if f.discovered && cat.def(f.kind).category == Category::Community {
+                    cache.0.push((c, pretty(&cat.def(f.kind).name)));
+                }
+            }
+        }
+    }
+
     let Ok((cam, cam_tf)) = cams.single() else { return };
-    let sim = &game.sim;
-    let mut labels = gather_labels(sim);
     let ap = tile_world(game.avatar_pos.col, game.avatar_pos.row);
-    labels.sort_by(|a, b| {
+    // Nearest-first so the closest places win the limited label pool.
+    cache.0.sort_by(|a, b| {
         let da = (tile_world(a.0.col, a.0.row) - ap).length_squared();
         let db = (tile_world(b.0.col, b.0.row) - ap).length_squared();
         da.total_cmp(&db)
     });
-    let gw = sim.substrate();
-    let mut iter = labels.into_iter();
+    let gw = game.sim.substrate();
+    let s = ui_scale.0.max(0.01);
+    let mut iter = cache.0.iter();
     for (mut node, mut text, mut vis) in &mut q {
         loop {
             match iter.next() {
                 Some((c, name)) => {
                     let w = tile_world(c.col, c.row);
-                    let world = Vec3::new(w.x, tile_top(gw, c) + 1.4, w.y);
+                    let world = Vec3::new(w.x, tile_top(gw, *c) + 1.4, w.y);
                     if let Ok(p) = cam.world_to_viewport(cam_tf, world) {
-                        node.left = Val::Px(p.x - 36.0);
-                        node.top = Val::Px(p.y - 8.0);
-                        text.0 = name;
+                        node.left = Val::Px(p.x / s - 36.0);
+                        node.top = Val::Px(p.y / s - 8.0);
+                        text.0 = name.clone();
                         *vis = Visibility::Visible;
                         break;
                     }
@@ -280,22 +315,6 @@ pub fn journal_text(sim: &Simulation) -> String {
 }
 
 // ── Reading the sim into words ────────────────────────────────────────────────────────────────
-
-/// Discovered settlements **on tiles the player has actually uncovered** — a landmark's
-/// `discovered` flag is set world-wide at gen, so we must intersect with the explored set or
-/// names float over tiles still under the fog. (Mirrors how `feature_art` gates its buildings.)
-fn gather_labels(sim: &Simulation) -> Vec<(Coord, String)> {
-    let cat = sim.feature_catalog();
-    let mut out = Vec::new();
-    for c in sim.player_explored() {
-        for f in sim.features_at(c) {
-            if f.discovered && cat.def(f.kind).category == Category::Community {
-                out.push((c, pretty(&cat.def(f.kind).name)));
-            }
-        }
-    }
-    out
-}
 
 fn tooltip_text(sim: &Simulation, c: Coord) -> String {
     let gw = sim.substrate();

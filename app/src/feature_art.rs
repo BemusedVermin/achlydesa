@@ -7,7 +7,7 @@
 use crate::layout::{HEX_R, tile_top, tile_world};
 use crate::props::{Prop, PropLibrary, Rng, tile_seed};
 use crate::scatter::Decor;
-use agents::{Category, Simulation};
+use agents::{Category, Coord, Simulation};
 use bevy::prelude::*;
 use std::collections::HashSet;
 use std::f32::consts::TAU;
@@ -76,11 +76,13 @@ fn court_prop(name: &str) -> Prop {
 #[derive(Resource, Default)]
 pub struct Built(pub HashSet<(i32, i32, usize)>);
 
-/// Raise the structures for every newly-discovered feature on an explored tile.
-pub fn build_discovered(commands: &mut Commands, lib: &PropLibrary, sim: &Simulation, built: &mut Built) {
+/// Raise the structures for newly-discovered features on the given tiles — the tiles revealed this
+/// frame, plus the avatar's own tile (so a feature uncovered by *searching* an already-explored tile
+/// is built too). The `built` set makes each feature raise its structures exactly once.
+pub fn build_on(commands: &mut Commands, lib: &PropLibrary, sim: &Simulation, built: &mut Built, tiles: impl IntoIterator<Item = Coord>) {
     let gw = sim.substrate();
     let cat = sim.feature_catalog();
-    for c in sim.player_explored() {
+    for c in tiles {
         let feats = sim.features_at(c);
         if feats.is_empty() {
             continue;
