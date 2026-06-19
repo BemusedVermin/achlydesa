@@ -559,6 +559,8 @@
             Sway(who: Protagonist, trait_name: "oblivion", delta: 0.15),
             Stir(who: Protagonist, mood: "rapture", delta: 0.4),
             Stir(who: Protagonist, mood: "joy", delta: 0.2),
+            // The groomed soul proclaims the counterfeit bliss aloud (boast/enraptured).
+            Voice(who: Protagonist, intent: "a_vision_proclaimed"),
         ],
     ),
     (
@@ -599,6 +601,8 @@
             Stir(who: Protagonist, mood: "dread", delta: 0.2),
             Sway(who: Protagonist, trait_name: "gnosis", delta: 0.12),
             Sway(who: Mentor, trait_name: "piety", delta: 0.1),
+            // The pious elder names the seven aloud as holy — a hushed warning to the waking ear.
+            Voice(who: Mentor, intent: "a_whisper_of_the_seven"),
         ],
     ),
     (
@@ -620,6 +624,8 @@
             Stir(who: Protagonist, mood: "sorrow", delta: 0.2),
             Sway(who: Protagonist, trait_name: "gnosis", delta: 0.15),
             Sway(who: Protagonist, trait_name: "oblivion", delta: -0.2),
+            // The returned memory is whispered to one they trust (confide/longing).
+            Voice(who: Protagonist, intent: "a_secret_of_falseness"),
         ],
     ),
     (
@@ -744,6 +750,8 @@
             Sway(who: Protagonist, trait_name: "oblivion", delta: -0.2),
             Sway(who: Protagonist, trait_name: "gnosis", delta: 0.1),
             Voice(who: Foe, intent: "a_threat"),
+            // The soul, seeing the cage it had been singing in, breaks aloud (confide/despairing).
+            Voice(who: Protagonist, intent: "a_despairing_confession"),
         ],
     ),
 
@@ -792,6 +800,8 @@
             Stir(who: Protagonist, mood: "sorrow", delta: 0.5),
             Stir(who: Protagonist, mood: "longing", delta: 0.4),
             Sway(who: Protagonist, trait_name: "gnosis", delta: 0.08),
+            // The forgotten beloved turns and offers the same sweet oblivion — the cruelest comfort.
+            Voice(who: Lover, intent: "a_tender_forgetting"),
         ],
     ),
 
@@ -911,6 +921,8 @@
             Stir(who: Foe, mood: "longing", delta: 0.3),
             Sway(who: Protagonist, trait_name: "forgiveness", delta: 0.2),
             Sway(who: Foe, trait_name: "forgiveness", delta: 0.2),
+            // The old enemies recognise each other at the wheel's edge (reconcile/longing).
+            Voice(who: Protagonist, intent: "a_recognition_at_the_wheel"),
         ],
     ),
     (

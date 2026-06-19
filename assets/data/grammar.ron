@@ -589,5 +589,465 @@
         "I am not refusing you, #listener#. I am only refusing the question.",
         "Another time, perhaps. When the grey is lighter. Not tonight.",
         "I spent a long time on that door, #listener#. I found no room behind it. I moved on."
+    ],
+
+    // =====================================================================================
+    // EXPANSION — affect-coloured buckets for the achlydesan moods (dread, longing, rapture,
+    // despair, contempt, loneliness, guilt, envy, restlessness). The engine now emits these
+    // buckets because MoodWords maps those feelings (agent_core/src/dialogue.rs). A missing
+    // act/affect list still falls back to the bare act, so every line here is purely additive —
+    // it only sharpens the surface when a soul is steeped in one of these feelings.
+    // =====================================================================================
+
+    // --- New helper phrases ---
+    "home_phrase": [
+        "the country I fell from",
+        "a home with a sun that was not a lie",
+        "the light from before this grey one",
+        "wherever it was the mist took us from",
+        "the realer place behind the fog",
+        "the Pleroma the archons walled away"
+    ],
+    "bliss_phrase": [
+        "the god's light poured through me",
+        "the temple gave me one moment without weight",
+        "for a breath the fog turned to gold",
+        "I felt the false sun warm and did not care that it was false",
+        "the rapture took me and I did not want it to end"
+    ],
+    "void_aside": [
+        "you are not worth the breath the fog would carry",
+        "I have stepped over better souls than you in this grey",
+        "the mist can have you; I am done",
+        "you weigh less to me than the forgetting does"
+    ],
+
+    // --- GREET, coloured ---
+    "greet/lonely": [
+        "#listener# — stay. I have not spoken to a soul so long the fog felt solid.",
+        "You are real, #listener#? Say something, so I know the grey did not invent you.",
+        "#listener#. I had begun to think I was the only one still awake in all this mist.",
+        "Do not hurry off, #listener#. I will take any company the fog sends me.",
+        "#address# #listener#. It is good — it is so good — to see a face that is not my own."
+    ],
+    "greet/longing": [
+        "#listener#. You put me in mind of someone from #home_phrase#. I cannot say who.",
+        "Seeing you, #listener#, I ache for something I cannot name.",
+        "#listener# — do you ever feel we knew each other once, under a truer sky?",
+        "There is a memory behind your face, #listener#, and #fog_phrase#.",
+        "I keep reaching backward when I see you, #listener#, toward #home_phrase#."
+    ],
+    "greet/dreading": [
+        "#listener#. Keep your voice low. The mist has been listening today.",
+        "You feel it too, do you not, #listener#? Something is wrong with the grey.",
+        "#address# #listener#. I am glad it is you. I was afraid it would be one of them.",
+        "Walk close, #listener#. I do not like the way the fog is moving.",
+        "#listener# — tell me the wheel has not turned while I was not looking. Tell me."
+    ],
+    "greet/restless": [
+        "#listener# — good, a face. I cannot stand still in this fog. Walk with me.",
+        "No time to settle, #listener#. The grey is wide and I mean to see the edge of it.",
+        "#listener#. Come or stay, but I am moving. The mist closes on anything that stops.",
+        "Quick word only, #listener# — my feet are already past the next ridge."
+    ],
+
+    // --- ACCUSE, cold (contempt rather than heat) ---
+    "accuse/contemptuous": [
+        "I am not even angry, #listener#. You did #referent# because you are small. That is all.",
+        "You did #referent#, #listener#, and you are not worth the rage it should cost me.",
+        "Spare me the face, #listener#. #referent#. I expected nothing better and got nothing better.",
+        "#listener#, you did #referent# and call it surviving. The archons would be proud.",
+        "I see you plainly now, #listener#. #referent# is simply what you are."
+    ],
+
+    // --- THREATEN, cold ---
+    "threaten/contemptuous": [
+        "I will not raise my voice, #listener#. I will simply see the fog finds you first.",
+        "You are beneath warning, #listener#. But I am giving you one anyway. Once.",
+        "Run if you like, #listener#. The mist is patient, and so am I.",
+        "I have watched the wheel grind down prouder things than you, #listener#. It will not hurry.",
+        "#void_aside#, #listener# — and yet I will still see you answer for it."
+    ],
+
+    // --- PLEAD, coloured ---
+    "plead/longing": [
+        "Tell me you remember it too, #listener# — #home_phrase#. Tell me I did not dream it.",
+        "Help me find the way back, #listener#. There was a truer place. I know there was.",
+        "#listener#, I am so tired of the grey. Help me reach for #home_phrase#.",
+        "Stay and remember with me, #listener#. Alone, I lose it to the fog.",
+        "I am asking the impossible, #listener# — help me want to wake."
+    ],
+    "plead/lonely": [
+        "Do not go, #listener#. Please. I cannot be alone in this fog again.",
+        "Just sit with me, #listener#. That is all. I am not asking for more than that.",
+        "#listener# — stay until the grey lifts. I will not ask another thing of you.",
+        "I have no one left awake, #listener#. Be the one. Please, be the one.",
+        "#address# #listener#. The loneliness here is its own kind of dying. Stay."
+    ],
+    "plead/dreading": [
+        "Something is coming, #listener#. I feel it in the mist. Do not leave me to meet it alone.",
+        "Help me, #listener#. The fog is wrong tonight and I cannot stand in it by myself.",
+        "#listener# — I think one of the seven has noticed me. Tell me what to do.",
+        "Stay close, #listener#. #mist#, and I do not want to be the one it reaches for.",
+        "Do not let me go back to sleep, #listener#. I am afraid of what I forget when I do."
+    ],
+    "plead/despairing": [
+        "I do not even know what I am asking for, #listener#. Only that it stop.",
+        "There is no way out, is there, #listener#. Tell me there is. Lie if you must.",
+        "I have stopped hoping, #listener#. Hope with me a moment, so I remember how.",
+        "#listener# — I am so tired. Just sit here while I am tired. That is the whole of it.",
+        "#lament#, #listener#. And still I came to you. That must mean something is left."
+    ],
+
+    // --- CONFIDE, coloured ---
+    "confide/longing": [
+        "I think we lived before this, #listener#. Somewhere with #home_phrase#. I am almost sure.",
+        "There is a song I half-remember, #listener#, from #home_phrase#. It is the realest thing I own.",
+        "I have ached for somewhere I cannot name, #listener#. I think it is where we are from.",
+        "Between us, #listener# — I do not believe this grey is our first country. I think we fell here.",
+        "#listener#, when I close my eyes I reach for #home_phrase#, and #fog_phrase#."
+    ],
+    "confide/dreading": [
+        "I should not say this where the mist can hear, #listener#, but I think they are watching me.",
+        "I have seen one of the seven, #listener#. Not its face — its attention. That was enough.",
+        "Keep this close, #listener#. I think the fog moves on purpose. I think it herds us.",
+        "#address# #listener#. I am going to tell you, and then I need you to pretend I did not.",
+        "I caught the edge of the lie, #listener#, and it looked back at me. Swear you will not run."
+    ],
+    "confide/guilty": [
+        "I have to tell someone, #listener#, or it will rot me. I did #referent#. It was me.",
+        "You will think less of me, #listener#, and you will be right. Still — #referent#.",
+        "I have carried #referent# alone, #listener#, and the carrying is worse than the telling.",
+        "#listener# — I did a thing in this grey life I cannot undo. Let me at least set it down.",
+        "Do not absolve me, #listener#. Only hear it. #referent#. I needed it said aloud."
+    ],
+    "confide/enraptured": [
+        "#listener# — I have to tell you. #bliss_phrase#. I have never felt anything so whole.",
+        "Lean close, #listener#. At the temple, #bliss_phrase#, and I understood everything for a breath.",
+        "I know how it sounds, #listener#, but #bliss_phrase#. How can a thing that feels like that be a lie?",
+        "I was chosen, #listener#. I felt it. #bliss_phrase#. Tell me you believe me."
+    ],
+
+    // --- CONSOLE, against loneliness ---
+    "console/lonely": [
+        "You are not alone, #listener#. I know it feels like the fog ate everyone. It did not eat me.",
+        "I am here, #listener#, and I am staying. The loneliness lies. Let me prove it wrong.",
+        "Come sit by me, #listener#. Two souls in the grey is a different thing than one.",
+        "I found you, #listener#. The mist is wide, and I still found you. That counts for something.",
+        "#listener# — whatever the silence has been telling you, it is wrong. You are not forgotten."
+    ],
+
+    // --- MOURN, coloured ---
+    "mourn/longing": [
+        "I do not only miss them, #listener#. I miss the place we were whole. #home_phrase#.",
+        "Their face is going, #listener#, and behind it goes #home_phrase#, and #fog_phrase#.",
+        "I grieve them and something older, #listener# — a home I cannot reach to bury them in.",
+        "#listener#, I think they went back to #home_phrase#. I think that is what the mist is for.",
+        "The ache is for them and for everything before the grey, #listener#. I cannot part the two."
+    ],
+    "mourn/despairing": [
+        "What is the use of grief here, #listener#. The wheel takes everyone and remembers no one.",
+        "I have nothing left to give the mourning, #listener#. It took all of me, and still they are gone.",
+        "Do not tell me it passes, #listener#. In this place nothing passes. It only dims.",
+        "#listener# — I am hollow with it. The fog can have the rest of me. There is little left.",
+        "#world_aside#, #listener#. So even this grief is borrowed. Even this."
+    ],
+    "mourn/lonely": [
+        "There is no one left who knew them, #listener#. Only me. When I forget, they are truly gone.",
+        "I am the last keeper of them, #listener#, and the mist is patient with my memory.",
+        "I grieve alone, #listener#, which is its own second loss. Thank you for standing here.",
+        "#listener# — say their name back to me sometime. So I am not the only place it still lives."
+    ],
+
+    // --- BOAST, coloured ---
+    "boast/enraptured": [
+        "The god looked upon me, #listener#. Do you understand? #bliss_phrase#.",
+        "I am closer to the light than any soul in this grey, #listener#. I have felt it.",
+        "Let them sleep, #listener#. I have tasted what waits in the temple, and I am remade.",
+        "#listener# — #bliss_phrase#, and I will climb the false sun itself before I am done.",
+        "I was nothing in the fog, #listener#, and the rapture made me a vessel. Watch me."
+    ],
+    "boast/contemptuous": [
+        "Look at you all, still dreaming, #listener#. I woke. That is the whole distance between us.",
+        "I do not boast, #listener#. I only notice no one here is my equal. Yourself included.",
+        "The fog is full of sleepers, #listener#, and one of me. Do the arithmetic.",
+        "#void_aside#, #listener#, and still I have gone further than any of you dared."
+    ],
+    "boast/envious": [
+        "They handed you what I bled for, #listener#. Mark that I noticed.",
+        "You think the wheel favoured you, #listener#? I will have what you have, and more.",
+        "Enjoy it while it is yours, #listener#. The fog gives and the fog takes. I am patient.",
+        "I have earned twice what fell into your lap, #listener#, and I am not finished."
+    ],
+    "boast/restless": [
+        "I will not be here long, #listener#. There is an edge to this grey and I mean to walk off it.",
+        "Others put down roots in the fog, #listener#. I put down footprints. Watch them go.",
+        "#listener# — every ridge I crest, the mist says stop, and I do not. That is who I am.",
+        "Stay if you like, #listener#. I am for the far country, lie or not."
+    ],
+
+    // --- PRAISE, coloured ---
+    "praise/enraptured": [
+        "You carry the light, #listener#. I can see it on you. The god is in your works.",
+        "Blessed, #listener# — that is the only word. You are blessed, and I am glad to stand near it.",
+        "When you speak, #listener#, I hear the temple in it. Do not stop.",
+        "The seven made a grey world, #listener#, and still you shine in it. That is holy.",
+        "#listener# — #bliss_phrase#, and it was you who led me to it. I will not forget it."
+    ],
+    "praise/longing": [
+        "You are like a window onto somewhere truer, #listener#. Near you, I almost remember home.",
+        "There is something of #home_phrase# in you, #listener#. It is the kindest thing in this grey.",
+        "I do not know what you were before the fog, #listener#, but it was something bright.",
+        "You make me believe there was a realer world, #listener#, and that we might yet find it."
+    ],
+
+    // --- RECONCILE, coloured ---
+    "reconcile/longing": [
+        "We knew each other before the grey, #listener#. I feel it. Let us not waste what is left.",
+        "Whatever #referent# was, #listener#, it is smaller than the road home we might walk together.",
+        "I am tired of being at odds with the one face that feels like #home_phrase#, #listener#.",
+        "Come back to me, #listener#. The mist is long, and I would rather ache for home beside you.",
+        "Let it go, #listener#. I would rather remember the good country with you than feud in this one."
+    ],
+    "reconcile/guilty": [
+        "The wrong was mine, #listener#. I have known it a long while. I am saying it now: forgive me.",
+        "I cannot undo #referent#, #listener#. I can only stop pretending it was not my doing.",
+        "I owed you this before the fog took the chance, #listener#. Here it is. I am sorry.",
+        "#listener# — I was the one who broke it. Let me be the one who asks to mend it.",
+        "Keep the grudge if you must, #listener#. But know I set down my half of #referent# in shame."
+    ],
+
+    // --- RECRUIT, coloured ---
+    "recruit/enraptured": [
+        "Come to the temple with me, #listener#. #bliss_phrase#. You have to feel it for yourself.",
+        "There is room in the light for you, #listener#. I have seen it. Walk toward it with me.",
+        "Stop dreaming the grey, #listener#, and dream the god instead. I will show you the way in.",
+        "#listener# — give yourself to it as I did. #bliss_phrase#. You will never be cold again.",
+        "I cannot keep this joy to myself, #listener#. Come. Let the temple remake you too."
+    ],
+    "recruit/restless": [
+        "Walk to the edge of the fog with me, #listener#. I am going whether you come or not — but come.",
+        "Two sets of feet cross the grey faster than one, #listener#. Throw in with me.",
+        "There is a far country, #listener#, and I am done waiting for leave to find it. Join me.",
+        "I cannot promise where, #listener#, only that it is away from here. That is enough for me."
+    ],
+
+    // --- GOSSIP, coloured ---
+    "gossip/dreading": [
+        "Keep this between us, #listener#. They are saying one of the seven walked the fog as a man.",
+        "I should not pass this on, #listener#, but souls near the fog-line are simply… not there anymore.",
+        "Do not look around when I say it, #listener#. The mist has been taking the ones who ask questions.",
+        "I heard it twice now, #listener#, from two mouths that did not know each other. That is the frightening part.",
+        "#address# Low voice, #listener#. What I heard about #referent# is the kind of thing they silence."
+    ],
+    "gossip/envious": [
+        "You hear how the wheel smiled on #referent#, #listener#? Some souls get every turn their way.",
+        "They say #referent# rose without earning a step of it, #listener#. Some of us noticed.",
+        "Funny, how the fog parts for some and not others, #listener#. I will let you guess who.",
+        "Word is #referent# sits pretty now, #listener#. Strange, the souls fortune chooses."
+    ],
+
+    // --- DEFLECT, coloured ---
+    "deflect/contemptuous": [
+        "No, #listener#. #void_aside#. Go and bother the fog with it.",
+        "You came to the wrong soul, #listener#. I have no interest and less patience.",
+        "I have heard you. I have decided you are not worth answering, #listener#. That is all.",
+        "Spend your breath elsewhere, #listener#. It is worth more to you than to me.",
+        "#listener#, whatever this is — no. Find a soul who still pretends to care."
+    ],
+    "deflect/despairing": [
+        "What would be the point, #listener#. Nothing here changes anything.",
+        "Ask the mist, #listener#. It is as likely to answer as I am, and it cares as much.",
+        "I have no answers left, #listener#. I spent the last of them on a wheel that would not turn.",
+        "Leave it, #listener#. Leave me. It is easier to be no one in this grey.",
+        "#world_aside#, #listener#. So why would I waste what is left of me on it."
+    ],
+    "deflect/restless": [
+        "Not now, #listener#. My feet are already gone, even if the rest of me is still talking to you.",
+        "Catch me at the next ridge, #listener#, if the fog has not swallowed it. Not here.",
+        "I cannot stand still long enough for this, #listener#. Walk and talk, or let it go.",
+        "Some other grey hour, #listener#. The road is calling louder than you are."
+    ],
+
+    // =====================================================================================
+    // EXPANSION II — the remaining sensible act/affect buckets, so every feeling the engine
+    // can emit has a voice in nearly every act it makes sense for. Still additive: an absent
+    // combination simply falls back to the bare act.
+    // =====================================================================================
+
+    // --- GREET, further moods ---
+    "greet/angry": [
+        "What do you want, #listener#. Be quick. My patience burned off in the fog hours ago.",
+        "#listener#. I have nothing warm for you today. Say your piece.",
+        "You picked a poor moment, #listener#. Speak, then leave me to the grey.",
+        "#address# #listener#. I am not in a mood to be met. But here you are."
+    ],
+    "greet/grieving": [
+        "#listener#. Forgive me — I am not myself. I have lost someone to the mist.",
+        "You catch me hollow, #listener#. Speak gently, or not at all.",
+        "#listener#. I would greet you properly, but the grief has taken my manners with the rest.",
+        "I am glad it is you, #listener#, and sorry it is anyone. I am poor company tonight."
+    ],
+    "greet/enraptured": [
+        "#listener#! The light is so near today — can you not feel it? Walk with me in it.",
+        "Bless the fog for bringing you, #listener#. Everything is luminous, and I want to share it.",
+        "#listener# — I have been singing inwardly all morning. The god is close. Sit, sit.",
+        "You arrive on a holy hour, #listener#. Even the grey looks gilded to me now."
+    ],
+    "greet/contemptuous": [
+        "#listener#. So it is you. I had hoped the fog would keep you a while longer.",
+        "You again, #listener#. The grey does scrape the bottom of its barrel.",
+        "Make it brief, #listener#. I have better uses for the mist than your company.",
+        "#listener#. I will give you the nod the moment costs me and not a breath more."
+    ],
+
+    // --- ACCUSE, hopeless ---
+    "accuse/despairing": [
+        "You did #referent#, #listener#, and I no longer have the strength even to rage at it.",
+        "I should hate you for #referent#, #listener#. I am too tired. That, too, is what you took.",
+        "#referent#, #listener#. And the worst of it is that I expected it. I expect everything now.",
+        "What does it matter that you did #referent#, #listener#. Nothing matters in this grey. Not even that.",
+        "I name #referent# only so it is said once, #listener#. Then I will let the fog have it, like the rest."
+    ],
+
+    // --- THREATEN, nothing-left ---
+    "threaten/despairing": [
+        "I have nothing left, #listener#, which makes me more dangerous than you know. Step back.",
+        "Take what you want, #listener#. But know I will burn it down on my way out of this fog.",
+        "I am past saving and past caring, #listener#. Do not give me a reason. I have so few left.",
+        "You think I fear consequences, #listener#? I already lost the only things I feared for."
+    ],
+
+    // --- PLEAD, ashamed ---
+    "plead/guilty": [
+        "I have no right to ask you anything, #listener#, after #referent#. And still I am asking.",
+        "Help me, #listener# — I know what I did. Let me make some small thing right.",
+        "#listener#, I do not deserve it, and that is exactly why I beg. Give me the chance to mend it.",
+        "I carry #referent# like a stone, #listener#. I am not asking you to lift it — only to stand near while I try."
+    ],
+
+    // --- CONFIDE, further moods ---
+    "confide/warm": [
+        "Come close, #listener#. I have something I would say only to a friend, and you are the one I have.",
+        "I trust you, #listener#. Plainly, warmly, the way one rarely can in this grey. So — listen.",
+        "Between us, and gladly between us, #listener# — here is a thing I have been keeping.",
+        "It feels lighter already, telling you, #listener#. That is what you are to me.",
+        "#listener#, I have carried this a while, and there is no one I would rather set it down with."
+    ],
+    "confide/grieving": [
+        "I have to tell someone before the fog takes it too, #listener#. They are gone. I am undone.",
+        "Hold this with me, #listener#. I cannot carry the grief and the silence both.",
+        "#listener# — I am not strong tonight. Let me speak the loss aloud to one who will not flinch.",
+        "I trusted you with everything else, #listener#. Let me trust you with the breaking, too."
+    ],
+    "confide/despairing": [
+        "I am telling you because there is no one else, #listener#, and because nothing matters enough to hide.",
+        "Listen, or do not, #listener#. I will say it either way. I have stopped hoping it changes anything.",
+        "#listener# — I have given up. There. Now someone knows. Do with it what the fog allows.",
+        "I used to fear saying this aloud, #listener#. I have run out of the strength even to fear it."
+    ],
+    "confide/lonely": [
+        "I have not spoken a true word to anyone in so long, #listener#. Let it be you. Please, let it be you.",
+        "#listener# — I will tell you a secret only because I cannot stand the silence of keeping it alone.",
+        "Stay a moment and I will trust you with something, #listener#. The trusting is half for the company.",
+        "I have held this alone too long, #listener#. Loneliness makes a poor vault. Here — take some of it."
+    ],
+
+    // --- CONSOLE, further moods ---
+    "console/longing": [
+        "I know that ache, #listener#. It is not only grief — it is the pull toward #home_phrase#. I feel it too.",
+        "You are not wrong to yearn, #listener#. There was somewhere truer. Hold to that. I will hold it with you.",
+        "Let yourself miss it, #listener# — the home behind the fog. The longing is the realest part of us.",
+        "#listener#, the wanting itself is a kind of memory. Do not let the mist shame you out of it. I am here."
+    ],
+    "console/afraid": [
+        "Breathe, #listener#. I have you. Whatever moves in the fog, it has to pass me first.",
+        "You are safe in this moment, #listener#. I will not pretend the grey is kind, but right now you are safe.",
+        "#listener# — look at me, not the mist. There. Stay with my voice. The fear passes. I have seen it pass.",
+        "I am frightened too, #listener#. But less, with you here. Let us be less afraid together."
+    ],
+    "console/despairing": [
+        "I will not tell you it gets better, #listener#. Only that I am staying. That is all I have, and it is yours.",
+        "You do not have to hope tonight, #listener#. Let me hold the hoping. You only have to keep breathing.",
+        "#listener# — I know the bottom of it. I have been there. I came back far enough to reach down for you.",
+        "It is enough to still be here, #listener#. That is the whole task tonight. Nothing more. I am here for it."
+    ],
+
+    // --- MOURN, further moods ---
+    "mourn/dreading": [
+        "They are gone, #listener#, and the way they went — I think the seven had a hand in it. I am afraid to say more.",
+        "I grieve, #listener#, and beneath the grief is a colder thing: the sense that we are next.",
+        "#listener# — I mourn them, and I watch the fog, because I do not think it is finished taking.",
+        "The loss frightens me more than it should, #listener#. As if it were a warning, not an ending."
+    ],
+    "mourn/guilty": [
+        "They are gone, #listener#, and I keep thinking of the words I never said. The silence is mine to keep now.",
+        "I mourn them, #listener#, and cannot stop counting the times I failed them. The grief has a sharp edge.",
+        "#listener# — I should have done more. I know it the way I know my own name. And now there is only the after.",
+        "It is not clean grief, #listener#. It is tangled with all I did and did not do. That is the worst kind."
+    ],
+
+    // --- PRAISE, further moods ---
+    "praise/calm": [
+        "You did well, #listener#. I only wanted to say it, quietly, before the fog swallows the chance.",
+        "There is a steadiness in you, #listener#, that this grey place does not deserve and badly needs.",
+        "#listener# — no fanfare. Only this: I have watched you, and you are good. That is worth a calm word.",
+        "I think you do not hear it enough, #listener#, so hear it from me, plainly: you are doing well."
+    ],
+    "praise/grieving": [
+        "Even hollowed out as I am, #listener#, I can see what you did, and it was kind. Thank you for it.",
+        "#listener# — I have little left in me, but what is left wants to say you were a light in this. Truly.",
+        "I am grieving and still grateful, #listener#. You stood by when you did not have to. I will not forget it.",
+        "Through all of it, #listener#, you were good to me. I needed to say so while I still can."
+    ],
+
+    // --- RECONCILE, further moods ---
+    "reconcile/grieving": [
+        "We have both lost too much to keep this between us, #listener#. Let the grudge go where the dead went.",
+        "#listener# — grief has made the quarrel small. I cannot hold #referent# against you over an open grave.",
+        "I am too emptied to be your enemy, #listener#. Let us mourn instead of feud. There is more than enough to mourn.",
+        "The mist took what we fought over, #listener#. Let it take the fighting, too. Stand with me in this loss."
+    ],
+    "reconcile/lonely": [
+        "I am so tired of being alone in the grey, #listener#, that even our old quarrel feels like warmth. Let us end it.",
+        "#listener# — I would rather have you as a friend than be right and be alone. Come back.",
+        "The loneliness taught me what #referent# was worth, #listener#: nothing, beside a face that knows me.",
+        "I have run out of souls to be proud in front of, #listener#. Let us put it down. Please."
+    ],
+
+    // --- RECRUIT, further moods ---
+    "recruit/dreading": [
+        "Something is coming, #listener#, and I cannot meet it alone. Stand with me before it arrives.",
+        "#listener# — the fog is hunting, and the hunted who band together last longer. Throw in with me.",
+        "I do not ask lightly, #listener#: there is a shadow over us, and I want you at my back when it falls.",
+        "Keep your voice down and say yes, #listener#. We are safer as two. The seven pick off the solitary."
+    ],
+    "recruit/angry": [
+        "I am done being ground down quietly, #listener#. Are you? Then stand with me and we push back.",
+        "#listener# — they have taken enough. Help me make them regret the next thing they reach for.",
+        "Put your anger to use, #listener#. Mine alone is a spark. Ours together could be a fire.",
+        "I will not kneel to the grey another day, #listener#. Rise with me. Let us give them something to fear."
+    ],
+
+    // --- GOSSIP, mocking ---
+    "gossip/contemptuous": [
+        "You hear what #referent# has been telling people, #listener#? Pitiful. I almost feel for them. Almost.",
+        "#listener# — they say #referent# fancies themselves important now. The fog does breed delusions.",
+        "Let me spare you the trouble of being impressed by #referent#, #listener#. I have the real story.",
+        "Word is #referent# tripped over their own pride again, #listener#. Some souls never tire of the show."
+    ],
+
+    // --- DEFLECT, further moods ---
+    "deflect/afraid": [
+        "Not here, #listener#. Not where the mist can carry it. Ask me nothing. Please.",
+        "#listener# — I cannot talk about this. I cannot. Do not make me. The fog has ears.",
+        "Leave it, #listener#, for both our sakes. Some questions are dangerous to have answered near the seven.",
+        "I will not, #listener#. Not because I distrust you — because I am afraid of who else might be listening."
+    ],
+    "deflect/grieving": [
+        "Not now, #listener#. I have nothing left to give a conversation. The grief has all of me.",
+        "#listener# — please. I cannot. Whatever it is, it will have to wait until I can stand upright again.",
+        "Forgive me, #listener#. I am no use to anyone today. Let me be hollow in peace.",
+        "I hear you, #listener#, I do. I simply have no words left that are not about the one I lost."
     ]
 }

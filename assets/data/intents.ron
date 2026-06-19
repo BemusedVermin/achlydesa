@@ -1111,4 +1111,94 @@
             Turn(who: Listener, toward: Speaker,      delta: -0.02),
         ],
     ),
+
+    // --- More voices: under-used motives find their words ---
+
+    // A pious witness — the quiet awe of an unseen hand (the seed of the myth), shared in trust
+    (
+        id: "a_pious_witness",
+        act: Confide,
+        tags: ["wonder", "devotion"],
+        weight: 0.9,
+        appeal: [
+            (input: Trait("piety"),  curve: Power(exp: 1.3)),
+            (input: Mood("awe"),     curve: Linear(m: 0.7, b: 0.1)),
+            (input: OpinionOf,       curve: Linear(m: 0.6, b: 0.1)),
+        ],
+        moves: [
+            Stir(who: Listener, mood: "awe",   delta: 0.08),
+            Stir(who: Listener, mood: "dread", delta: 0.04),
+            Sway(who: Listener, trait_name: "piety", delta: 0.03),
+        ],
+    ),
+
+    // A despairing confession — a soul that has stopped struggling, saying so to the last one near
+    (
+        id: "a_despairing_confession",
+        act: Confide,
+        tags: ["grief", "oblivion"],
+        weight: 1.0,
+        appeal: [
+            (input: Mood("despair"),  curve: Power(exp: 1.4)),
+            (input: OpinionOf,        curve: Linear(m: 0.6, b: 0.1)),
+            (input: SharedHistory,    curve: Linear(m: 0.4, b: 0.1)),
+        ],
+        moves: [
+            Stir(who: Speaker,  mood: "despair", delta: -0.06),
+            Stir(who: Listener, mood: "sorrow",  delta: 0.07),
+            Stir(who: Listener, mood: "dread",   delta: 0.05),
+        ],
+    ),
+
+    // A rooted refusal — the soul that will not be moved from the one ground it holds against the fog
+    (
+        id: "a_rooted_refusal",
+        act: Deflect,
+        tags: ["coldness", "rootedness"],
+        weight: 0.7,
+        appeal: [
+            (input: Trait("rootedness"), curve: Power(exp: 1.3)),
+            (input: Trait("caution"),    curve: Linear(m: 0.4, b: 0.1)),
+        ],
+        moves: [
+            Stir(who: Speaker,  mood: "calm",   delta: 0.05),
+            Turn(who: Listener, toward: Speaker, delta: -0.02),
+        ],
+    ),
+
+    // A contented blessing — peace inside the dream (an ironic grace): a calm soul easing another
+    (
+        id: "a_contented_blessing",
+        act: Console,
+        tags: ["warmth", "calm"],
+        weight: 0.8,
+        appeal: [
+            (input: Trait("contentment"), curve: Power(exp: 1.2)),
+            (input: Mood("calm"),         curve: Linear(m: 0.6, b: 0.1)),
+            (input: OpinionOf,            curve: Linear(m: 0.5, b: 0.1)),
+        ],
+        moves: [
+            Stir(who: Listener, mood: "calm",    delta: 0.1),
+            Stir(who: Listener, mood: "sorrow",  delta: -0.05),
+            Turn(who: Listener, toward: Speaker, delta: 0.05),
+        ],
+    ),
+
+    // A grateful greeting — gratitude reaching first, warm before any word of business
+    (
+        id: "a_grateful_greeting",
+        act: Greet,
+        tags: ["warmth", "gratitude"],
+        weight: 0.6,
+        appeal: [
+            (input: Mood("gratitude"),    curve: Power(exp: 1.3)),
+            (input: OpinionOf,            curve: Linear(m: 0.6, b: 0.1)),
+            (input: Trait("sociability"), curve: Linear(m: 0.4, b: 0.1)),
+        ],
+        moves: [
+            Stir(who: Speaker,  mood: "gratitude", delta: -0.05),
+            Stir(who: Listener, mood: "joy",       delta: 0.06),
+            Turn(who: Listener, toward: Speaker,   delta: 0.05),
+        ],
+    ),
 ]

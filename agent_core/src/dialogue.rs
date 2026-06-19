@@ -316,12 +316,19 @@ struct Affect {
 }
 
 struct MoodWords {
-    ids: [(usize, &'static str, &'static str); 8], // (mood id, adjective, bucket)
+    // (mood id, adjective for the SLM card, grammar affect bucket). Sized for the table in
+    // `resolve` below — keep the length ≥ that table's row count.
+    ids: [(usize, &'static str, &'static str); 24],
     n: usize,
 }
 
 impl MoodWords {
     fn resolve(reg: &Registry) -> Self {
+        // The bucket keys an optional `act/affect` grammar list; a missing list falls back to
+        // the bare act (see `Grammar::realize`), so a mood may colour speech here without every
+        // act authoring a line for it. Moods absent from the registry are skipped, so this stays
+        // robust to content edits. Several feelings share a bucket on purpose — foreboding reads
+        // as dread, nostalgia as longing, elation/gratitude as warmth.
         let table = [
             ("anger", "seething", "angry"),
             ("sorrow", "grieving", "grieving"),
@@ -331,8 +338,22 @@ impl MoodWords {
             ("hope", "hopeful", "warm"),
             ("awe", "awestruck", "calm"),
             ("calm", "calm", "calm"),
+            // ── the achlydesan registers reach the surface too (the dream-purgatory's weather) ──
+            ("dread", "dreading", "dreading"),
+            ("foreboding", "uneasy", "dreading"),
+            ("despair", "despairing", "despairing"),
+            ("rapture", "enraptured", "enraptured"),
+            ("longing", "yearning", "longing"),
+            ("nostalgia", "wistful", "longing"),
+            ("contempt", "contemptuous", "contemptuous"),
+            ("guilt", "guilt-heavy", "guilty"),
+            ("loneliness", "lonely", "lonely"),
+            ("envy", "envious", "envious"),
+            ("restlessness", "restless", "restless"),
+            ("elation", "elated", "warm"),
+            ("gratitude", "grateful", "warm"),
         ];
-        let mut ids = [(0usize, "", ""); 8];
+        let mut ids = [(0usize, "", ""); 24];
         let mut n = 0;
         for (name, adj, bucket) in table {
             if let Some(id) = reg.mood_id(name) {
@@ -368,6 +389,18 @@ fn motive_words(reg: &Registry, traits: &[f32]) -> SmallVec<[&'static str; 4]> {
         ("forgiveness", "forgiving"),
         ("caution", "wary"),
         ("contentment", "content"),
+        // ── achlydesan motives — a soul's standing toward its own captivity, and who it is ──
+        ("gnosis", "awakened"),
+        ("oblivion", "dream-drowned"),
+        ("defiance", "defiant"),
+        ("submission", "yielding"),
+        ("devotion", "fervent"),
+        ("curiosity", "curious"),
+        ("wanderlust", "restless-footed"),
+        ("cruelty", "cruel"),
+        ("compassion", "tender-hearted"),
+        ("pride", "proud"),
+        ("zeal", "zealous"),
     ];
     let mut out: SmallVec<[(&'static str, f32); 8]> = SmallVec::new();
     for (name, word) in table {
