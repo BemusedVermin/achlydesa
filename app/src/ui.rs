@@ -7,7 +7,9 @@ use crate::layout::{tile_top, tile_world};
 use crate::mesh::MeshBuf;
 use crate::{CamRig, Game};
 use agents::{Category, Coord, Simulation, Terrain};
+use app::theme::{self, ThemeFonts};
 use bevy::prelude::*;
+use bevy::ui::BorderRadius;
 use std::f32::consts::{FRAC_PI_3, FRAC_PI_6};
 
 const LABEL_POOL: usize = 28;
@@ -27,6 +29,9 @@ pub struct InspectText;
 pub struct MapLabel;
 #[derive(Component)]
 pub struct JournalText;
+/// Tag for always-on overlays (legend, inspect) that should vanish behind the pause menu.
+#[derive(Component)]
+pub struct HideOnPause;
 
 // ── Setup: the highlight rings and the screen panels ──────────────────────────────────────────
 
@@ -44,7 +49,7 @@ fn ring_mesh() -> Mesh {
     b.into_mesh()
 }
 
-pub fn setup_ui(commands: &mut Commands, meshes: &mut Assets<Mesh>, materials: &mut Assets<StandardMaterial>) {
+pub fn setup_ui(commands: &mut Commands, meshes: &mut Assets<Mesh>, materials: &mut Assets<StandardMaterial>, f: &ThemeFonts) {
     // Highlight rings (unlit + two-sided via cull_mode None, so winding never hides them).
     let ring = meshes.add(ring_mesh());
     let mut ring_mat = |rgba: Color| {
@@ -65,65 +70,64 @@ pub fn setup_ui(commands: &mut Commands, meshes: &mut Assets<Mesh>, materials: &
         Visibility::Hidden,
     ));
 
-    let bg = || BackgroundColor(Color::srgba(0.04, 0.05, 0.08, 0.84));
-    let pale = || TextColor(Color::srgb(0.88, 0.91, 0.95));
+    // A consistent themed panel node: bordered, rounded fog-ink (paired with `panel_chrome`).
+    let panel = |w: f32| Node {
+        position_type: PositionType::Absolute,
+        padding: UiRect::all(Val::Px(theme::SP_SM)),
+        border: UiRect::all(Val::Px(theme::BORDER_W)),
+        border_radius: BorderRadius::all(Val::Px(theme::RADIUS)),
+        max_width: Val::Px(w),
+        ..default()
+    };
+    let text = |size: f32, color: Color| (TextFont { font: f.mono.clone(), font_size: size, ..default() }, TextColor(color));
 
     // Legend — top-right.
     commands.spawn((
-        Node { position_type: PositionType::Absolute, right: Val::Px(12.0), top: Val::Px(12.0), padding: UiRect::all(Val::Px(8.0)), max_width: Val::Px(220.0), ..default() },
-        bg(),
+        HideOnPause,
+        Node { right: Val::Px(12.0), top: Val::Px(12.0), ..panel(250.0) },
+        theme::panel_chrome(),
         Text::new(LEGEND),
-        TextFont { font_size: 12.0, ..default() },
-        TextColor(Color::srgb(0.74, 0.78, 0.84)),
+        text(12.0, theme::TEXT_DIM),
     ));
 
     // Inspect panel — right side, under the legend.
     commands.spawn((
         InspectText,
-        Node { position_type: PositionType::Absolute, right: Val::Px(12.0), top: Val::Px(260.0), padding: UiRect::all(Val::Px(8.0)), max_width: Val::Px(260.0), ..default() },
-        bg(),
+        HideOnPause,
+        Node { right: Val::Px(12.0), top: Val::Px(310.0), ..panel(270.0) },
+        theme::panel_chrome(),
         Text::new(""),
-        TextFont { font_size: 13.0, ..default() },
-        pale(),
+        text(13.0, theme::TEXT),
     ));
 
     // Cursor tooltip — floats, moved each frame.
     commands.spawn((
         TooltipText,
-        Node { position_type: PositionType::Absolute, left: Val::Px(0.0), top: Val::Px(0.0), padding: UiRect::axes(Val::Px(7.0), Val::Px(3.0)), max_width: Val::Px(240.0), ..default() },
-        bg(),
+        Node { left: Val::Px(0.0), top: Val::Px(0.0), ..panel(240.0) },
+        theme::panel_chrome(),
         Text::new(""),
-        TextFont { font_size: 12.0, ..default() },
-        pale(),
+        text(12.0, theme::TEXT),
         Visibility::Hidden,
     ));
 
     // Discoveries journal — a toggled panel (J), centre-left, hidden until opened.
     commands.spawn((
         JournalText,
-        Node {
-            position_type: PositionType::Absolute,
-            left: Val::Px(12.0),
-            top: Val::Px(120.0),
-            padding: UiRect::all(Val::Px(10.0)),
-            max_width: Val::Px(360.0),
-            ..default()
-        },
-        BackgroundColor(Color::srgba(0.03, 0.04, 0.07, 0.92)),
+        Node { left: Val::Px(12.0), top: Val::Px(120.0), ..panel(380.0) },
+        theme::panel_chrome(),
         Text::new(""),
-        TextFont { font_size: 13.0, ..default() },
-        pale(),
+        text(13.0, theme::TEXT),
         Visibility::Hidden,
     ));
 
-    // Floating-label pool — reused across discovered settlements.
+    // Floating-label pool — reused across discovered settlements (serif place-names).
     for _ in 0..LABEL_POOL {
         commands.spawn((
             MapLabel,
             Node { position_type: PositionType::Absolute, left: Val::Px(0.0), top: Val::Px(0.0), ..default() },
             Text::new(""),
-            TextFont { font_size: 12.0, ..default() },
-            TextColor(Color::srgb(0.93, 0.90, 0.78)),
+            TextFont { font: f.serif.clone(), font_size: 14.0, ..default() },
+            TextColor(theme::HEADING),
             Visibility::Hidden,
         ));
     }
@@ -152,7 +156,7 @@ fn pick_tile(window: &Window, cam: &Camera, cam_tf: &GlobalTransform, sim: &Simu
 
 /// Hover-pick every frame; left-click selects a tile to inspect, right-click travels to it.
 pub fn tile_interact(mouse: Res<ButtonInput<MouseButton>>, windows: Query<&Window>, cams: Query<(&Camera, &GlobalTransform), With<CamRig>>, mut game: NonSendMut<Game>) {
-    if game.convo.is_some() {
+    if game.convo.is_some() || game.paused {
         game.hovered = None;
         return;
     }
@@ -266,7 +270,7 @@ pub fn update_journal(game: NonSend<Game>, mut q: Query<(&mut Text, &mut Visibil
     *vis = Visibility::Visible;
 }
 
-fn journal_text(sim: &Simulation) -> String {
+pub fn journal_text(sim: &Simulation) -> String {
     let cat = sim.feature_catalog();
     // Discovered features on explored tiles, grouped by category.
     let mut groups: [Vec<String>; 4] = [Vec::new(), Vec::new(), Vec::new(), Vec::new()];
@@ -282,7 +286,7 @@ fn journal_text(sim: &Simulation) -> String {
         g.dedup();
     }
     let total: usize = groups.iter().map(Vec::len).sum();
-    let mut s = format!("\u{2550}\u{2550} Journal \u{2550}\u{2550}\n\nPlaces found: {total}\n");
+    let mut s = format!("— Journal —\n\nPlaces found: {total}\n");
     for (i, g) in groups.iter().enumerate() {
         if !g.is_empty() {
             s.push_str(&format!("  {}: {}\n", ["Settlements", "Courts", "Ruins", "Wonders"][i], g.join(", ")));

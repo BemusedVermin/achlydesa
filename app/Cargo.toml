@@ -7,7 +7,7 @@ edition = "2024"
 agents = { path = "../agents" }
 game_sim = { path = "../game_sim" }
 config = { path = "../config" }
-bevy = "0.18.1"
+bevy = { version = "0.18.1", features = ["jpeg"] }
 hexx = { workspace = true }
 # The optional on-device dialogue voice (SLM). Default-on; build with
 # `--no-default-features` to compile out candle entirely and use the grammar.

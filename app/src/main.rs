@@ -15,16 +15,24 @@
 //! `cargo run -p app --release`
 
 use agents::{Coord, FindState, Goals, Registry, Setup, Simulation};
+use bevy::asset::AssetPlugin;
 use bevy::input::ButtonState;
 use bevy::input::keyboard::{Key, KeyboardInput};
 use bevy::input::mouse::AccumulatedMouseScroll;
 use bevy::prelude::*;
+use bevy::render::view::screenshot::{save_to_disk, Screenshot};
+use bevy::text::Font;
+use bevy::ui::widget::{ImageNode, NodeImageMode};
+use bevy::ui::{BorderRadius, BoxShadow, GlobalZIndex};
 use std::collections::{HashMap, HashSet};
+
+use app::theme::{self, ThemeFonts};
 
 mod fauna_art;
 mod feature_art;
 mod layout;
 mod mesh;
+mod minimap;
 mod palette;
 mod props;
 mod scatter;
@@ -149,6 +157,16 @@ struct Game {
     journal_open: bool,
     /// Is the character sheet (stats / skills / gear / vitals / party) open?
     sheet_open: bool,
+    /// Is the pause menu (Esc) open? While paused, gameplay input is suspended and a tabbed
+    /// parchment menu overlays the view. The world is turn-based, so this is a modal, not a clock.
+    paused: bool,
+    /// The active menu tab (index into `MENU_TABS`: Journal/Character/Map/System).
+    menu_tab: usize,
+    /// The cursor row within the System tab (Resume/Quit).
+    sys_cursor: usize,
+    /// The explored-tile count the minimap was last rendered for — so it only re-renders when
+    /// the fog has actually lifted from new ground.
+    last_map_explored: usize,
 }
 
 /// An open, free-text conversation with one soul within reach. The player *types* to the
@@ -241,13 +259,24 @@ fn main() {
         selected: None,
         journal_open: false,
         sheet_open: false,
+        // Dev hooks: `ACHLYDESA_PAUSE` starts on the pause menu, `ACHLYDESA_TAB=N` on tab N.
+        paused: std::env::var("ACHLYDESA_PAUSE").is_ok(),
+        menu_tab: std::env::var("ACHLYDESA_TAB").ok().and_then(|s| s.parse().ok()).unwrap_or(0),
+        sys_cursor: 0,
+        last_map_explored: usize::MAX,
     };
 
     let mut app = App::new();
-    app.add_plugins(DefaultPlugins.set(WindowPlugin {
-        primary_window: Some(Window { title: "Achlydesa — exploration".into(), ..default() }),
-        ..default()
-    }))
+    app.add_plugins(
+        DefaultPlugins
+            .set(WindowPlugin {
+                primary_window: Some(Window { title: "Achlydesa — exploration".into(), ..default() }),
+                ..default()
+            })
+            // Runtime assets (the user's parchment, any images) live in the workspace `assets/`
+            // folder — one up from this crate — alongside the baked RON. Point Bevy there.
+            .set(AssetPlugin { file_path: "../assets".into(), ..default() }),
+    )
     .insert_resource(ClearColor(Color::srgb(palette::SKY_RGB[0], palette::SKY_RGB[1], palette::SKY_RGB[2])))
     .add_systems(Startup, setup)
     .add_systems(
@@ -278,7 +307,12 @@ fn main() {
     // The fauna layer runs as its own group: `sync_fauna` re-targets creatures when
     // the world ticks (idempotent in between, so loose ordering is fine) and
     // `animate_fauna` is purely visual.
-    .add_systems(Update, (smooth_follow, sync_fauna, fauna_art::animate_fauna, speech_act_input, recruit_input, sheet_input, update_sheet).chain());
+    .add_systems(Update, (smooth_follow, sync_fauna, fauna_art::animate_fauna, speech_act_input, recruit_input, sheet_input, update_sheet).chain())
+    // The pause layer: Esc/back + menu nav run *before* `talk_input` (which also reads Esc, to
+    // leave a conversation), then the overlay's visibility + the dev screenshot hook.
+    .add_systems(Update, (pause_input, menu_input).chain().before(talk_input))
+    .add_systems(Update, (update_menu, update_map, hide_overlays_when_paused, dev_capture))
+    .init_resource::<CaptureClock>();
     app.world_mut().insert_non_send_resource(game);
     app.run();
 }
@@ -349,7 +383,14 @@ fn build_world() -> Simulation {
 // Setup
 // =====================================================================================
 
-fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>, game: NonSend<Game>) {
+fn setup(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut fonts: ResMut<Assets<Font>>,
+    asset_server: Res<AssetServer>,
+    game: NonSend<Game>,
+) {
     let map_mat = materials.add(StandardMaterial { base_color: Color::WHITE, perceptual_roughness: 0.96, ..default() });
     let avatar_mat = materials.add(StandardMaterial {
         base_color: Color::srgb(1.0, 0.82, 0.25),
@@ -395,50 +436,210 @@ fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials
         Transform::from_rotation(Quat::from_euler(EulerRot::YXZ, -0.6, -0.95, 0.0)),
     ));
 
-    ui::setup_ui(&mut commands, &mut meshes, &mut materials);
-    spawn_hud(&mut commands);
+    // Load the shared HUD fonts first, so every panel is styled through the theme.
+    let theme_fonts = ThemeFonts::embed(&mut fonts);
+    ui::setup_ui(&mut commands, &mut meshes, &mut materials, &theme_fonts);
+    spawn_hud(&mut commands, &theme_fonts);
+    let parchment = asset_server.load("ui/parchment.jpg");
+    spawn_pause_menu(&mut commands, &theme_fonts, parchment);
+    commands.insert_resource(theme_fonts);
 }
 
-fn spawn_hud(commands: &mut Commands) {
-    let bg = || BackgroundColor(Color::srgba(0.04, 0.05, 0.08, 0.82));
-    let bright = || TextColor(Color::srgb(0.90, 0.93, 0.96));
+fn spawn_hud(commands: &mut Commands, f: &ThemeFonts) {
+    // A consistent themed HUD panel: bordered, rounded fog-ink (paired with `panel_chrome`).
+    let panel = || Node {
+        position_type: PositionType::Absolute,
+        padding: UiRect::all(Val::Px(theme::SP_SM)),
+        border: UiRect::all(Val::Px(theme::BORDER_W)),
+        border_radius: BorderRadius::all(Val::Px(theme::RADIUS)),
+        ..default()
+    };
+    let body = |size: f32, color: Color| (Text::new(""), TextFont { font: f.mono.clone(), font_size: size, ..default() }, TextColor(color));
     // Look — top-left.
     commands.spawn((
         HudKind::Look,
-        Node { position_type: PositionType::Absolute, left: Val::Px(12.0), top: Val::Px(12.0), padding: UiRect::all(Val::Px(8.0)), max_width: Val::Px(360.0), ..default() },
-        bg(),
-        Text::new(""),
-        TextFont { font_size: 16.0, ..default() },
-        bright(),
+        Node { left: Val::Px(12.0), top: Val::Px(12.0), max_width: Val::Px(360.0), ..panel() },
+        theme::panel_chrome(),
+        body(14.0, theme::TEXT),
     ));
     // Talk — bottom-left.
     commands.spawn((
         HudKind::Talk,
-        Node { position_type: PositionType::Absolute, left: Val::Px(12.0), bottom: Val::Px(44.0), padding: UiRect::all(Val::Px(8.0)), max_width: Val::Px(520.0), ..default() },
-        bg(),
-        Text::new(""),
-        TextFont { font_size: 13.0, ..default() },
-        bright(),
+        Node { left: Val::Px(12.0), bottom: Val::Px(44.0), max_width: Val::Px(520.0), ..panel() },
+        theme::panel_chrome(),
+        body(13.0, theme::TEXT),
     ));
     // Help / status — bottom strip.
     commands.spawn((
         HudKind::Help,
-        Node { position_type: PositionType::Absolute, left: Val::Px(12.0), bottom: Val::Px(10.0), padding: UiRect::axes(Val::Px(8.0), Val::Px(4.0)), ..default() },
-        bg(),
-        Text::new(""),
-        TextFont { font_size: 13.0, ..default() },
-        TextColor(Color::srgb(0.72, 0.76, 0.82)),
+        Node { left: Val::Px(12.0), bottom: Val::Px(10.0), ..panel() },
+        theme::panel_chrome(),
+        body(12.0, theme::TEXT_DIM),
     ));
     // Character sheet — top-right, hidden until toggled with C.
     commands.spawn((
         SheetPanel,
-        Node { position_type: PositionType::Absolute, right: Val::Px(12.0), top: Val::Px(12.0), padding: UiRect::all(Val::Px(8.0)), max_width: Val::Px(340.0), ..default() },
-        bg(),
-        Text::new(""),
-        TextFont { font_size: 14.0, ..default() },
-        bright(),
+        Node { right: Val::Px(12.0), top: Val::Px(12.0), max_width: Val::Px(340.0), ..panel() },
+        theme::panel_chrome(),
+        body(13.0, theme::TEXT),
         Visibility::Hidden,
     ));
+}
+
+// ── The pause menu (Esc): a modal scrim + a centred hub of panels you can open ──────────────────
+
+// ── The pause menu — an Oblivion-style tabbed parchment pane ─────────────────────────────────────
+
+/// The menu tabs, in paging order.
+const MENU_TABS: [&str; 4] = ["Journal", "Character", "Map", "System"];
+/// The System-tab rows (Resume / Quit).
+const SYS_ITEMS: [(&str, &str); 2] = [("Resume", "Esc"), ("Quit to the Grey", "")];
+
+// Ink on aged paper — dark, warm, readable on the parchment.
+const PARCH_INK: Color = Color::srgb(0.20, 0.15, 0.10);
+const PARCH_DIM: Color = Color::srgb(0.42, 0.34, 0.22);
+const PARCH_ACCENT: Color = Color::srgb(0.56, 0.30, 0.10);
+
+#[derive(Component)]
+struct PauseRoot;
+/// A tab header's label (index) — recoloured for the active tab.
+#[derive(Component)]
+struct TabText(usize);
+/// A tab header's underline bar (index) — lit for the active tab.
+#[derive(Component)]
+struct TabUnderline(usize);
+/// A per-tab content panel (index) — only the active one is laid out (`Display`).
+#[derive(Component)]
+struct TabPanel(usize);
+/// A System-tab row (index) — highlighted under the cursor.
+#[derive(Component)]
+struct SysRow(usize);
+#[derive(Component)]
+struct JournalTabText;
+#[derive(Component)]
+struct SheetTabText;
+#[derive(Component)]
+struct MapImageNode;
+
+fn parch_divider() -> impl Bundle {
+    (
+        Node { width: Val::Percent(100.0), height: Val::Px(1.0), margin: UiRect::axes(Val::Px(0.0), Val::Px(theme::SP_XS)), ..default() },
+        BackgroundColor(Color::srgba(0.36, 0.28, 0.16, 0.6)),
+    )
+}
+
+fn spawn_pause_menu(commands: &mut Commands, f: &ThemeFonts, parchment: Handle<Image>) {
+    commands
+        .spawn((
+            PauseRoot,
+            Node {
+                position_type: PositionType::Absolute,
+                top: Val::Px(0.0),
+                left: Val::Px(0.0),
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0.02, 0.03, 0.05, 0.62)),
+            GlobalZIndex(100),
+            Visibility::Hidden,
+        ))
+        .with_children(|root| {
+            // The parchment pane (assets/ui/parchment.jpg) under a warm border.
+            root.spawn((
+                Node {
+                    width: Val::Px(620.0),
+                    min_height: Val::Px(440.0),
+                    padding: UiRect::all(Val::Px(theme::SP_LG)),
+                    border: UiRect::all(Val::Px(2.0)),
+                    border_radius: BorderRadius::all(Val::Px(theme::RADIUS)),
+                    flex_direction: FlexDirection::Column,
+                    row_gap: Val::Px(theme::SP_MD),
+                    ..default()
+                },
+                ImageNode { image: parchment, image_mode: NodeImageMode::Stretch, ..default() },
+                BorderColor::all(Color::srgb(0.36, 0.28, 0.16)),
+                BoxShadow::new(Color::srgba(0.0, 0.0, 0.0, 0.55), Val::Px(0.0), Val::Px(6.0), Val::Px(0.0), Val::Px(22.0)),
+            ))
+            .with_children(|pane| {
+                // Tab bar.
+                pane.spawn(Node {
+                    width: Val::Percent(100.0),
+                    flex_direction: FlexDirection::Row,
+                    justify_content: JustifyContent::Center,
+                    column_gap: Val::Px(theme::SP_XL),
+                    align_items: AlignItems::FlexEnd,
+                    ..default()
+                })
+                .with_children(|bar| {
+                    for (i, label) in MENU_TABS.iter().enumerate() {
+                        bar.spawn(Node { flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: Val::Px(theme::SP_XS), ..default() })
+                            .with_children(|t| {
+                                t.spawn((TabText(i), theme::serif(f, label.to_string(), theme::T_TITLE, PARCH_DIM)));
+                                t.spawn((TabUnderline(i), Node { width: Val::Px(74.0), height: Val::Px(2.0), ..default() }, BackgroundColor(Color::NONE)));
+                            });
+                    }
+                });
+                pane.spawn(parch_divider());
+
+                // Content — four stacked panels; only the active one is `Display::Flex`.
+                pane.spawn(Node { width: Val::Percent(100.0), flex_grow: 1.0, ..default() }).with_children(|content| {
+                    // 0 — Journal.
+                    content
+                        .spawn((TabPanel(0), Node { flex_direction: FlexDirection::Column, width: Val::Percent(100.0), ..default() }))
+                        .with_children(|p| {
+                            p.spawn((JournalTabText, theme::mono(f, "", 13.0, PARCH_INK)));
+                        });
+                    // 1 — Character.
+                    content
+                        .spawn((TabPanel(1), Node { flex_direction: FlexDirection::Column, width: Val::Percent(100.0), display: Display::None, ..default() }))
+                        .with_children(|p| {
+                            p.spawn((SheetTabText, theme::mono(f, "", 13.0, PARCH_INK)));
+                        });
+                    // 2 — Map.
+                    content
+                        .spawn((TabPanel(2), Node { flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: Val::Px(theme::SP_SM), width: Val::Percent(100.0), display: Display::None, ..default() }))
+                        .with_children(|p| {
+                            p.spawn(theme::serif(f, "The Grey Country", theme::T_TITLE, PARCH_INK));
+                            p.spawn((
+                                MapImageNode,
+                                ImageNode { image: Handle::default(), image_mode: NodeImageMode::Stretch, ..default() },
+                                Node { width: Val::Px(440.0), height: Val::Px(300.0), border: UiRect::all(Val::Px(theme::BORDER_W)), ..default() },
+                                BorderColor::all(Color::srgb(0.36, 0.28, 0.16)),
+                            ));
+                            p.spawn(theme::mono(f, "gold: a court   pale: a town   dun: a ruin   cyan: a wonder", theme::T_LABEL, PARCH_DIM));
+                        });
+                    // 3 — System.
+                    content
+                        .spawn((TabPanel(3), Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(theme::SP_XS), width: Val::Percent(100.0), display: Display::None, ..default() }))
+                        .with_children(|p| {
+                            for (i, (label, key)) in SYS_ITEMS.iter().enumerate() {
+                                p.spawn((
+                                    SysRow(i),
+                                    Node {
+                                        width: Val::Percent(100.0),
+                                        flex_direction: FlexDirection::Row,
+                                        justify_content: JustifyContent::SpaceBetween,
+                                        padding: UiRect::axes(Val::Px(theme::SP_SM), Val::Px(theme::SP_XS)),
+                                        border_radius: BorderRadius::all(Val::Px(theme::RADIUS_SM)),
+                                        ..default()
+                                    },
+                                    BackgroundColor(Color::NONE),
+                                ))
+                                .with_children(|row| {
+                                    row.spawn(theme::mono(f, label.to_string(), 14.0, PARCH_INK));
+                                    row.spawn(theme::mono(f, key.to_string(), theme::T_LABEL, PARCH_DIM));
+                                });
+                            }
+                        });
+                });
+
+                pane.spawn(parch_divider());
+                pane.spawn(theme::mono(f, "Q / E  page tabs        Enter  select        Esc  resume", theme::T_MICRO, PARCH_DIM));
+            });
+        });
 }
 
 // =====================================================================================
@@ -451,6 +652,9 @@ fn spawn_hud(commands: &mut Commands) {
 /// total hexes walked. While idle the clock is frozen; the player's action *is* the clock.
 /// (Steps are paced by `TICK_DT` only so the walk is watchable — it remains one tick / hex.)
 fn drive_sim(mut game: NonSendMut<Game>, time: Res<Time>) {
+    if game.paused {
+        return;
+    }
     let g = &mut *game;
     if !g.sim.player_traveling() {
         g.accum = 0.0;
@@ -471,7 +675,7 @@ fn drive_sim(mut game: NonSendMut<Game>, time: Res<Time>) {
 /// one tick — the same cost as stepping a hex). Ignored mid-journey (time is already
 /// flowing as you walk) and when no avatar is in the world.
 fn wait_input(keys: Res<ButtonInput<KeyCode>>, mut game: NonSendMut<Game>) {
-    if game.convo.is_some() || !keys.just_pressed(KeyCode::Space) {
+    if game.convo.is_some() || game.paused || !keys.just_pressed(KeyCode::Space) {
         return;
     }
     let g = &mut *game;
@@ -487,7 +691,7 @@ fn wait_input(keys: Res<ButtonInput<KeyCode>>, mut game: NonSendMut<Game>) {
 /// have the knowledge to find, and you learn whatever lore they hold. A locked place tells you
 /// it is there but withholds itself until you know more. One action, one tick (like waiting).
 fn search_input(keys: Res<ButtonInput<KeyCode>>, mut game: NonSendMut<Game>) {
-    if game.convo.is_some() || !keys.just_pressed(KeyCode::KeyF) {
+    if game.convo.is_some() || game.paused || !keys.just_pressed(KeyCode::KeyF) {
         return;
     }
     let g = &mut *game;
@@ -514,7 +718,8 @@ fn search_input(keys: Res<ButtonInput<KeyCode>>, mut game: NonSendMut<Game>) {
 /// lore you hold). A look at the world, not an action: time does not pass.
 fn journal_input(keys: Res<ButtonInput<KeyCode>>, mut game: NonSendMut<Game>) {
     if game.convo.is_none() && keys.just_pressed(KeyCode::KeyJ) {
-        game.journal_open = !game.journal_open;
+        game.paused = true;
+        game.menu_tab = 0;
     }
 }
 
@@ -523,7 +728,7 @@ fn journal_input(keys: Res<ButtonInput<KeyCode>>, mut game: NonSendMut<Game>) {
 /// decides; on a pass it joins and travels with you as a stack. Spends the turn either way.
 fn recruit_input(keys: Res<ButtonInput<KeyCode>>, mut game: NonSendMut<Game>) {
     let g = &mut *game;
-    if g.convo.is_some() || g.sim.player_traveling() || !keys.just_pressed(KeyCode::KeyR) {
+    if g.convo.is_some() || g.paused || g.sim.player_traveling() || !keys.just_pressed(KeyCode::KeyR) {
         return;
     }
     let Some((npc, _)) = g.sim.player_nearby_npcs().into_iter().next() else {
@@ -556,7 +761,7 @@ const QUICK_ACTS: &[(KeyCode, &str, &str)] = &[
 /// is one turn.
 fn speech_act_input(keys: Res<ButtonInput<KeyCode>>, mut game: NonSendMut<Game>) {
     let g = &mut *game;
-    if g.convo.is_some() || g.sim.player_traveling() {
+    if g.convo.is_some() || g.paused || g.sim.player_traveling() {
         return;
     }
     let Some(&(_, intent, verb)) = QUICK_ACTS.iter().find(|(k, _, _)| keys.just_pressed(*k)) else {
@@ -576,7 +781,131 @@ fn speech_act_input(keys: Res<ButtonInput<KeyCode>>, mut game: NonSendMut<Game>)
 /// (attributes, trained skills, gear, vitals, party). A look, not an action: no time passes.
 fn sheet_input(keys: Res<ButtonInput<KeyCode>>, mut game: NonSendMut<Game>) {
     if game.convo.is_none() && keys.just_pressed(KeyCode::KeyC) {
-        game.sheet_open = !game.sheet_open;
+        game.paused = true;
+        game.menu_tab = 1;
+    }
+}
+
+/// **Esc** — the back button. A conversation handles its own Esc (in `talk_input`, which runs
+/// after this); otherwise Esc closes an open panel (journal/sheet), or toggles the pause menu.
+fn pause_input(keys: Res<ButtonInput<KeyCode>>, mut game: NonSendMut<Game>) {
+    if game.convo.is_some() || !keys.just_pressed(KeyCode::Escape) {
+        return;
+    }
+    game.paused = !game.paused;
+}
+
+/// Page the menu tabs (Q/E or Left/Right); in the System tab, W/S move the cursor and Enter acts.
+fn menu_input(keys: Res<ButtonInput<KeyCode>>, mut game: NonSendMut<Game>, mut exit: MessageWriter<AppExit>) {
+    if !game.paused {
+        return;
+    }
+    let tabs = MENU_TABS.len();
+    if keys.just_pressed(KeyCode::KeyE) || keys.just_pressed(KeyCode::ArrowRight) {
+        game.menu_tab = (game.menu_tab + 1) % tabs;
+    }
+    if keys.just_pressed(KeyCode::KeyQ) || keys.just_pressed(KeyCode::ArrowLeft) {
+        game.menu_tab = (game.menu_tab + tabs - 1) % tabs;
+    }
+    if game.menu_tab == 3 {
+        let n = SYS_ITEMS.len();
+        if keys.just_pressed(KeyCode::KeyW) || keys.just_pressed(KeyCode::ArrowUp) {
+            game.sys_cursor = (game.sys_cursor + n - 1) % n;
+        }
+        if keys.just_pressed(KeyCode::KeyS) || keys.just_pressed(KeyCode::ArrowDown) {
+            game.sys_cursor = (game.sys_cursor + 1) % n;
+        }
+        if keys.just_pressed(KeyCode::Enter) {
+            match game.sys_cursor {
+                0 => game.paused = false,
+                1 => {
+                    exit.write(AppExit::Success);
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+/// Hide the always-on overlays (legend, inspect) while paused, for a clean modal.
+fn hide_overlays_when_paused(game: NonSend<Game>, mut q: Query<&mut Visibility, With<ui::HideOnPause>>) {
+    for mut vis in &mut q {
+        *vis = if game.paused { Visibility::Hidden } else { Visibility::Inherited };
+    }
+}
+
+/// Drive the tabbed menu: overlay visibility, the active-tab highlight, which content panel shows,
+/// the System cursor, and the live Journal/Character text.
+fn update_menu(
+    game: NonSend<Game>,
+    mut root: Query<&mut Visibility, With<PauseRoot>>,
+    mut tabs: Query<(&TabText, &mut TextColor)>,
+    mut underlines: Query<(&TabUnderline, &mut BackgroundColor), Without<SysRow>>,
+    mut panels: Query<(&TabPanel, &mut Node)>,
+    mut sys: Query<(&SysRow, &mut BackgroundColor), Without<TabUnderline>>,
+    mut journal: Query<&mut Text, (With<JournalTabText>, Without<SheetTabText>)>,
+    mut sheet: Query<&mut Text, (With<SheetTabText>, Without<JournalTabText>)>,
+) {
+    if let Ok(mut vis) = root.single_mut() {
+        *vis = if game.paused { Visibility::Visible } else { Visibility::Hidden };
+    }
+    if !game.paused {
+        return;
+    }
+    for (t, mut col) in &mut tabs {
+        col.0 = if t.0 == game.menu_tab { PARCH_INK } else { PARCH_DIM };
+    }
+    for (u, mut bg) in &mut underlines {
+        bg.0 = if u.0 == game.menu_tab { PARCH_ACCENT } else { Color::NONE };
+    }
+    for (p, mut node) in &mut panels {
+        node.display = if p.0 == game.menu_tab { Display::Flex } else { Display::None };
+    }
+    for (r, mut bg) in &mut sys {
+        bg.0 = if game.menu_tab == 3 && r.0 == game.sys_cursor { Color::srgba(0.55, 0.40, 0.18, 0.35) } else { Color::NONE };
+    }
+    if let Ok(mut t) = journal.single_mut() {
+        t.0 = ui::journal_text(&game.sim);
+    }
+    if let Ok(mut t) = sheet.single_mut() {
+        t.0 = sheet_text(&game);
+    }
+}
+
+/// Re-render the minimap into the Map tab's image when the tab is open and new ground is known.
+fn update_map(mut game: NonSendMut<Game>, mut images: ResMut<Assets<Image>>, mut q: Query<&mut ImageNode, With<MapImageNode>>) {
+    if !game.paused || game.menu_tab != 2 {
+        return;
+    }
+    let count = game.sim.player_explored_count();
+    if count == game.last_map_explored {
+        return;
+    }
+    let avatar = game.avatar_pos;
+    let img = minimap::render(&game.sim, avatar, 440, 300);
+    let handle = images.add(img);
+    if let Ok(mut node) = q.single_mut() {
+        node.image = handle;
+    }
+    game.last_map_explored = count;
+}
+
+#[derive(Resource, Default)]
+struct CaptureClock(u32);
+
+/// Dev hook: with `ACHLYDESA_SHOT=<path>` set, capture the window once the world has rendered,
+/// then exit — so the live HUD/menus can be screenshotted headlessly. `ACHLYDESA_PAUSE` (read in
+/// `main`) starts on the pause menu so it can be captured.
+fn dev_capture(mut clock: ResMut<CaptureClock>, mut commands: Commands, mut exit: MessageWriter<AppExit>) {
+    let Ok(path) = std::env::var("ACHLYDESA_SHOT") else {
+        return;
+    };
+    clock.0 += 1;
+    if clock.0 == 18 {
+        commands.spawn(Screenshot::primary_window()).observe(save_to_disk(path));
+    }
+    if clock.0 >= 48 {
+        exit.write(AppExit::Success);
     }
 }
 
@@ -595,7 +924,7 @@ fn update_sheet(game: NonSend<Game>, mut panel: Query<(&mut Text, &mut Visibilit
 /// the same data NPCs carry, so what the sheet shows is exactly what the rules act on.
 fn sheet_text(g: &Game) -> String {
     let Some(avatar) = g.sim.player_avatar() else { return "no avatar".into() };
-    let mut s = String::from("══ CHARACTER ══\n");
+    let mut s = String::from("— CHARACTER —\n");
     if let Some(arch) = g.sim.archetype_of(avatar) {
         s.push_str(arch);
         s.push('\n');
@@ -638,7 +967,7 @@ fn sheet_text(g: &Game) -> String {
     }
     // Party roster.
     let roster = g.sim.party_roster();
-    s.push_str(&format!("\n── PARTY ({}) ──\n", roster.len()));
+    s.push_str(&format!("\n— PARTY ({}) —\n", roster.len()));
     if roster.is_empty() {
         s.push_str("(none — stand by a soul and press R to recruit)\n");
     } else {
@@ -761,7 +1090,7 @@ fn talk_input(keys: Res<ButtonInput<KeyCode>>, mut kb: MessageReader<KeyboardInp
     // Not yet talking: T opens a conversation with the nearest soul in reach (idle only).
     if g.convo.is_none() {
         kb.clear(); // discard stray keystrokes (incl. the opening T) so they don't leak into the box
-        if g.sim.player_traveling() || !keys.just_pressed(KeyCode::KeyT) {
+        if g.sim.player_traveling() || g.paused || !keys.just_pressed(KeyCode::KeyT) {
             return;
         }
         let Some((npc, _)) = g.sim.player_nearby_npcs().into_iter().next() else {
@@ -1042,8 +1371,8 @@ fn camera_control(
     game: NonSend<Game>,
     mut q: Query<(&mut CamRig, &mut Transform)>,
 ) {
-    // While typing in a conversation, the letter keys belong to the text box, not the camera.
-    if game.convo.is_some() {
+    // While typing in a conversation or paused, the letter keys belong elsewhere, not the camera.
+    if game.convo.is_some() || game.paused {
         return;
     }
     let Ok((mut rig, mut tf)) = q.single_mut() else { return };
@@ -1067,7 +1396,7 @@ fn camera_control(
     *tf = cam_transform(Vec3::new(f.x, 0.0, f.z), &rig);
 }
 
-fn update_hud(mut game: NonSendMut<Game>, time: Res<Time>, mut texts: Query<(&HudKind, &mut Text)>) {
+fn update_hud(mut game: NonSendMut<Game>, time: Res<Time>, mut texts: Query<(&HudKind, &mut Text, &mut Visibility)>) {
     let g = &mut *game;
     let view = g.sim.player_view();
     let day = g.sim.substrate().tick();
@@ -1086,8 +1415,8 @@ fn update_hud(mut game: NonSendMut<Game>, time: Res<Time>, mut texts: Query<(&Hu
     let can_talk = !traveling && g.convo.is_none() && view.as_ref().is_some_and(|v| !v.nearby.is_empty());
     // The lure: does the ground here hold something to find?
     let search_cue = match (traveling, g.sim.player_find_state()) {
-        (false, FindState::Findable) => "\n‹ you sense something here — press F to search ›",
-        (false, FindState::Locked) => "\n‹ something here eludes you — you lack the knowledge ›",
+        (false, FindState::Findable) => "\n  you sense something here — press F to search",
+        (false, FindState::Locked) => "\n  something here eludes you — you lack the knowledge",
         _ => "",
     };
 
@@ -1103,7 +1432,7 @@ fn update_hud(mut game: NonSendMut<Game>, time: Res<Time>, mut texts: Query<(&Hu
     let talk_panel = if let Some(c) = &g.convo {
         // Animated "considering" ellipsis while a reply is still being generated.
         let dots = [".", "..", "..."][((time.elapsed_secs() * 3.0) as usize) % 3];
-        let mut s = format!("── {} · {} ──\n", c.name, dispo.as_deref().unwrap_or(""));
+        let mut s = format!("— {} · {} —\n", c.name, dispo.as_deref().unwrap_or(""));
         for ln in &c.transcript {
             s.push_str(&ln.prefix);
             match &ln.text {
@@ -1128,7 +1457,9 @@ fn update_hud(mut game: NonSendMut<Game>, time: Res<Time>, mut texts: Query<(&Hu
         s
     };
 
-    for (kind, mut text) in &mut texts {
+    for (kind, mut text, mut vis) in &mut texts {
+        // Clear the gameplay HUD while the pause menu owns the screen.
+        *vis = if g.paused { Visibility::Hidden } else { Visibility::Inherited };
         text.0 = match kind {
             HudKind::Look => match &view {
                 Some(v) => {
