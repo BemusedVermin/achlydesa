@@ -27,9 +27,7 @@ pub struct TooltipText;
 pub struct InspectText;
 #[derive(Component)]
 pub struct MapLabel;
-#[derive(Component)]
-pub struct JournalText;
-/// Tag for always-on overlays (legend, inspect) that should vanish behind the pause menu.
+/// Tag for always-on overlays (the inspect panel) that should vanish behind the pause menu.
 #[derive(Component)]
 pub struct HideOnPause;
 
@@ -81,20 +79,11 @@ pub fn setup_ui(commands: &mut Commands, meshes: &mut Assets<Mesh>, materials: &
     };
     let text = |size: f32, color: Color| (TextFont { font: f.mono.clone(), font_size: size, ..default() }, TextColor(color));
 
-    // Legend — top-right.
-    commands.spawn((
-        HideOnPause,
-        Node { right: Val::Px(12.0), top: Val::Px(12.0), ..panel(250.0) },
-        theme::panel_chrome(),
-        Text::new(LEGEND),
-        text(12.0, theme::TEXT_DIM),
-    ));
-
-    // Inspect panel — right side, under the legend.
+    // Inspect panel — top-right of the centre view (clear of the right action tray).
     commands.spawn((
         InspectText,
         HideOnPause,
-        Node { right: Val::Px(12.0), top: Val::Px(310.0), ..panel(270.0) },
+        Node { right: Val::Px(crate::hud::RIGHT_W + theme::SP_MD), top: Val::Px(crate::hud::TOP_H + theme::SP_MD), ..panel(270.0) },
         theme::panel_chrome(),
         Text::new(""),
         text(13.0, theme::TEXT),
@@ -110,16 +99,6 @@ pub fn setup_ui(commands: &mut Commands, meshes: &mut Assets<Mesh>, materials: &
         Visibility::Hidden,
     ));
 
-    // Discoveries journal — a toggled panel (J), centre-left, hidden until opened.
-    commands.spawn((
-        JournalText,
-        Node { left: Val::Px(12.0), top: Val::Px(120.0), ..panel(380.0) },
-        theme::panel_chrome(),
-        Text::new(""),
-        text(13.0, theme::TEXT),
-        Visibility::Hidden,
-    ));
-
     // Floating-label pool — reused across discovered settlements (serif place-names).
     for _ in 0..LABEL_POOL {
         commands.spawn((
@@ -132,8 +111,6 @@ pub fn setup_ui(commands: &mut Commands, meshes: &mut Assets<Mesh>, materials: &
         ));
     }
 }
-
-const LEGEND: &str = "\u{2014} The land \u{2014}\nrocks: heights & peaks\ntrees: woods & scrub\nhouses: a settlement\nkeep/temple: a court\nbroken stones: a ruin\n\n\u{2014} Controls \u{2014}\nhover: look\nL-click: inspect\nR-click: travel\nSpace: wait   T: speak\nA/D/W/S: camera   scroll: zoom";
 
 // ── Picking and the click model ───────────────────────────────────────────────────────────────
 
@@ -162,6 +139,14 @@ pub fn tile_interact(mouse: Res<ButtonInput<MouseButton>>, windows: Query<&Windo
     }
     let Ok(window) = windows.single() else { return };
     let Ok((cam, cam_tf)) = cams.single() else { return };
+    // Only the centre (world) rectangle picks — a click over a tray must never move the avatar.
+    match window.cursor_position() {
+        Some(p) if crate::hud::in_center(window, p) => {}
+        _ => {
+            game.hovered = None;
+            return;
+        }
+    }
     let hovered = pick_tile(window, cam, cam_tf, &game.sim);
     game.hovered = hovered;
     let Some(c) = hovered else { return };
@@ -258,18 +243,8 @@ pub fn update_labels(game: NonSend<Game>, cams: Query<(&Camera, &GlobalTransform
     }
 }
 
-/// The discoveries journal — the Outer-Wilds ship-log: every place found (grouped) and every
-/// lore fact held. Refreshed each frame while open.
-pub fn update_journal(game: NonSend<Game>, mut q: Query<(&mut Text, &mut Visibility), With<JournalText>>) {
-    let Ok((mut text, mut vis)) = q.single_mut() else { return };
-    if !game.journal_open {
-        *vis = Visibility::Hidden;
-        return;
-    }
-    text.0 = journal_text(&game.sim);
-    *vis = Visibility::Visible;
-}
-
+/// The discoveries journal — the Outer-Wilds ship-log: every place found (grouped) and every lore
+/// fact held. Rendered into the pause menu's Journal tab (see `update_menu`).
 pub fn journal_text(sim: &Simulation) -> String {
     let cat = sim.feature_catalog();
     // Discovered features on explored tiles, grouped by category.
@@ -301,7 +276,6 @@ pub fn journal_text(sim: &Simulation) -> String {
             s.push_str(&format!("  \u{2022} {}\n", pretty(l)));
         }
     }
-    s.push_str("\n(press J to close)");
     s
 }
 

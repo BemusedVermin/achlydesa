@@ -24,12 +24,14 @@ use bevy::render::view::screenshot::{save_to_disk, Screenshot};
 use bevy::text::Font;
 use bevy::ui::widget::{ImageNode, NodeImageMode};
 use bevy::ui::{BorderRadius, BoxShadow, GlobalZIndex};
+use bevy::window::WindowResolution;
 use std::collections::{HashMap, HashSet};
 
 use app::theme::{self, ThemeFonts};
 
 mod fauna_art;
 mod feature_art;
+mod hud;
 mod layout;
 mod mesh;
 mod minimap;
@@ -153,20 +155,23 @@ struct Game {
     /// inspect — the two halves of the new pick model (hover = look, click = select).
     hovered: Option<Coord>,
     selected: Option<Coord>,
-    /// Is the discoveries journal open?
-    journal_open: bool,
-    /// Is the character sheet (stats / skills / gear / vitals / party) open?
-    sheet_open: bool,
     /// Is the pause menu (Esc) open? While paused, gameplay input is suspended and a tabbed
     /// parchment menu overlays the view. The world is turn-based, so this is a modal, not a clock.
     paused: bool,
-    /// The active menu tab (index into `MENU_TABS`: Journal/Character/Map/System).
+    /// The active menu tab (index into `MENU_TABS`: Journal/Character/Inventory/Map/System).
     menu_tab: usize,
+    /// Whose sheet the Character tab shows — a clicked party portrait's entity, or `None` for the
+    /// avatar (the default; reset whenever the tab is opened by key or the top bar).
+    sheet_subject: Option<Entity>,
     /// The cursor row within the System tab (Resume/Quit).
     sys_cursor: usize,
-    /// The explored-tile count the minimap was last rendered for — so it only re-renders when
-    /// the fog has actually lifted from new ground.
+    /// The explored-tile count the pause-menu Map tab was last rendered for — so it only
+    /// re-renders when the fog has actually lifted from new ground.
     last_map_explored: usize,
+    /// The explored count + avatar tile the always-on HUD minimap was last drawn for, so it only
+    /// re-renders when new ground is uncovered or the avatar moves (the pip follows).
+    last_hud_explored: usize,
+    last_hud_avatar: Coord,
 }
 
 /// An open, free-text conversation with one soul within reach. The player *types* to the
@@ -218,9 +223,6 @@ struct Marker;
 /// so the walk reads smoothly instead of stepping a hex at a time.
 #[derive(Component)]
 struct AvatarFig;
-/// The toggled **character sheet** panel (top-right): WWN stats, skills, gear, vitals, party.
-#[derive(Component)]
-struct SheetPanel;
 #[derive(Component)]
 struct CamRig {
     dist: f32,
@@ -257,20 +259,28 @@ fn main() {
         classify: HashMap::new(),
         hovered: None,
         selected: None,
-        journal_open: false,
-        sheet_open: false,
         // Dev hooks: `ACHLYDESA_PAUSE` starts on the pause menu, `ACHLYDESA_TAB=N` on tab N.
         paused: std::env::var("ACHLYDESA_PAUSE").is_ok(),
         menu_tab: std::env::var("ACHLYDESA_TAB").ok().and_then(|s| s.parse().ok()).unwrap_or(0),
+        sheet_subject: None,
         sys_cursor: 0,
         last_map_explored: usize::MAX,
+        last_hud_explored: usize::MAX,
+        last_hud_avatar: Coord::new(i32::MIN, i32::MIN),
     };
 
     let mut app = App::new();
     app.add_plugins(
         DefaultPlugins
             .set(WindowPlugin {
-                primary_window: Some(Window { title: "Achlydesa — exploration".into(), ..default() }),
+                primary_window: Some(Window {
+                    title: "Achlydesa — exploration".into(),
+                    // The reference size the framed HUD is authored against; the whole frame
+                    // scales as one with the window from here (see `hud::scale_ui`). `ACHLYDESA_RES=WxH`
+                    // overrides it (handy for eyeballing the scaling at other sizes).
+                    resolution: hud_resolution(),
+                    ..default()
+                }),
                 ..default()
             })
             // Runtime assets (the user's parchment, any images) live in the workspace `assets/`
@@ -299,7 +309,6 @@ fn main() {
             ui::update_tooltip,
             ui::update_inspect,
             ui::update_labels,
-            ui::update_journal,
             update_hud,
         )
             .chain(),
@@ -307,14 +316,40 @@ fn main() {
     // The fauna layer runs as its own group: `sync_fauna` re-targets creatures when
     // the world ticks (idempotent in between, so loose ordering is fine) and
     // `animate_fauna` is purely visual.
-    .add_systems(Update, (smooth_follow, sync_fauna, fauna_art::animate_fauna, speech_act_input, recruit_input, sheet_input, update_sheet).chain())
+    .add_systems(Update, (smooth_follow, sync_fauna, fauna_art::animate_fauna, speech_act_input, recruit_input, sheet_input).chain())
     // The pause layer: Esc/back + menu nav run *before* `talk_input` (which also reads Esc, to
     // leave a conversation), then the overlay's visibility + the dev screenshot hook.
     .add_systems(Update, (pause_input, menu_input).chain().before(talk_input))
     .add_systems(Update, (update_menu, update_map, hide_overlays_when_paused, dev_capture))
+    // The framed HUD: keep the whole frame scaled to the window, then refresh the trays.
+    .add_systems(
+        Update,
+        (
+            hud::scale_ui,
+            hud::update_portraits,
+            hud::update_vitals,
+            hud::update_action_buttons,
+            hud::update_hud_minimap,
+            hud::action_button_click,
+            hud::top_tab_click,
+            hud::portrait_click,
+        ),
+    )
     .init_resource::<CaptureClock>();
     app.world_mut().insert_non_send_resource(game);
     app.run();
+}
+
+/// The starting window size: the HUD reference, unless `ACHLYDESA_RES=WxH` overrides it (so the
+/// frame's scaling can be eyeballed at any size; the layout stays in proportion either way).
+fn hud_resolution() -> WindowResolution {
+    if let Ok(spec) = std::env::var("ACHLYDESA_RES")
+        && let Some((w, h)) = spec.split_once(['x', 'X'])
+        && let (Ok(w), Ok(h)) = (w.trim().parse::<u32>(), h.trim().parse::<u32>())
+    {
+        return WindowResolution::new(w, h);
+    }
+    WindowResolution::new(hud::REF_W as u32, hud::REF_H as u32)
 }
 
 /// A peopled, settled, *living* world to walk through — dialogue on so the populace talks
@@ -439,59 +474,24 @@ fn setup(
     // Load the shared HUD fonts first, so every panel is styled through the theme.
     let theme_fonts = ThemeFonts::embed(&mut fonts);
     ui::setup_ui(&mut commands, &mut meshes, &mut materials, &theme_fonts);
-    spawn_hud(&mut commands, &theme_fonts);
+    // The framed HUD: an opaque grassy-rock border (trays) around the centre world view.
+    let grassy = asset_server.load("ui/grassy_rock.jpg");
+    hud::spawn(&mut commands, &theme_fonts, grassy);
     let parchment = asset_server.load("ui/parchment.jpg");
     spawn_pause_menu(&mut commands, &theme_fonts, parchment);
     commands.insert_resource(theme_fonts);
-}
-
-fn spawn_hud(commands: &mut Commands, f: &ThemeFonts) {
-    // A consistent themed HUD panel: bordered, rounded fog-ink (paired with `panel_chrome`).
-    let panel = || Node {
-        position_type: PositionType::Absolute,
-        padding: UiRect::all(Val::Px(theme::SP_SM)),
-        border: UiRect::all(Val::Px(theme::BORDER_W)),
-        border_radius: BorderRadius::all(Val::Px(theme::RADIUS)),
-        ..default()
-    };
-    let body = |size: f32, color: Color| (Text::new(""), TextFont { font: f.mono.clone(), font_size: size, ..default() }, TextColor(color));
-    // Look — top-left.
-    commands.spawn((
-        HudKind::Look,
-        Node { left: Val::Px(12.0), top: Val::Px(12.0), max_width: Val::Px(360.0), ..panel() },
-        theme::panel_chrome(),
-        body(14.0, theme::TEXT),
-    ));
-    // Talk — bottom-left.
-    commands.spawn((
-        HudKind::Talk,
-        Node { left: Val::Px(12.0), bottom: Val::Px(44.0), max_width: Val::Px(520.0), ..panel() },
-        theme::panel_chrome(),
-        body(13.0, theme::TEXT),
-    ));
-    // Help / status — bottom strip.
-    commands.spawn((
-        HudKind::Help,
-        Node { left: Val::Px(12.0), bottom: Val::Px(10.0), ..panel() },
-        theme::panel_chrome(),
-        body(12.0, theme::TEXT_DIM),
-    ));
-    // Character sheet — top-right, hidden until toggled with C.
-    commands.spawn((
-        SheetPanel,
-        Node { right: Val::Px(12.0), top: Val::Px(12.0), max_width: Val::Px(340.0), ..panel() },
-        theme::panel_chrome(),
-        body(13.0, theme::TEXT),
-        Visibility::Hidden,
-    ));
 }
 
 // ── The pause menu (Esc): a modal scrim + a centred hub of panels you can open ──────────────────
 
 // ── The pause menu — an Oblivion-style tabbed parchment pane ─────────────────────────────────────
 
-/// The menu tabs, in paging order.
-const MENU_TABS: [&str; 4] = ["Journal", "Character", "Map", "System"];
+/// The menu tabs, in paging order. The top-tray tab buttons open this menu at the matching index.
+const MENU_TABS: [&str; 5] = ["Journal", "Character", "Inventory", "Map", "System"];
+/// Tab indices (kept in sync with `MENU_TABS`).
+const TAB_INVENTORY: usize = 2;
+const TAB_MAP: usize = 3;
+const TAB_SYSTEM: usize = 4;
 /// The System-tab rows (Resume / Quit).
 const SYS_ITEMS: [(&str, &str); 2] = [("Resume", "Esc"), ("Quit to the Grey", "")];
 
@@ -518,6 +518,8 @@ struct SysRow(usize);
 struct JournalTabText;
 #[derive(Component)]
 struct SheetTabText;
+#[derive(Component)]
+struct InventoryTabText;
 #[derive(Component)]
 struct MapImageNode;
 
@@ -598,9 +600,15 @@ fn spawn_pause_menu(commands: &mut Commands, f: &ThemeFonts, parchment: Handle<I
                         .with_children(|p| {
                             p.spawn((SheetTabText, theme::mono(f, "", 13.0, PARCH_INK)));
                         });
-                    // 2 — Map.
+                    // 2 — Inventory.
                     content
-                        .spawn((TabPanel(2), Node { flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: Val::Px(theme::SP_SM), width: Val::Percent(100.0), display: Display::None, ..default() }))
+                        .spawn((TabPanel(TAB_INVENTORY), Node { flex_direction: FlexDirection::Column, width: Val::Percent(100.0), display: Display::None, ..default() }))
+                        .with_children(|p| {
+                            p.spawn((InventoryTabText, theme::mono(f, "", 13.0, PARCH_INK)));
+                        });
+                    // 3 — Map.
+                    content
+                        .spawn((TabPanel(TAB_MAP), Node { flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: Val::Px(theme::SP_SM), width: Val::Percent(100.0), display: Display::None, ..default() }))
                         .with_children(|p| {
                             p.spawn(theme::serif(f, "The Grey Country", theme::T_TITLE, PARCH_INK));
                             p.spawn((
@@ -611,9 +619,9 @@ fn spawn_pause_menu(commands: &mut Commands, f: &ThemeFonts, parchment: Handle<I
                             ));
                             p.spawn(theme::mono(f, "gold: a court   pale: a town   dun: a ruin   cyan: a wonder", theme::T_LABEL, PARCH_DIM));
                         });
-                    // 3 — System.
+                    // 4 — System.
                     content
-                        .spawn((TabPanel(3), Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(theme::SP_XS), width: Val::Percent(100.0), display: Display::None, ..default() }))
+                        .spawn((TabPanel(TAB_SYSTEM), Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(theme::SP_XS), width: Val::Percent(100.0), display: Display::None, ..default() }))
                         .with_children(|p| {
                             for (i, (label, key)) in SYS_ITEMS.iter().enumerate() {
                                 p.spawn((
@@ -678,7 +686,11 @@ fn wait_input(keys: Res<ButtonInput<KeyCode>>, mut game: NonSendMut<Game>) {
     if game.convo.is_some() || game.paused || !keys.just_pressed(KeyCode::Space) {
         return;
     }
-    let g = &mut *game;
+    do_wait(&mut game);
+}
+
+/// Let one tick pass where the avatar stands (shared by Space and the Wait button).
+fn do_wait(g: &mut Game) {
     if g.sim.player_traveling() {
         return;
     }
@@ -694,7 +706,11 @@ fn search_input(keys: Res<ButtonInput<KeyCode>>, mut game: NonSendMut<Game>) {
     if game.convo.is_some() || game.paused || !keys.just_pressed(KeyCode::KeyF) {
         return;
     }
-    let g = &mut *game;
+    do_search(&mut game);
+}
+
+/// Search the tile underfoot (shared by F and the Search button).
+fn do_search(g: &mut Game) {
     if g.sim.player_traveling() {
         return;
     }
@@ -727,8 +743,15 @@ fn journal_input(keys: Res<ButtonInput<KeyCode>>, mut game: NonSendMut<Game>) {
 /// social check (the avatar's Charisma + the better of Convince/Lead vs the soul's disposition)
 /// decides; on a pass it joins and travels with you as a stack. Spends the turn either way.
 fn recruit_input(keys: Res<ButtonInput<KeyCode>>, mut game: NonSendMut<Game>) {
-    let g = &mut *game;
-    if g.convo.is_some() || g.paused || g.sim.player_traveling() || !keys.just_pressed(KeyCode::KeyR) {
+    if game.convo.is_some() || game.paused || !keys.just_pressed(KeyCode::KeyR) {
+        return;
+    }
+    do_recruit(&mut game);
+}
+
+/// Ask the nearest soul into the party (shared by R and the Recruit button).
+fn do_recruit(g: &mut Game) {
+    if g.sim.player_traveling() {
         return;
     }
     let Some((npc, _)) = g.sim.player_nearby_npcs().into_iter().next() else {
@@ -783,6 +806,7 @@ fn sheet_input(keys: Res<ButtonInput<KeyCode>>, mut game: NonSendMut<Game>) {
     if game.convo.is_none() && keys.just_pressed(KeyCode::KeyC) {
         game.paused = true;
         game.menu_tab = 1;
+        game.sheet_subject = None; // C always opens the avatar's own sheet
     }
 }
 
@@ -807,7 +831,7 @@ fn menu_input(keys: Res<ButtonInput<KeyCode>>, mut game: NonSendMut<Game>, mut e
     if keys.just_pressed(KeyCode::KeyQ) || keys.just_pressed(KeyCode::ArrowLeft) {
         game.menu_tab = (game.menu_tab + tabs - 1) % tabs;
     }
-    if game.menu_tab == 3 {
+    if game.menu_tab == TAB_SYSTEM {
         let n = SYS_ITEMS.len();
         if keys.just_pressed(KeyCode::KeyW) || keys.just_pressed(KeyCode::ArrowUp) {
             game.sys_cursor = (game.sys_cursor + n - 1) % n;
@@ -843,8 +867,9 @@ fn update_menu(
     mut underlines: Query<(&TabUnderline, &mut BackgroundColor), Without<SysRow>>,
     mut panels: Query<(&TabPanel, &mut Node)>,
     mut sys: Query<(&SysRow, &mut BackgroundColor), Without<TabUnderline>>,
-    mut journal: Query<&mut Text, (With<JournalTabText>, Without<SheetTabText>)>,
-    mut sheet: Query<&mut Text, (With<SheetTabText>, Without<JournalTabText>)>,
+    mut journal: Query<&mut Text, (With<JournalTabText>, Without<SheetTabText>, Without<InventoryTabText>)>,
+    mut sheet: Query<&mut Text, (With<SheetTabText>, Without<JournalTabText>, Without<InventoryTabText>)>,
+    mut inventory: Query<&mut Text, (With<InventoryTabText>, Without<JournalTabText>, Without<SheetTabText>)>,
 ) {
     if let Ok(mut vis) = root.single_mut() {
         *vis = if game.paused { Visibility::Visible } else { Visibility::Hidden };
@@ -862,7 +887,7 @@ fn update_menu(
         node.display = if p.0 == game.menu_tab { Display::Flex } else { Display::None };
     }
     for (r, mut bg) in &mut sys {
-        bg.0 = if game.menu_tab == 3 && r.0 == game.sys_cursor { Color::srgba(0.55, 0.40, 0.18, 0.35) } else { Color::NONE };
+        bg.0 = if game.menu_tab == TAB_SYSTEM && r.0 == game.sys_cursor { Color::srgba(0.55, 0.40, 0.18, 0.35) } else { Color::NONE };
     }
     if let Ok(mut t) = journal.single_mut() {
         t.0 = ui::journal_text(&game.sim);
@@ -870,11 +895,14 @@ fn update_menu(
     if let Ok(mut t) = sheet.single_mut() {
         t.0 = sheet_text(&game);
     }
+    if let Ok(mut t) = inventory.single_mut() {
+        t.0 = inventory_text(&game);
+    }
 }
 
 /// Re-render the minimap into the Map tab's image when the tab is open and new ground is known.
 fn update_map(mut game: NonSendMut<Game>, mut images: ResMut<Assets<Image>>, mut q: Query<&mut ImageNode, With<MapImageNode>>) {
-    if !game.paused || game.menu_tab != 2 {
+    if !game.paused || game.menu_tab != TAB_MAP {
         return;
     }
     let count = game.sim.player_explored_count();
@@ -909,28 +937,28 @@ fn dev_capture(mut clock: ResMut<CaptureClock>, mut commands: Commands, mut exit
     }
 }
 
-/// Show/hide and fill the character-sheet panel from the avatar's live RPG / survival / party state.
-fn update_sheet(game: NonSend<Game>, mut panel: Query<(&mut Text, &mut Visibility), With<SheetPanel>>) {
-    let Ok((mut text, mut vis)) = panel.single_mut() else { return };
-    if !game.sheet_open {
-        *vis = Visibility::Hidden;
-        return;
-    }
-    *vis = Visibility::Inherited;
-    text.0 = sheet_text(&game);
-}
-
-/// Compose the character-sheet text from the avatar's live state — read straight off the sim API,
+/// Compose the character sheet for whoever the Character tab is focused on — the avatar by default,
+/// or a companion when their portrait was clicked (`sheet_subject`). Read straight off the sim API,
 /// the same data NPCs carry, so what the sheet shows is exactly what the rules act on.
 fn sheet_text(g: &Game) -> String {
-    let Some(avatar) = g.sim.player_avatar() else { return "no avatar".into() };
-    let mut s = String::from("— CHARACTER —\n");
-    if let Some(arch) = g.sim.archetype_of(avatar) {
+    let avatar = g.sim.player_avatar();
+    // The subject: the clicked portrait's soul if it's still the avatar or in the party, else the
+    // avatar (so a sheet left open on a companion who has left falls back gracefully).
+    let subject = match g.sheet_subject {
+        Some(e) if Some(e) == avatar || g.sim.party_roster().contains(&e) => Some(e),
+        _ => avatar,
+    };
+    let Some(e) = subject else { return "no character".into() };
+    let is_avatar = Some(e) == avatar;
+
+    let mut s = format!("— {} —\n", g.sim.display_name(e).to_uppercase());
+    if let Some(arch) = g.sim.archetype_of(e) {
         s.push_str(arch);
         s.push('\n');
     }
+    s.push_str(if is_avatar { "you, the wanderer\n" } else { "a companion in your party\n" });
     // Attributes — score and modifier, three to a row.
-    if let Some(ab) = g.sim.abilities_of(avatar) {
+    if let Some(ab) = g.sim.abilities_of(e) {
         const NAMES: [&str; 6] = ["STR", "DEX", "CON", "INT", "WIS", "CHA"];
         s.push('\n');
         for i in 0..6 {
@@ -944,7 +972,7 @@ fn sheet_text(g: &Game) -> String {
             .skills()
             .iter()
             .filter_map(|sk| {
-                let rank = g.sim.proficiency_of(avatar, &sk.name)?;
+                let rank = g.sim.proficiency_of(e, &sk.name)?;
                 (rank >= 0).then(|| {
                     let tag = if sk.social { " talk" } else if sk.world { " world" } else { "" };
                     format!("{} +{}{}", sk.name, rank, tag)
@@ -957,23 +985,37 @@ fn sheet_text(g: &Game) -> String {
             s.push('\n');
         }
     }
-    // Gear and survival vitals (the latter only present when survival is on).
-    let gear = g.sim.player_gear();
-    if !gear.is_empty() {
-        s.push_str(&format!("\nGear: {}\n", gear.join(", ")));
-    }
-    if let Some(v) = g.sim.vitals_of(avatar) {
+    // Survival vitals (only present when survival is on); gear lives on the Inventory tab.
+    if let Some(v) = g.sim.vitals_of(e) {
         s.push_str(&format!("\nThirst {:.0}   Warmth {:.0}   Stamina {:.0}\n", v.thirst, v.warmth, v.stamina));
     }
-    // Party roster.
-    let roster = g.sim.party_roster();
-    s.push_str(&format!("\n— PARTY ({}) —\n", roster.len()));
-    if roster.is_empty() {
-        s.push_str("(none — stand by a soul and press R to recruit)\n");
+    // The party roster — only on the avatar's own sheet (the party is the avatar's).
+    if is_avatar {
+        let roster = g.sim.party_roster();
+        s.push_str(&format!("\n— PARTY ({}) —\n", roster.len()));
+        if roster.is_empty() {
+            s.push_str("(none — stand by a soul and press R to recruit)\n");
+        } else {
+            for m in &roster {
+                let arch = g.sim.archetype_of(*m).map(|a| format!("  ({a})")).unwrap_or_default();
+                s.push_str(&format!("• {}{}\n", g.sim.display_name(*m), arch));
+            }
+            s.push_str("\n(click a portrait to view that companion)\n");
+        }
+    }
+    s
+}
+
+/// The **Inventory** tab — the avatar's carried gear, read straight off the sim.
+fn inventory_text(g: &Game) -> String {
+    let gear = g.sim.player_gear();
+    let mut s = String::from("— INVENTORY —\n\n");
+    if gear.is_empty() {
+        s.push_str("(you carry nothing of note)\n");
     } else {
-        for m in roster {
-            let arch = g.sim.archetype_of(m).map(|a| format!("  ({a})")).unwrap_or_default();
-            s.push_str(&format!("• {}{}\n", g.sim.display_name(m), arch));
+        s.push_str(&format!("Gear ({}):\n", gear.len()));
+        for it in &gear {
+            s.push_str(&format!("  • {}\n", ui::pretty(it)));
         }
     }
     s
@@ -1080,6 +1122,38 @@ fn npc_card(sim: &mut Simulation, npc: Entity) -> String {
     card
 }
 
+/// Open a free-text conversation with the nearest soul in reach (shared by T and the Talk button).
+/// Assembles the character card from real sim state and lets the soul speak first.
+fn open_conversation(g: &mut Game) {
+    if g.sim.player_traveling() || g.paused || g.convo.is_some() {
+        return;
+    }
+    let Some((npc, _)) = g.sim.player_nearby_npcs().into_iter().next() else {
+        g.status = "There is no one close enough to speak with.".into();
+        return;
+    };
+    if !g.voice.is_ready() {
+        g.status = "The voice is still waking - conversation needs the model loaded.".into();
+        return;
+    }
+    let name = g.sim.display_name(npc);
+    let card = npc_card(&mut g.sim, npc);
+    // The soul speaks first: an opening line generated from a scene cue (not shown verbatim).
+    g.req_seq += 1;
+    let req = g.req_seq;
+    let fallback = format!("{name} regards you in silence.");
+    let dispatched = g.voice.request_chat(req, &card, &[], "(A stranger approaches and meets your eyes.)", &fallback);
+    let greeting = Line {
+        from_player: false,
+        prefix: format!("{name}: "),
+        text: if dispatched { None } else { Some(fallback) },
+        reveal: 0.0,
+        pending: dispatched.then_some(req),
+    };
+    g.convo = Some(Convo { listener: npc, name: name.clone(), card, transcript: vec![greeting], input: String::new() });
+    g.status = format!("You fall into talk with {name}.");
+}
+
 /// **Talk** — press **T** by a soul to open a free-text conversation, then *type* to it;
 /// **Enter** sends, **Esc** leaves. The soul answers in its own voice, generated from its real
 /// sim state (the card) and the exchange so far. Needs the voice model — these are the
@@ -1093,30 +1167,7 @@ fn talk_input(keys: Res<ButtonInput<KeyCode>>, mut kb: MessageReader<KeyboardInp
         if g.sim.player_traveling() || g.paused || !keys.just_pressed(KeyCode::KeyT) {
             return;
         }
-        let Some((npc, _)) = g.sim.player_nearby_npcs().into_iter().next() else {
-            g.status = "There is no one close enough to speak with.".into();
-            return;
-        };
-        if !g.voice.is_ready() {
-            g.status = "The voice is still waking - conversation needs the model loaded.".into();
-            return;
-        }
-        let name = g.sim.display_name(npc);
-        let card = npc_card(&mut g.sim, npc);
-        // The soul speaks first: an opening line generated from a scene cue (not shown verbatim).
-        g.req_seq += 1;
-        let req = g.req_seq;
-        let fallback = format!("{name} regards you in silence.");
-        let dispatched = g.voice.request_chat(req, &card, &[], "(A stranger approaches and meets your eyes.)", &fallback);
-        let greeting = Line {
-            from_player: false,
-            prefix: format!("{name}: "),
-            text: if dispatched { None } else { Some(fallback) },
-            reveal: 0.0,
-            pending: dispatched.then_some(req),
-        };
-        g.convo = Some(Convo { listener: npc, name: name.clone(), card, transcript: vec![greeting], input: String::new() });
-        g.status = format!("You fall into talk with {name}.");
+        open_conversation(g);
         return;
     }
 
@@ -1472,12 +1523,12 @@ fn update_hud(mut game: NonSendMut<Game>, time: Res<Time>, mut texts: Query<(&Hu
                 None => "no avatar".into(),
             },
             HudKind::Talk => talk_panel.clone(),
+            // A single status line for the bottom tray; verbs live on the action buttons, camera
+            // on A/D/W/S + scroll.
             HudKind::Help => {
-                let mut h = format!(
-                    "{status}\nL-click inspect | R-click travel | Space wait | F search | T speak | R recruit | C sheet | J journal | A/D/W/S camera | scroll zoom",
-                );
+                let mut h = status.clone();
                 if let Some(v) = &voice_line {
-                    h.push_str("  -  ");
+                    h.push_str("   ·   ");
                     h.push_str(v);
                 }
                 h
