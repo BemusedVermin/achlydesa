@@ -122,6 +122,9 @@ const REVEAL_CPS: f32 = 45.0;
 struct Game {
     sim: Simulation,
     avatar_pos: Coord,
+    /// The smoothed world position the camera and the avatar figure glide toward — eased each
+    /// frame to the tile the avatar stands on, so movement reads as a walk, not a hex-step.
+    avatar_render: Vec3,
     last_explored: usize,
     last_tick: u64,
     /// The world tick the rendered fauna were last synced to (so creatures only
@@ -144,6 +147,8 @@ struct Game {
     selected: Option<Coord>,
     /// Is the discoveries journal open?
     journal_open: bool,
+    /// Is the character sheet (stats / skills / gear / vitals / party) open?
+    sheet_open: bool,
 }
 
 /// An open, free-text conversation with one soul within reach. The player *types* to the
@@ -191,6 +196,13 @@ struct RenderAssets {
 struct MapMesh;
 #[derive(Component)]
 struct Marker;
+/// The persistent avatar figure — moved/glided every frame (not rebuilt with the tick markers),
+/// so the walk reads smoothly instead of stepping a hex at a time.
+#[derive(Component)]
+struct AvatarFig;
+/// The toggled **character sheet** panel (top-right): WWN stats, skills, gear, vitals, party.
+#[derive(Component)]
+struct SheetPanel;
 #[derive(Component)]
 struct CamRig {
     dist: f32,
@@ -208,9 +220,14 @@ fn main() {
     let mut sim = build_world();
     sim.spawn_player(None);
     let avatar_pos = sim.player_position().unwrap_or(Coord::new(0, 0));
+    let avatar_render = {
+        let aw = tile_world(avatar_pos.col, avatar_pos.row);
+        Vec3::new(aw.x, tile_top(sim.substrate(), avatar_pos) + 1.2, aw.y)
+    };
     let game = Game {
         sim,
         avatar_pos,
+        avatar_render,
         last_explored: usize::MAX,
         last_tick: u64::MAX,
         last_fauna_tick: u64::MAX,
@@ -223,6 +240,7 @@ fn main() {
         hovered: None,
         selected: None,
         journal_open: false,
+        sheet_open: false,
     };
 
     let mut app = App::new();
@@ -260,7 +278,7 @@ fn main() {
     // The fauna layer runs as its own group: `sync_fauna` re-targets creatures when
     // the world ticks (idempotent in between, so loose ordering is fine) and
     // `animate_fauna` is purely visual.
-    .add_systems(Update, (sync_fauna, fauna_art::animate_fauna).chain());
+    .add_systems(Update, (smooth_follow, sync_fauna, fauna_art::animate_fauna, speech_act_input, recruit_input, sheet_input, update_sheet).chain());
     app.world_mut().insert_non_send_resource(game);
     app.run();
 }
@@ -311,11 +329,15 @@ fn build_world() -> Simulation {
             // The RPG, party and exploration layers are on for the game: the avatar and every NPC
             // roll Worlds-Without-Number stats; the avatar can recruit companions who travel as a
             // stack; and travel is cost-paced over a road network with terrain/elevation gates.
-            // Survival stays OFF until NPCs can seek water/shelter (see the design doc) — else the
-            // mostly-arid world depopulates.
             rpg: true,
             party: true,
             exploration: true,
+            // Survival is on but **party-scoped**: only the avatar and its companions face thirst /
+            // warmth / stamina drain. The general NPC population is untouched (no Vitals, flat
+            // hunger), so the mostly-arid world doesn't depopulate before NPCs can seek water/shelter
+            // on their own — the world-wide variant (`survival_everyone: true`) waits on that AI.
+            survival: true,
+            survival_everyone: false,
             goals,
             registry: reg,
             ..Default::default()
@@ -344,13 +366,17 @@ fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials
     commands.insert_resource(fauna_art);
     commands.init_resource::<scatter::Decorated>();
     commands.init_resource::<feature_art::Built>();
+    let avatar_mesh = meshes.add(Capsule3d::new(0.5, 1.8));
     commands.insert_resource(RenderAssets {
         map_mat,
-        avatar_mesh: meshes.add(Capsule3d::new(0.5, 1.8)),
-        avatar_mat,
+        avatar_mesh: avatar_mesh.clone(),
+        avatar_mat: avatar_mat.clone(),
         npc_mesh: meshes.add(Cylinder::new(0.2, 0.55)),
         npc_mat,
     });
+    // The avatar is one persistent figure (not rebuilt with the per-tick markers): `smooth_follow`
+    // glides it — and the camera — toward the tile it stands on, so a walk reads as a glide.
+    commands.spawn((AvatarFig, Mesh3d(avatar_mesh), MeshMaterial3d(avatar_mat), Transform::from_translation(game.avatar_render)));
 
     let aw = tile_world(game.avatar_pos.col, game.avatar_pos.row);
     let rig = CamRig { dist: 42.0, yaw: 0.0, pitch: 0.92 };
@@ -402,6 +428,16 @@ fn spawn_hud(commands: &mut Commands) {
         Text::new(""),
         TextFont { font_size: 13.0, ..default() },
         TextColor(Color::srgb(0.72, 0.76, 0.82)),
+    ));
+    // Character sheet — top-right, hidden until toggled with C.
+    commands.spawn((
+        SheetPanel,
+        Node { position_type: PositionType::Absolute, right: Val::Px(12.0), top: Val::Px(12.0), padding: UiRect::all(Val::Px(8.0)), max_width: Val::Px(340.0), ..default() },
+        bg(),
+        Text::new(""),
+        TextFont { font_size: 14.0, ..default() },
+        bright(),
+        Visibility::Hidden,
     ));
 }
 
@@ -480,6 +516,138 @@ fn journal_input(keys: Res<ButtonInput<KeyCode>>, mut game: NonSendMut<Game>) {
     if game.convo.is_none() && keys.just_pressed(KeyCode::KeyJ) {
         game.journal_open = !game.journal_open;
     }
+}
+
+/// **Recruit** — press **R** beside a soul to ask it into your party. A live Worlds-Without-Number
+/// social check (the avatar's Charisma + the better of Convince/Lead vs the soul's disposition)
+/// decides; on a pass it joins and travels with you as a stack. Spends the turn either way.
+fn recruit_input(keys: Res<ButtonInput<KeyCode>>, mut game: NonSendMut<Game>) {
+    let g = &mut *game;
+    if g.convo.is_some() || g.sim.player_traveling() || !keys.just_pressed(KeyCode::KeyR) {
+        return;
+    }
+    let Some((npc, _)) = g.sim.player_nearby_npcs().into_iter().next() else {
+        g.status = "No soul near to recruit.".into();
+        return;
+    };
+    let name = g.sim.display_name(npc);
+    g.status = if g.sim.player_recruit(npc) {
+        format!("{name} joins your party.")
+    } else {
+        format!("{name} will not follow you — not yet.")
+    };
+}
+
+/// The friendly **speech acts** the player can perform with a single key on the nearest soul —
+/// the model-free way to build a soul's opinion (toward recruiting). Each is a real authored
+/// intent whose moves land scaled by the avatar's speech skill (so a silver tongue persuades
+/// faster). (key, intent id, the verb shown in the status line.)
+const QUICK_ACTS: &[(KeyCode, &str, &str)] = &[
+    (KeyCode::Digit1, "a_greeting", "greet"),
+    (KeyCode::Digit2, "a_word_of_praise", "praise"),
+    (KeyCode::Digit3, "a_confidence_shared", "confide in"),
+    (KeyCode::Digit4, "a_consolation", "console"),
+    (KeyCode::Digit5, "an_overture_of_peace", "make peace with"),
+];
+
+/// **Speak** (1–5) — perform a friendly speech act on the nearest soul. Deterministic and
+/// model-free: the act's authored moves land scaled by the avatar's speech skill, nudging the
+/// soul's opinion (watch it climb in the status line — a devoted soul will follow you). One act
+/// is one turn.
+fn speech_act_input(keys: Res<ButtonInput<KeyCode>>, mut game: NonSendMut<Game>) {
+    let g = &mut *game;
+    if g.convo.is_some() || g.sim.player_traveling() {
+        return;
+    }
+    let Some(&(_, intent, verb)) = QUICK_ACTS.iter().find(|(k, _, _)| keys.just_pressed(*k)) else {
+        return;
+    };
+    let Some((npc, _)) = g.sim.player_nearby_npcs().into_iter().next() else {
+        g.status = "No soul near to speak to.".into();
+        return;
+    };
+    let name = g.sim.display_name(npc);
+    g.sim.player_talk(npc, intent);
+    let dispo = g.sim.player_avatar().and_then(|a| g.sim.opinion_of(npc, a)).map(disposition_word).unwrap_or("unmoved");
+    g.status = format!("You {verb} {name}. {name} now {dispo}.");
+}
+
+/// **Character sheet** — press **C** to open or close the avatar's Worlds-Without-Number sheet
+/// (attributes, trained skills, gear, vitals, party). A look, not an action: no time passes.
+fn sheet_input(keys: Res<ButtonInput<KeyCode>>, mut game: NonSendMut<Game>) {
+    if game.convo.is_none() && keys.just_pressed(KeyCode::KeyC) {
+        game.sheet_open = !game.sheet_open;
+    }
+}
+
+/// Show/hide and fill the character-sheet panel from the avatar's live RPG / survival / party state.
+fn update_sheet(game: NonSend<Game>, mut panel: Query<(&mut Text, &mut Visibility), With<SheetPanel>>) {
+    let Ok((mut text, mut vis)) = panel.single_mut() else { return };
+    if !game.sheet_open {
+        *vis = Visibility::Hidden;
+        return;
+    }
+    *vis = Visibility::Inherited;
+    text.0 = sheet_text(&game);
+}
+
+/// Compose the character-sheet text from the avatar's live state — read straight off the sim API,
+/// the same data NPCs carry, so what the sheet shows is exactly what the rules act on.
+fn sheet_text(g: &Game) -> String {
+    let Some(avatar) = g.sim.player_avatar() else { return "no avatar".into() };
+    let mut s = String::from("══ CHARACTER ══\n");
+    if let Some(arch) = g.sim.archetype_of(avatar) {
+        s.push_str(arch);
+        s.push('\n');
+    }
+    // Attributes — score and modifier, three to a row.
+    if let Some(ab) = g.sim.abilities_of(avatar) {
+        const NAMES: [&str; 6] = ["STR", "DEX", "CON", "INT", "WIS", "CHA"];
+        s.push('\n');
+        for i in 0..6 {
+            s.push_str(&format!("{} {:>2} ({:+})", NAMES[i], ab.scores[i], ab.modifier(i)));
+            s.push_str(if i % 3 == 2 { "\n" } else { "   " });
+        }
+    }
+    // Trained skills (rank ≥ 0), tagged by interaction class (talk / world).
+    if let Some(data) = g.sim.rpg_data() {
+        let trained: Vec<String> = data
+            .skills()
+            .iter()
+            .filter_map(|sk| {
+                let rank = g.sim.proficiency_of(avatar, &sk.name)?;
+                (rank >= 0).then(|| {
+                    let tag = if sk.social { " talk" } else if sk.world { " world" } else { "" };
+                    format!("{} +{}{}", sk.name, rank, tag)
+                })
+            })
+            .collect();
+        if !trained.is_empty() {
+            s.push_str("\nSkills: ");
+            s.push_str(&trained.join(", "));
+            s.push('\n');
+        }
+    }
+    // Gear and survival vitals (the latter only present when survival is on).
+    let gear = g.sim.player_gear();
+    if !gear.is_empty() {
+        s.push_str(&format!("\nGear: {}\n", gear.join(", ")));
+    }
+    if let Some(v) = g.sim.vitals_of(avatar) {
+        s.push_str(&format!("\nThirst {:.0}   Warmth {:.0}   Stamina {:.0}\n", v.thirst, v.warmth, v.stamina));
+    }
+    // Party roster.
+    let roster = g.sim.party_roster();
+    s.push_str(&format!("\n── PARTY ({}) ──\n", roster.len()));
+    if roster.is_empty() {
+        s.push_str("(none — stand by a soul and press R to recruit)\n");
+    } else {
+        for m in roster {
+            let arch = g.sim.archetype_of(m).map(|a| format!("  ({a})")).unwrap_or_default();
+            s.push_str(&format!("• {}{}\n", g.sim.display_name(m), arch));
+        }
+    }
+    s
 }
 
 /// The trait/mood vocabulary, mirrored from the sim's data so the app can read an NPC's
@@ -782,11 +950,7 @@ fn rebuild_markers(mut commands: Commands, ra: Res<RenderAssets>, mut game: NonS
         commands.entity(e).despawn();
     }
     let g = &mut *game;
-    // The avatar — a bright capsule standing on its tile.
-    let ap = g.avatar_pos;
-    let atop = tile_top(g.sim.substrate(), ap);
-    let aw = tile_world(ap.col, ap.row);
-    commands.spawn((Marker, Mesh3d(ra.avatar_mesh.clone()), MeshMaterial3d(ra.avatar_mat.clone()), Transform::from_xyz(aw.x, atop + 1.2, aw.y)));
+    // The avatar is a persistent figure (`AvatarFig`), glided by `smooth_follow` — not rebuilt here.
     // The populace — only where the player has been (where the fog is lifted).
     let explored: HashSet<(i32, i32)> = g.sim.player_explored().iter().map(|c| (c.col, c.row)).collect();
     for c in g.sim.npc_positions() {
@@ -852,6 +1016,25 @@ fn cam_transform(focus: Vec3, rig: &CamRig) -> Transform {
     Transform::from_translation(focus + rot * (Vec3::Z * rig.dist)).looking_at(focus, Vec3::Y)
 }
 
+/// Glide the avatar figure — and the focus the camera orbits — toward the tile the avatar stands
+/// on, easing a little each frame. The avatar's *true* position is the discrete tile (that's the
+/// gameplay); this is purely the smoothed render position, so a walk reads as a glide rather than a
+/// hex-by-hex jump.
+fn smooth_follow(time: Res<Time>, mut game: NonSendMut<Game>, mut fig: Query<&mut Transform, With<AvatarFig>>) {
+    let g = &mut *game;
+    let target = {
+        let aw = tile_world(g.avatar_pos.col, g.avatar_pos.row);
+        Vec3::new(aw.x, tile_top(g.sim.substrate(), g.avatar_pos) + 1.2, aw.y)
+    };
+    // Exponential smoothing, ~0.09 s time constant: tight enough to keep up with the walk, loose
+    // enough to glide. `1 - e^(-dt/τ)` makes the ease frame-rate-independent.
+    let k = (1.0 - (-time.delta_secs() / 0.09).exp()).clamp(0.0, 1.0);
+    g.avatar_render = g.avatar_render.lerp(target, k);
+    if let Ok(mut tf) = fig.single_mut() {
+        tf.translation = g.avatar_render;
+    }
+}
+
 fn camera_control(
     keys: Res<ButtonInput<KeyCode>>,
     scroll: Res<AccumulatedMouseScroll>,
@@ -880,8 +1063,8 @@ fn camera_control(
     if scroll.delta.y != 0.0 {
         rig.dist = (rig.dist * (1.0 - scroll.delta.y * 0.12)).clamp(8.0, 140.0);
     }
-    let aw = tile_world(game.avatar_pos.col, game.avatar_pos.row);
-    *tf = cam_transform(Vec3::new(aw.x, 0.0, aw.y), &rig);
+    let f = game.avatar_render;
+    *tf = cam_transform(Vec3::new(f.x, 0.0, f.z), &rig);
 }
 
 fn update_hud(mut game: NonSendMut<Game>, time: Res<Time>, mut texts: Query<(&HudKind, &mut Text)>) {
@@ -940,7 +1123,7 @@ fn update_hud(mut game: NonSendMut<Game>, time: Res<Time>, mut texts: Query<(&Hu
     } else {
         let mut s = if talk.is_empty() { "The world is quiet for now...".to_string() } else { format!("Nearby voices:\n{}", talk.join("\n")) };
         if can_talk {
-            s.push_str("\n\n(a soul is near - press T to speak)");
+            s.push_str("\n\na soul is near:\n  1 greet · 2 praise · 3 confide · 4 console · 5 make peace\n  T free-talk · R recruit (when they're devoted)");
         }
         s
     };
@@ -960,7 +1143,7 @@ fn update_hud(mut game: NonSendMut<Game>, time: Res<Time>, mut texts: Query<(&Hu
             HudKind::Talk => talk_panel.clone(),
             HudKind::Help => {
                 let mut h = format!(
-                    "{status}\nL-click inspect | R-click travel | Space wait | F search | T speak | J journal | A/D/W/S camera | scroll zoom",
+                    "{status}\nL-click inspect | R-click travel | Space wait | F search | T speak | R recruit | C sheet | J journal | A/D/W/S camera | scroll zoom",
                 );
                 if let Some(v) = &voice_line {
                     h.push_str("  -  ");
