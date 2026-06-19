@@ -308,6 +308,14 @@ fn build_world() -> Simulation {
             markets: 12,
             markets_on_settlements: true,
             dialogue: true,
+            // The RPG, party and exploration layers are on for the game: the avatar and every NPC
+            // roll Worlds-Without-Number stats; the avatar can recruit companions who travel as a
+            // stack; and travel is cost-paced over a road network with terrain/elevation gates.
+            // Survival stays OFF until NPCs can seek water/shelter (see the design doc) — else the
+            // mostly-arid world depopulates.
+            rpg: true,
+            party: true,
+            exploration: true,
             goals,
             registry: reg,
             ..Default::default()

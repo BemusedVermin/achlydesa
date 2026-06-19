@@ -9,6 +9,35 @@ Grouped by system. Items marked **(blocks X)** gate something else.
 
 ---
 
+## RPG / survival / exploration overhaul (built 2026-06 — see `docs/rpg_survival_exploration.md`)
+A large multi-crate build **modularised the agent layer** (`agent_core` + feature crates
+`rpg`/`party`/`survival`/`travel`/`explore`, with `agents` the thin assembler) and added, all
+gated off-by-default (byte-identical when off): the **WWN RPG layer** (attributes/skills/Foci/Edges/
+saves on every NPC + the avatar), the **party** (recruit via a Convince/Lead check, travel as a
+stack), **speech + world-interaction skills** (persuasion scales dialogue, Notice raises sight +
+passive secret-spotting), the **survival layer** (per-tile thirst/warmth/stamina + tile-hunger), and
+the **exploration layer** (cost-paced day-budget travel, a procedural road network, slope +
+climbing-gear/boat edge gates, gear). The app world is now **US-scale** and `app` **owns world
+generation** (`Simulation::from_world`). This supersedes the now-built items in *Planned game layers*
+below (travel costs, roads, RPG & survival, world scale). What's deferred within it:
+- **Survival isn't on world-wide.** Autonomous NPCs have no water/shelter-seeking GOAP goals, so a
+  survival-on mostly-arid world depopulates to its green pockets (the survivors thrive). Needs an
+  **NPC survival-AI** before it can be enabled for the whole population — it's a *player/party* layer
+  until then. **(blocks: survival in the app)**
+- **POI interaction and carts/paid-passage** need the avatar to be an **economic/needs actor** (it has
+  no `Inventory`/money yet); invariant-safe payment needs the avatar's coins counted in `total_money()`.
+  Shares the player-`Inventory` prerequisite already flagged for the maps slice.
+- **App render polish.** Roads/rivers aren't drawn, there's no mesh chunking for the US-scale map, and
+  the HUD doesn't surface RPG stats / party / vitals / travel cost (fog-of-war bounds rendering for now).
+- **Combat is deferred by design** — a **job-system** + **xianxia power tiers** (the `PowerTier` +
+  grant-bundle hooks are reserved for it); combat-tagged Foci are authored but inert. **NPC↔NPC speech
+  scaling** is also deferred (avatar speech only for now).
+- **Economy ↔ WWN unification** (folding the economy `Skills` onto WWN Craft/Work/Trade) is deferred.
+- **The 3 brittle narrative V&V tests stay red** pending a one-time rebaseline (carried from the biome
+  work, not caused by this overhaul — every phase was verified byte-identical).
+
+---
+
 ## Narrative director — v2 multi-thread drama manager built; the player layer deferred
 The capstone is a **multi-thread drama manager** (`agents/src/director.rs` + `beats.rs` +
 `assets/data/beats.ron` + `assets/data/moods.ron`, **v2 2026-06**, behind `Setup::director`). (The first
@@ -268,7 +297,10 @@ travel costs (freight), and the player economy / RPG layer.
 
 ---
 
-*Last updated 2026-06. Done since the reviews: smart-object affordances, per-agent discovery,
+*Last updated 2026-06 — the **RPG / survival / exploration overhaul** (modular `agent_core` +
+`rpg`/`party`/`survival`/`travel`/`explore` crates; WWN stats/skills/Foci/Edges, recruitable party,
+speech + Notice skills, per-tile survival, cost-paced road travel with edge gates, a US-scale world;
+its own section above). Done since the reviews: smart-object affordances, per-agent discovery,
 learn-a-trade, specialties, price smoothing, V&V harness, ODD doc, the predator layer + Q10 +
 soil-carbon feedback + Liebig (→ coexistence), the full faction system (governance, multi-
 membership, laws, enforcement, tribute, command, opinion, war), and the **narrative director**

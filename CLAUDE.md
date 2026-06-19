@@ -44,15 +44,28 @@ Six crates, in dependency order (each may depend only on those above it). The de
 | `sim` | Engine-agnostic ABM core: `Substrate`/`Actor`/`Action`/`Scheduler`/`Observer` traits + seeded `Rng`. Greek symbols in docs map to these traits (see `sim/src/lib.rs`). | none |
 | `config` | Configuration hub. Owns the RON format and *sources bytes* — it does **not** parse them. Holds the tunable structs (`EconConfig`, `DirectorConfig`, …) and `Params`. | none |
 | `game_sim` | The substrate: a cylindrical hex world (wraps E–W, polar caps) carrying climate/ecology fields. Owns `World`, `Coord`, `Topology`, `SplitMix64`. | none |
-| `agents` | **The heart.** The agent layer on `bevy_ecs`: utility AI (IAUS) + GOAP planning, integer economy, factions/politics, traits & mood, emergent dialogue, the narrative director, the player avatar. | `bevy_ecs` only |
+| `agent_core` | **The heart.** The agent layer on `bevy_ecs`: utility AI (IAUS) + GOAP planning, integer economy, factions/politics, traits & mood, emergent dialogue, the narrative director, the player avatar, fauna. *Every shared component/resource/type lives here* (extracted from the old `agents`). | `bevy_ecs` only |
+| `rpg` | Worlds-Without-Number character model — six attributes, the 21 skills, two-level Foci, Cities-Without-Number Edges (data-driven *grant bundles*), deterministic (no-dice) checks, saves; a reserved xianxia power tier. RON-authored. | `bevy_ecs` |
+| `travel` | **Pure.** Travel cost model (a forest hex ≈ a day; roads cheap, slope adds), weighted Dijkstra routing, a procedural road-tree builder, climb/boat edge gates. | none |
+| `party` | Recruited companions that travel as a stack with the avatar — the roster, config, and the disposition→difficulty helper. | `bevy_ecs` |
+| `survival` | Per-tile, per-day vital drain (thirst/warmth/stamina) on every body, mitigated by Constitution / the Survive skill / gear. | `bevy_ecs` |
+| `explore` | The exploration data layer over `travel`: the road network, carried gear, the cost/gate config. | `bevy_ecs` |
+| `agents` | **The thin assembler.** Owns `Simulation`/`Setup`/the fixed-order schedule, wires `agent_core` + the feature crates (`rpg`/`party`/`survival`/`explore`) into a run, exposes the public API, and re-exports the whole surface so `app` and the demos import everything from `agents`. | `bevy_ecs` only |
 | `voice` | Optional on-device SLM (candle + Qwen2.5) that re-voices dialogue surface text. Isolated here so the heavy `candle` stack never touches the sim crates. | none (FFI) |
 | `app` | The playable front-end (Bevy 0.18 + hexx): true-3D hex columns, fog of war, follow camera, HUD. A thin **view** over the authoritative sim. | full Bevy |
 
 `agents::Simulation` is the top-level driver: it wraps its own `bevy_ecs::World` + a fixed-order
-`Schedule` and is built from a `Setup` struct (`agents/src/lib.rs`). `Setup` is *the* knob surface
-for a run — world size, seed, warm-up, populations, and which optional layers wake. `app` holds the
-`Simulation` as a Bevy `NonSend` resource and drives it by hand (`sim.step()`), one tick per player
-action; it never lets the outer Bevy schedule run the sim.
+`Schedule`. **The caller owns world generation** — `app` builds its `game_sim::World` (US-scale, few
+plates) and injects it via `Simulation::from_world(world, setup)`; `Simulation::new(setup)` is a
+headless/test convenience that generates a small default world from `Setup::params`. `Setup` is *the*
+knob surface — seed, warm-up, populations, and which optional layers wake (`dialogue`, `director`,
+`rpg`, `party`, `survival`, `exploration`), each off by default and byte-identical when off. `app`
+holds the `Simulation` as a Bevy `NonSend` resource and drives it by hand (`sim.step()`), one tick per
+player action; it never lets the outer Bevy schedule run the sim.
+
+The RPG / survival / exploration layers (the `rpg`/`party`/`survival`/`travel`/`explore` crates) are
+a large, ongoing build — design, rationale, and per-phase status live in
+**`docs/rpg_survival_exploration.md`**; read it before extending them.
 
 ## Non-negotiable invariants
 
@@ -78,9 +91,10 @@ Two distinct kinds of authored content, both under the top-level `assets/`, both
 through the `config` crate (no crate touches `assets/` directly):
 
 - `assets/data/*.ron` — **content lists**: goods, recipes, skills, traits, moods, goals, norms,
-  narrative beats, dialogue intents, the generative grammar. Loaded via `config` but **parsed by
-  `agents`** (the crate that owns the types). `Registry::bundled()` / `IntentBook::bundled()` etc.
-  bake these in at compile time.
+  narrative beats, dialogue intents, the generative grammar, the bestiary, and the WWN RPG content
+  (`attributes`, `rpg_skills`, `foci`, `edges`). Loaded via `config` but **parsed by the owning
+  crate** (`agent_core` for the world model, `rpg` for the RPG content). `Registry::bundled()` /
+  `RpgData::bundled()` / `IntentBook::bundled()` etc. bake these in at compile time.
 - `assets/config/*.ron` — **tunable knobs** (`EconConfig`, `NeedsConfig`, `DirectorConfig`,
   `VoiceConfig`, …). Each loads as `Default`, then any RON file found is layered on top via
   `figment` (`config/src/tunables.rs`). A missing file just means defaults; retune without recompiling.

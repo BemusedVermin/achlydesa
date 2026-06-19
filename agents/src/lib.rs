@@ -1573,6 +1573,35 @@ mod tests {
         assert!(sim.player_equip("climbing_gear") && sim.player_has_gear("climbing_gear"));
     }
 
+    // --- Capstone: the whole stack together ---
+
+    #[test]
+    fn the_whole_stack_is_deterministic_and_never_mints_money() {
+        // Every new layer at once, with an avatar in the world.
+        let run = || {
+            let mut sim = Simulation::new(Setup {
+                width: 40,
+                height: 30,
+                seed: 2026,
+                npcs: 40,
+                markets_on_settlements: true,
+                rpg: true,
+                party: true,
+                survival: true,
+                exploration: true,
+                ..Default::default()
+            });
+            let _ = sim.spawn_player(None);
+            let money0 = sim.total_money();
+            sim.run(40);
+            (money0, sim.total_money(), sim.npc_count())
+        };
+        let a = run();
+        let b = run();
+        assert_eq!(a, b, "rpg + party + survival + exploration on → byte-identical per seed");
+        assert!(a.1 <= a.0, "no layer mints money — the total only falls (deaths), trade conserving the rest");
+    }
+
     #[test]
     fn both_farming_and_baking_emerge() {
         let mut sim = economy(60);

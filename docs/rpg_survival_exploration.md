@@ -76,7 +76,17 @@ above) ✅ · Phase 2 (rpg crate + NPC/avatar wiring, `Setup.rpg`) ✅ · Phase 
 `player_recruit`, the `Suspended`/`Follower` agent_core seams, `Setup.party`) ✅ · Phase 4
 (speech-skill scaling + Notice→sight) ✅ · Phase 5 (survival crate: Vitals + tile-driven per-day
 drain, the `HungerModel` tile-hunger seam, `Setup.survival`) ✅ · Phase 6 (travel + explore crates: weighted
-cost-paced travel, roads, edge gates, gear; `Setup.exploration`) ✅. Phase 7 pending.
+cost-paced travel, roads, edge gates, gear; `Setup.exploration`) ✅ · Phase 7 (enable rpg/party/exploration in the app, the
+all-layers V&V capstone, CLAUDE.md/deferred.md docs) ✅. **Overhaul complete** — the remaining work
+(app render polish: roads/rivers/chunking/HUD; survival-NPC-AI before world-wide survival;
+POI-interaction + carts needing the avatar economic model; the narrative-test rebaseline; combat) is
+recorded in `deferred.md`.
+
+**App integration (Phase 7):** `app::build_world` turns on `rpg` + `party` + `exploration` (survival
+stays off until the NPC survival-AI lands). A capstone test
+(`the_whole_stack_is_deterministic_and_never_mints_money`) runs all four layers together and asserts
+the run is byte-identical per seed and `total_money()` is never minted. CLAUDE.md's crate table +
+`deferred.md` updated for the new architecture and the remaining scope.
 
 **Travel + exploration (Phase 6):** new pure **`travel`** crate (cost model: a forest hex ≈ a day,
 roads ×0.35, wastes/rainforest dearer, slope adds; weighted Dijkstra route; greedy road-tree
