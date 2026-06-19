@@ -874,6 +874,14 @@ pub fn display_name(world: &World, e: Entity) -> String {
 /// so free-text talk can move the social state through the *same* authored, deterministic
 /// effects. Returns whether a grudge was made.
 pub fn apply_moves(world: &mut World, speaker: Entity, listener: Entity, moves: &[Move]) -> bool {
+    apply_moves_scaled(world, speaker, listener, moves, 1.0)
+}
+
+/// Apply an intent's [`Move`]s with their opinion/mood/trait deltas multiplied by `scale` — how
+/// strongly the words land (e.g. the result of a speaker's persuasion-skill check). `scale == 1.0`
+/// is the unscaled canon, so every existing caller (and a world without the RPG layer) is
+/// byte-identical; `0.0` means the words move nothing and no grudge forms.
+pub fn apply_moves_scaled(world: &mut World, speaker: Entity, listener: Entity, moves: &[Move], scale: f32) -> bool {
     let mut made_grudge = false;
     for mv in moves {
         match mv {
@@ -883,7 +891,7 @@ pub fn apply_moves(world: &mut World, speaker: Entity, listener: Entity, moves: 
                     && let Some(mut op) = world.get_mut::<Opinion>(w)
                 {
                     let e = op.0.entry(t).or_insert(0.0);
-                    *e = (*e + delta).clamp(-1.0, 1.0);
+                    *e = (*e + delta * scale).clamp(-1.0, 1.0);
                 }
             }
             Move::Stir { who, mood, delta } => {
@@ -893,7 +901,7 @@ pub fn apply_moves(world: &mut World, speaker: Entity, listener: Entity, moves: 
                     && let Some(mut m) = world.get_mut::<Mood>(w)
                     && let Some(v) = m.0.get_mut(mid)
                 {
-                    *v = (*v + delta).clamp(0.0, 1.0);
+                    *v = (*v + delta * scale).clamp(0.0, 1.0);
                 }
             }
             Move::Sway { who, trait_name, delta } => {
@@ -903,12 +911,12 @@ pub fn apply_moves(world: &mut World, speaker: Entity, listener: Entity, moves: 
                     && let Some(mut p) = world.get_mut::<Personality>(w)
                     && let Some(v) = p.0.get_mut(tid)
                 {
-                    *v = (*v + delta).clamp(0.0, 1.0);
+                    *v = (*v + delta * scale).clamp(0.0, 1.0);
                 }
             }
             Move::Grudge { who, against } => {
                 let (w, a) = (party(*who, speaker, listener), party(*against, speaker, listener));
-                if w != a {
+                if scale > 0.0 && w != a {
                     world.entity_mut(w).insert(Grievance(a));
                     made_grudge = true;
                 }
@@ -918,11 +926,18 @@ pub fn apply_moves(world: &mut World, speaker: Entity, listener: Entity, moves: 
     made_grudge
 }
 
-/// Enact one utterance immediately — the player-avatar speaking, or any caller that wants
-/// the result now rather than on the next `converse` tick. Applies the intent's moves
-/// (the deterministic social consequence), renders the surface, records the memory for
-/// both souls, logs it, and returns it. Uses the *same* machinery as emergent speech.
+/// Enact one utterance immediately, at full strength — see [`perform_scaled`].
 pub fn perform(world: &mut World, speaker: Entity, listener: Entity, intent_id: &str) -> Option<Utterance> {
+    perform_scaled(world, speaker, listener, intent_id, 1.0)
+}
+
+/// Enact one utterance immediately — the player-avatar speaking, or any caller that wants the
+/// result now rather than on the next `converse` tick. Applies the intent's moves (the
+/// deterministic social consequence) **scaled by `scale`** — how strongly the words land, e.g.
+/// the result of the speaker's persuasion check — then renders the surface, records the memory
+/// for both souls, logs it, and returns it. `scale == 1.0` is the unscaled canon. Uses the
+/// *same* machinery as emergent speech.
+pub fn perform_scaled(world: &mut World, speaker: Entity, listener: Entity, intent_id: &str, scale: f32) -> Option<Utterance> {
     let bi = world.resource::<IntentBook>().0.iter().position(|i| i.id == intent_id)?;
     let intent = world.resource::<IntentBook>().0[bi].clone();
     let tick = world.resource::<Substrate>().0.tick();
@@ -945,8 +960,9 @@ pub fn perform(world: &mut World, speaker: Entity, listener: Entity, intent_id: 
         (affect.word, affect.bucket, motive, name_of(&dlg.grammar, speaker), name_of(&dlg.grammar, listener), referent, register)
     };
 
-    // Phase 2 — apply the moves (the canon consequence; mirrors `converse`).
-    let made_grudge = apply_moves(world, speaker, listener, &intent.moves);
+    // Phase 2 — apply the moves (the canon consequence; mirrors `converse`), scaled by how
+    // strongly the speaker's words land (the persuasion check; `1.0` = unscaled).
+    let made_grudge = apply_moves_scaled(world, speaker, listener, &intent.moves, scale);
 
     // Phase 3 — render, remember, log.
     let cap = world.resource::<DialogueRes>().memory_cap;
@@ -988,6 +1004,24 @@ mod tests {
         let g = Grammar::bundled();
         assert!(g.0.contains_key("accuse"), "the grammar needs at least the core acts");
         assert!(g.0.get("name").is_some_and(|n| !n.is_empty()), "the grammar needs a name list");
+    }
+
+    #[test]
+    fn moves_scale_their_deltas() {
+        // The persuasion-strength seam: a Turn move shifts opinion by `delta * scale`.
+        let mut w = World::new();
+        let speaker = w.spawn_empty().id();
+        let listener = w.spawn(Opinion(Default::default())).id();
+        let mv = [Move::Turn { who: Party::Listener, toward: Party::Speaker, delta: 0.4 }];
+
+        apply_moves_scaled(&mut w, speaker, listener, &mv, 0.5);
+        assert!((w.get::<Opinion>(listener).unwrap().of(speaker) - 0.2).abs() < 1e-6, "0.4 × 0.5");
+        // A failed persuasion (scale 0) moves nothing further.
+        apply_moves_scaled(&mut w, speaker, listener, &mv, 0.0);
+        assert!((w.get::<Opinion>(listener).unwrap().of(speaker) - 0.2).abs() < 1e-6, "no change at scale 0");
+        // Full strength is the unscaled canon, identical to `apply_moves`.
+        apply_moves_scaled(&mut w, speaker, listener, &mv, 1.0);
+        assert!((w.get::<Opinion>(listener).unwrap().of(speaker) - 0.6).abs() < 1e-6, "0.2 + 0.4");
     }
 
     #[test]

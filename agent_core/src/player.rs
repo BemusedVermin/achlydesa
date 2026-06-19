@@ -112,6 +112,15 @@ impl PlayerState {
         self.path.clear();
         self.destination = None;
     }
+    /// How far the avatar reveals the map each step (sight radius, ≥ 1). The assembler sets this
+    /// from the avatar's Notice skill when the RPG layer is on — a keener scout sees further.
+    pub fn set_sight(&mut self, sight: i32) {
+        self.sight = sight.max(1);
+    }
+    /// The avatar's current sight radius.
+    pub fn sight(&self) -> i32 {
+        self.sight
+    }
 }
 
 /// The broad lie of the land at a tile — relief banded by elevation above sea level.

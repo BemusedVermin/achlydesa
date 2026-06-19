@@ -73,7 +73,18 @@ whoever owns the world (the app), not bundled into the agent driver.
 
 **Progress:** Phase 0 (agent_core extraction) ✅ byte-identical · Phase 1 (US-scale world + the seam
 above) ✅ · Phase 2 (rpg crate + NPC/avatar wiring, `Setup.rpg`) ✅ · Phase 3 (party crate +
-`player_recruit`, the `Suspended`/`Follower` agent_core seams, `Setup.party`) ✅. Phases 4–7 pending.
+`player_recruit`, the `Suspended`/`Follower` agent_core seams, `Setup.party`) ✅ · Phase 4
+(speech-skill scaling + Notice→sight) ✅. Phases 5–7 pending.
+
+**Speech + world-interaction (Phase 4):** dialogue `apply_moves`/`perform` gained `*_scaled`
+variants (move deltas × a persuasion strength; `1.0` = unscaled canon, so existing speech is
+byte-identical). `agents::speech_strength` runs the avatar's Convince/Lead check vs the listener's
+strong-will resistance (graded 0 / 1 / 1.5) and scales `player_say`/`player_talk`/
+`apply_conversational_intent` — silver-tongued avatars shift opinion (and so unlock recruiting)
+where blunt ones can't. World-interaction: **Notice raises the avatar's exploration sight**
+(`PlayerState::set_sight`). Deferred/flagged: **Notice→discovery** is *not* wired — it would
+undermine the deliberately knowledge-gated discovery system, so it needs a design call;
+NPC↔NPC speech scaling (the S3 hook); Survive/Heal land in Phase 5, Climb/Ride/Sail in Phase 6.
 
 **Seam wiring landed (Phase 3):** `agent_core` gained `Suspended` (skipped by `people_plan`/
 `people_execute` via `Without<Suspended>`) and `Follower` (synced to the avatar's tile in

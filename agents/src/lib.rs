@@ -541,14 +541,40 @@ impl Simulation {
         dialogue::repertoire(&self.world)
     }
 
+    /// How strongly the avatar's spoken **moves** land on `listener` right now — a persuasion
+    /// check (the avatar's Charisma modifier + the better of Convince/Lead, against the listener's
+    /// strong-will resistance), graded `0.0` (failed — the words don't land) / `1.0` / `1.5`.
+    /// Returns `1.0` (unscaled) when the RPG layer is off or the speaker carries no stats, so
+    /// dialogue is byte-identical without it. This is how the prioritized **speech skills** bite:
+    /// a silver-tongued avatar shifts opinion (and so unlocks recruitment) where a blunt one can't.
+    pub fn speech_strength(&self, speaker: bevy_ecs::entity::Entity, listener: bevy_ecs::entity::Entity) -> f32 {
+        let (Some(ab), Some(pr), Some(data)) = (
+            self.world.get::<Abilities>(speaker),
+            self.world.get::<Proficiencies>(speaker),
+            self.world.get_resource::<RpgData>(),
+        ) else {
+            return 1.0;
+        };
+        let rank = |name: &str| data.skill_id(name).map(|i| pr.rank(i)).unwrap_or(rpg::PROF_UNSKILLED);
+        let social = rank("Convince").max(rank("Lead"));
+        // A strong-willed listener resists more: its best of WIS/CHA modifier lifts the difficulty.
+        let resist = self
+            .world
+            .get::<Abilities>(listener)
+            .map(|a| a.modifier(rpg::WIS).max(a.modifier(rpg::CHA)))
+            .unwrap_or(0);
+        rpg::check(ab.modifier(rpg::CHA), social, 0, rpg::NORMAL + resist).strength()
+    }
+
     /// The **player avatar** speaks the line the player chose: enact `intent_id` from the
     /// avatar to `listener` through the same machinery as emergent speech — its moves land
-    /// on the listener, it is remembered, and the rendered [`Utterance`] is returned (and
-    /// appended to [`Self::dialogue_log`]). `None` if there is no avatar or the intent is
-    /// unknown. Does not advance time — see [`Self::player_talk`] for the turn-based action.
+    /// on the listener (scaled by [`Self::speech_strength`]), it is remembered, and the rendered
+    /// [`Utterance`] is returned (and appended to [`Self::dialogue_log`]). `None` if there is no
+    /// avatar or the intent is unknown. Does not advance time — see [`Self::player_talk`].
     pub fn player_say(&mut self, listener: bevy_ecs::entity::Entity, intent_id: &str) -> Option<Utterance> {
         let avatar = self.world.resource::<player::PlayerState>().avatar()?;
-        dialogue::perform(&mut self.world, avatar, listener, intent_id)
+        let scale = self.speech_strength(avatar, listener);
+        dialogue::perform_scaled(&mut self.world, avatar, listener, intent_id, scale)
     }
 
     /// Apply only the **social consequence** of a conversational intent from the player's avatar
@@ -559,12 +585,13 @@ impl Simulation {
     /// world with no player stays byte-identical.
     pub fn apply_conversational_intent(&mut self, listener: bevy_ecs::entity::Entity, intent_id: &str) -> bool {
         let Some(avatar) = self.world.resource::<player::PlayerState>().avatar() else { return false };
+        let scale = self.speech_strength(avatar, listener);
         // Clone the moves out (releasing the IntentBook borrow) before mutating the world.
         let moves = match self.world.resource::<dialogue::IntentBook>().0.iter().find(|i| i.id == intent_id) {
             Some(i) => i.moves.clone(),
             None => return false,
         };
-        dialogue::apply_moves(&mut self.world, avatar, listener, &moves);
+        dialogue::apply_moves_scaled(&mut self.world, avatar, listener, &moves, scale);
         true
     }
 
@@ -579,7 +606,8 @@ impl Simulation {
         intent_id: &str,
     ) -> Option<(Utterance, Option<Utterance>)> {
         let avatar = self.world.resource::<player::PlayerState>().avatar()?;
-        let line = dialogue::perform(&mut self.world, avatar, listener, intent_id)?;
+        let scale = self.speech_strength(avatar, listener);
+        let line = dialogue::perform_scaled(&mut self.world, avatar, listener, intent_id, scale)?;
         let reply = dialogue::reply(&mut self.world, listener, avatar);
         self.step(); // a spoken exchange is an action; the world lives a moment on
         Some((line, reply))
@@ -588,6 +616,12 @@ impl Simulation {
     /// The avatar entity, if the player is in the world.
     pub fn player_avatar(&self) -> Option<bevy_ecs::entity::Entity> {
         self.world.resource::<player::PlayerState>().avatar()
+    }
+
+    /// The avatar's current sight radius — how far it reveals the map each step. Tracks the
+    /// avatar's Notice skill when the RPG layer is on, else the base radius.
+    pub fn player_sight(&self) -> i32 {
+        self.world.resource::<player::PlayerState>().sight()
     }
 
     /// The NPCs within the avatar's sight, nearest first — who the player could turn and
@@ -630,6 +664,9 @@ impl Simulation {
                 rolled.power,
                 rpg::Archetype(rolled.edge),
             ));
+            // World-interaction skill: a keener Notice reveals more of the map each step.
+            let notice = self.proficiency_of(avatar, "Notice").unwrap_or(rpg::PROF_UNSKILLED) as i32;
+            self.world.resource_mut::<player::PlayerState>().set_sight(3 + notice);
         }
         avatar
     }
@@ -1279,6 +1316,40 @@ mod tests {
         let target = sim.any_npc().unwrap();
         assert!(!sim.player_recruit(target), "an impossible check refuses the recruit");
         assert!(sim.party_size() == 0 && !sim.is_party_member(target));
+    }
+
+    // --- Speech skill scaling ---
+
+    #[test]
+    fn speech_is_unscaled_without_the_rpg_layer() {
+        let mut sim = economy(20);
+        let avatar = sim.spawn_player(None);
+        let npc = sim.any_npc().unwrap();
+        assert_eq!(sim.speech_strength(avatar, npc), 1.0, "no RPG layer → the avatar's words land at full strength");
+    }
+
+    #[test]
+    fn speech_strength_is_a_graded_check_with_the_rpg_layer() {
+        let mut sim = Simulation::new(Setup { width: 40, height: 30, seed: 2026, npcs: 20, rpg: true, ..Default::default() });
+        let avatar = sim.spawn_player(None);
+        let npc = sim.any_npc().unwrap();
+        let s = sim.speech_strength(avatar, npc);
+        assert!([0.0, 1.0, 1.5].contains(&s), "a graded persuasion result, got {s}");
+    }
+
+    // --- World-interaction skill: Notice → exploration sight ---
+
+    #[test]
+    fn notice_sets_the_avatar_sight() {
+        // Off: the base radius. On: the base lifted by the avatar's rolled Notice skill.
+        let mut off = economy(20);
+        let _ = off.spawn_player(None);
+        assert_eq!(off.player_sight(), 3, "no RPG layer → base sight");
+
+        let mut on = Simulation::new(Setup { width: 40, height: 30, seed: 2026, npcs: 20, rpg: true, ..Default::default() });
+        let avatar = on.spawn_player(None);
+        let notice = on.proficiency_of(avatar, "Notice").unwrap();
+        assert_eq!(on.player_sight(), (3 + notice as i32).max(1), "sight tracks Notice");
     }
 
     #[test]
