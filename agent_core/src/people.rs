@@ -404,7 +404,7 @@ pub(crate) fn people_plan(
             Option<&Detained>,
             &Allegiance,
         ),
-        (With<Npc>, Without<crate::Suspended>),
+        (With<Npc>, Without<crate::Suspended>, Without<crate::Dormant>),
     >,
     markets: Query<(&Position, &Market), Without<Npc>>,
     substrate: Res<Substrate>,
@@ -588,7 +588,7 @@ pub(crate) fn people_execute(
             &Known,
             Option<&Detained>,
         ),
-        (With<Npc>, Without<crate::Suspended>),
+        (With<Npc>, Without<crate::Suspended>, Without<crate::Dormant>),
     >,
     lieges: Query<(Entity, &Liege), With<Npc>>,
     mut markets: Query<(Entity, &Position, &mut Market), Without<Npc>>,
@@ -854,7 +854,9 @@ pub(crate) fn mood_decay(mut people: Query<&mut Mood, With<Npc>>, reg: Res<Regis
 /// throne if the one who starved was holding it).
 pub fn people_metabolism(
     mut commands: Commands,
-    mut npcs: Query<(Entity, &mut Needs), With<Npc>>,
+    // A distant (LOD) NPC is `Dormant` on its idle ticks and skipped here, so it only drains on the
+    // coarse-clock ticks it actually runs — it ages slower, but never starves while you're away.
+    mut npcs: Query<(Entity, &mut Needs), (With<Npc>, Without<crate::Dormant>)>,
     cfg: Res<NeedsRes>,
     mut throne: Option<ResMut<Throne>>,
 ) {

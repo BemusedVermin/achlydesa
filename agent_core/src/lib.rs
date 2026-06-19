@@ -88,6 +88,31 @@ pub struct Suspended;
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Follower;
 
+/// Marks an NPC **dormant for this tick** under level-of-detail. A distant NPC runs on a *coarse
+/// clock* — simulated only one tick in every [`SimRadius::far_stride`], staggered across NPCs — so on
+/// the other ticks it carries this marker and is skipped by planning, execution, and metabolism (so
+/// it can't starve on its idle ticks). It still **lives, just slowly**; it is not frozen. Toggled each
+/// tick by [`lod_dormancy`]; **absent by default, so a full-detail world is byte-identical**. It does
+/// not remove `Npc`, so the director, factions, and mood always see every soul — drama stays intact.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Dormant;
+
+/// Level-of-detail config. NPCs within `radius` hexes of the avatar run at full detail every tick;
+/// farther NPCs run on a coarse clock (once per `far_stride` ticks). `radius = None` = full detail
+/// everywhere — the default, byte-identical to a build without LOD. Set by the assembler from
+/// `Setup::{sim_radius, sim_far_stride}`.
+#[derive(Resource, Clone, Copy)]
+pub struct SimRadius {
+    pub radius: Option<i32>,
+    pub far_stride: u32,
+}
+
+impl Default for SimRadius {
+    fn default() -> Self {
+        Self { radius: None, far_stride: 1 }
+    }
+}
+
 /// Per-tile **entry cost in days** (≈ a day's forest walk = 1.0), indexed by topology index —
 /// the field the avatar's day-budget travel reads so a road hex is crossed in a fraction of a day
 /// and a mountain hex takes several. Inserted only by the exploration layer; **absent → every hex
@@ -111,6 +136,51 @@ fn advance_substrate(mut substrate: ResMut<Substrate>, mut rng: ResMut<SimRng>) 
     substrate.0.evolve(&mut rng.0);
 }
 
+/// Level-of-detail: each tick, decide which NPCs run *this* tick. Those near the avatar always do;
+/// distant ones only on their turn of a coarse, staggered clock (one tick in `far_stride`) — the
+/// rest carry [`Dormant`] and are skipped, so the distant world still lives but costs ~1/`far_stride`
+/// as much. A no-op (byte-identical) when the radius is unset or there is no avatar. Runs first, so
+/// the active set is settled before anyone plans. Dormant souls keep `Npc`, so the director, factions,
+/// and mood still see them every tick — drama intact.
+pub(crate) fn lod_dormancy(
+    mut commands: Commands,
+    cfg: Res<SimRadius>,
+    player: Res<PlayerState>,
+    substrate: Res<Substrate>,
+    positions: Query<&Position>,
+    npcs: Query<(Entity, &Position, Has<Dormant>), With<people::Npc>>,
+) {
+    let Some(r) = cfg.radius else { return };
+    let Some(avatar) = player.avatar() else { return };
+    let Ok(&Position(ac)) = positions.get(avatar) else { return };
+    let width = substrate.0.topology().width();
+    let tick = substrate.0.tick();
+    let stride = cfg.far_stride.max(1) as u64;
+    for (e, &Position(p), dormant) in &npcs {
+        // Active = near, or it's this NPC's turn on the coarse clock (staggered by entity id).
+        let active = within(ac, p, r, width) || stride <= 1 || tick % stride == e.to_bits() % stride;
+        match (active, dormant) {
+            (true, true) => {
+                commands.entity(e).remove::<Dormant>();
+            }
+            (false, false) => {
+                commands.entity(e).insert(Dormant);
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Wrapped Chebyshev "within `r` hexes" — a cheap LOD box (the world wraps east–west).
+fn within(a: Coord, b: Coord, r: i32, width: i32) -> bool {
+    let drow = (a.row - b.row).abs();
+    let dcol = {
+        let d = (a.col - b.col).abs();
+        d.min(width - d)
+    };
+    drow <= r && dcol <= r
+}
+
 /// Build the simulation's fixed-order, single-threaded per-step schedule (`Φ` then the
 /// agent layers). The order is load-bearing for determinism; the thin `agents` crate runs
 /// this every [`Simulation::step`](../agents/struct.Simulation.html#method.step).
@@ -119,6 +189,9 @@ pub fn build_schedule() -> Schedule {
     schedule.set_executor_kind(ExecutorKind::SingleThreaded);
     schedule.add_systems(
         (
+            // Level-of-detail first: freeze NPCs far from the avatar so only the local populace
+            // pays the per-tick planning cost (off by default — see `SimRadius`).
+            lod_dormancy,
             advance_substrate,
             fauna::forage,
             fauna::lifecycle,

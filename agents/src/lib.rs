@@ -157,6 +157,17 @@ pub struct Setup {
     pub exploration: bool,
     /// Exploration cost-model + climbing-gate knobs.
     pub explore_cfg: ExploreConfig,
+    /// **Level-of-detail radius** (hexes from the avatar). When `Some(r)`, NPCs within `r` of the
+    /// avatar are simulated in full every tick; farther ones run on a *coarse clock* — one tick in
+    /// [`Setup::sim_far_stride`], staggered — so they keep living, just slower, at ~1/stride the cost.
+    /// This keeps movement smooth in a heavily peopled world. The director/factions/mood still see
+    /// every soul each tick, so drama is unaffected. `None` (the default) simulates every soul every
+    /// tick, byte-identical to before. Needs the player avatar (no effect on a player-less run).
+    pub sim_radius: Option<i32>,
+    /// Ticks between updates for a *distant* NPC under [`Setup::sim_radius`] — its coarse-clock
+    /// stride. `1` = no coarsening (distant NPCs still run every tick). Ignored when `sim_radius` is
+    /// `None`. Default `8`.
+    pub sim_far_stride: u32,
 }
 
 impl Default for Setup {
@@ -204,6 +215,8 @@ impl Default for Setup {
             survival_everyone: true,
             exploration: false,
             explore_cfg: ExploreConfig::default(),
+            sim_radius: None,
+            sim_far_stride: 8,
         }
     }
 }
@@ -439,6 +452,8 @@ impl Simulation {
         world.insert_resource(setup.norms);
         world.insert_resource(setup.appraisals);
         world.insert_resource(events::EventQueue::default());
+        // The level-of-detail config the `lod_dormancy` system reads (radius None → full detail).
+        world.insert_resource(agent_core::SimRadius { radius: setup.sim_radius, far_stride: setup.sim_far_stride });
 
         // The fixed-order, single-threaded per-step schedule is owned by `agent_core`; the
         // survival layer (when on) adds its per-day drain just before the core metabolism.
