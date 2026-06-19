@@ -47,6 +47,11 @@ pub const FORMIDABLE: i32 = 12;
 pub const STRONG_MARGIN: i32 = 4;
 /// WWN saving-throw base: `save = 15 − best-of-two attribute modifiers`.
 pub const SAVE_BASE: i32 = 15;
+/// These checks are **deterministic** — knowledge and skill decide, not luck — so instead of
+/// rolling 2d6 they *take its average*. This baseline is what lets the authored WWN difficulties
+/// ([`EASY`]..[`FORMIDABLE`]) read exactly as the tabletop's: without it nothing could pass
+/// [`NORMAL`] (a maxed human reaches only +6), since the targets assume the ~7 the dice would add.
+pub const DICE_TAKE: i32 = 7;
 
 /// The WWN attribute-modifier table — flat and capped at ±2 (the signature of the engine):
 /// `≤3 → −2`, `4–7 → −1`, `8–13 → 0`, `14–17 → +1`, `≥18 → +2`.
@@ -157,7 +162,7 @@ impl CheckOutcome {
         !matches!(self, CheckOutcome::Fail(_))
     }
 
-    /// Signed margin: `(attr_mod + skill + situational) − difficulty`.
+    /// Signed margin: `(attr_mod + skill + situational + DICE_TAKE) − difficulty`.
     pub fn margin(self) -> i32 {
         match self {
             CheckOutcome::Fail(m) | CheckOutcome::Pass(m) | CheckOutcome::Strong(m) => m,
@@ -176,10 +181,11 @@ impl CheckOutcome {
 }
 
 /// Resolve a skill check **deterministically** (no dice — knowledge/skill, not luck, decides,
-/// matching the discovery system): succeed iff `attr_mod + skill + situational ≥ difficulty`,
-/// graded into [`CheckOutcome::Strong`] at a margin of [`STRONG_MARGIN`].
+/// matching the discovery system): succeed iff `attr_mod + skill + situational + DICE_TAKE ≥
+/// difficulty` (the [`DICE_TAKE`] baseline standing in for the average 2d6), graded into
+/// [`CheckOutcome::Strong`] at a margin of [`STRONG_MARGIN`].
 pub fn check(attr_mod: i32, skill: i8, situational: i32, difficulty: i32) -> CheckOutcome {
-    let margin = attr_mod + skill as i32 + situational - difficulty;
+    let margin = attr_mod + skill as i32 + situational + DICE_TAKE - difficulty;
     if margin < 0 {
         CheckOutcome::Fail(margin)
     } else if margin >= STRONG_MARGIN {
@@ -504,12 +510,16 @@ mod tests {
 
     #[test]
     fn check_grades_by_margin() {
-        assert!(matches!(check(0, 0, 0, NORMAL), CheckOutcome::Fail(_)));
-        assert!(matches!(check(2, 1, 0, NORMAL), CheckOutcome::Fail(-5)));
-        assert!(matches!(check(4, 2, 2, NORMAL), CheckOutcome::Pass(0)));
-        assert!(matches!(check(4, 4, 4, EASY), CheckOutcome::Strong(_)));
-        assert!(check(4, 2, 0, EASY).succeeded(), "margin 0 meets the difficulty");
-        assert!(!check(2, 2, 0, EASY).succeeded(), "margin -2 falls short");
+        // With the DICE_TAKE baseline, the authored WWN ladder reads as the tabletop's:
+        // an unskilled everyman clears EASY but not NORMAL, the competent clear NORMAL, and
+        // FORMIDABLE wants a specialist.
+        assert!(check(0, 0, 0, EASY).succeeded(), "an everyman manages an easy task");
+        assert!(matches!(check(0, 0, 0, NORMAL), CheckOutcome::Fail(-1)), "but not a normal one");
+        assert!(check(1, 0, 0, NORMAL).succeeded(), "a competent hand clears NORMAL");
+        assert!(matches!(check(2, 3, 0, NORMAL), CheckOutcome::Strong(4)), "a specialist aces it");
+        assert!(matches!(check(0, 0, 1, NORMAL), CheckOutcome::Pass(0)), "margin 0 meets the difficulty");
+        assert!(!check(2, 2, 0, FORMIDABLE).succeeded(), "the merely-good still fail the formidable");
+        assert!(check(2, 4, 0, FORMIDABLE).succeeded(), "the specialist clears the formidable");
     }
 
     #[test]

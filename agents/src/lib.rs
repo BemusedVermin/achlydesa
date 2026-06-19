@@ -146,6 +146,10 @@ pub struct Setup {
     pub survival: bool,
     /// Survival drain/mitigation knobs.
     pub survival_cfg: SurvivalConfig,
+    /// Whether survival applies to **every** body (the original design — also makes NPC hunger
+    /// tile-dependent) or only the **avatar + party**. Default `true`; the app sets `false` so the
+    /// populated world doesn't depopulate before NPCs can seek water/shelter (deferred survival-AI).
+    pub survival_everyone: bool,
     /// Wake the **exploration layer**: lay a road network between settlements, price travel by
     /// terrain and slope (a road hex is a fraction of a day, a mountain hex several days), and
     /// gate steep edges (climbing gear + a proficient share of the party) and deep water (a boat).
@@ -197,6 +201,7 @@ impl Default for Setup {
             party_cfg: PartyConfig::default(),
             survival: false,
             survival_cfg: SurvivalConfig::default(),
+            survival_everyone: true,
             exploration: false,
             explore_cfg: ExploreConfig::default(),
         }
@@ -345,14 +350,20 @@ impl Simulation {
         // tile-dependent (the HungerModel seam), and the per-day drain system is added to the
         // schedule below. Off → no Vitals, no resources, flat hunger — byte-identical.
         if setup.survival {
-            world.insert_resource(agent_core::HungerModel::TileBiomass);
             world.insert_resource(setup.survival_cfg);
-            let npcs: Vec<Entity> = {
-                let mut q = world.query_filtered::<Entity, With<people::Npc>>();
-                q.iter(&world).collect()
-            };
-            for e in npcs {
-                world.entity_mut(e).insert(survival::Vitals::default());
+            // "Everyone" survival also makes NPC hunger tile-dependent and gives every NPC `Vitals`.
+            // The party-scoped variant leaves NPCs entirely untouched (flat hunger, no Vitals) — only
+            // the avatar (in `spawn_player`) and recruited companions face the drain — so a populated
+            // world doesn't thin out before NPCs can seek water/shelter on their own.
+            if setup.survival_everyone {
+                world.insert_resource(agent_core::HungerModel::TileBiomass);
+                let npcs: Vec<Entity> = {
+                    let mut q = world.query_filtered::<Entity, With<people::Npc>>();
+                    q.iter(&world).collect()
+                };
+                for e in npcs {
+                    world.entity_mut(e).insert(survival::Vitals::default());
+                }
             }
         }
 
@@ -599,7 +610,9 @@ impl Simulation {
     /// strong-will resistance), graded `0.0` (failed — the words don't land) / `1.0` / `1.5`.
     /// Returns `1.0` (unscaled) when the RPG layer is off or the speaker carries no stats, so
     /// dialogue is byte-identical without it. This is how the prioritized **speech skills** bite:
-    /// a silver-tongued avatar shifts opinion (and so unlocks recruitment) where a blunt one can't.
+    /// the check is `EASY` — *anyone* can be pleasant, so even a blunt avatar slowly builds rapport
+    /// (a `1.0` Pass) — but a silver-tongued one lands a `1.5` Strong, shifting opinion (and so
+    /// earning recruitment) far faster, while a *strong-willed* listener can resist the inarticulate.
     pub fn speech_strength(&self, speaker: bevy_ecs::entity::Entity, listener: bevy_ecs::entity::Entity) -> f32 {
         let (Some(ab), Some(pr), Some(data)) = (
             self.world.get::<Abilities>(speaker),
@@ -616,7 +629,7 @@ impl Simulation {
             .get::<Abilities>(listener)
             .map(|a| a.modifier(rpg::WIS).max(a.modifier(rpg::CHA)))
             .unwrap_or(0);
-        rpg::check(ab.modifier(rpg::CHA), social, 0, rpg::NORMAL + resist).strength()
+        rpg::check(ab.modifier(rpg::CHA), social, 0, rpg::EASY + resist).strength()
     }
 
     /// The **player avatar** speaks the line the player chose: enact `intent_id` from the
@@ -1013,6 +1026,11 @@ impl Simulation {
             let since = self.tick();
             let at = self.player_position();
             self.world.entity_mut(listener).insert((PartyMember { since }, Suspended, Follower));
+            // A companion shares the road's hardships: give it `Vitals` if survival is on and it
+            // lacks them (party-scoped survival, where NPCs otherwise carry none).
+            if self.world.get_resource::<SurvivalConfig>().is_some() && self.world.get::<Vitals>(listener).is_none() {
+                self.world.entity_mut(listener).insert(survival::Vitals::default());
+            }
             // Snap them to the avatar's side at once; `player_travel` keeps them there.
             if let (Some(at), Some(mut p)) = (at, self.world.get_mut::<Position>(listener)) {
                 p.0 = at;
@@ -1102,6 +1120,15 @@ impl Simulation {
     /// Whether the avatar carries a piece of gear.
     pub fn player_has_gear(&self, item: &str) -> bool {
         self.player_avatar().is_some_and(|a| self.world.get::<Gear>(a).is_some_and(|g| g.has(item)))
+    }
+
+    /// Everything the avatar carries, sorted (empty if it carries nothing / no exploration layer) —
+    /// for the character sheet to list.
+    pub fn player_gear(&self) -> Vec<String> {
+        let mut v: Vec<String> =
+            self.player_avatar().and_then(|a| self.world.get::<Gear>(a)).map(|g| g.0.iter().cloned().collect()).unwrap_or_default();
+        v.sort();
+        v
     }
 
     /// `who`'s opinion of `toward` (`-1..1`; `0` if they have no opinion or no `Opinion`).
