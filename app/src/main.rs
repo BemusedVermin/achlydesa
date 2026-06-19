@@ -29,6 +29,7 @@ use std::collections::{HashMap, HashSet};
 
 use app::theme::{self, ThemeFonts};
 
+mod convo_ui;
 mod fauna_art;
 mod feature_art;
 mod hud;
@@ -155,6 +156,9 @@ struct Game {
     /// inspect — the two halves of the new pick model (hover = look, click = select).
     hovered: Option<Coord>,
     selected: Option<Coord>,
+    /// When several souls are within reach, Talk opens a chooser instead of grabbing the nearest:
+    /// the candidates, snapshotted while the picker is up (`None` when not choosing).
+    talk_choices: Option<Vec<Entity>>,
     /// Is the pause menu (Esc) open? While paused, gameplay input is suspended and a tabbed
     /// parchment menu overlays the view. The world is turn-based, so this is a modal, not a clock.
     paused: bool,
@@ -232,7 +236,6 @@ struct CamRig {
 #[derive(Component, Clone, Copy)]
 enum HudKind {
     Look,
-    Talk,
     Help,
 }
 
@@ -259,6 +262,7 @@ fn main() {
         classify: HashMap::new(),
         hovered: None,
         selected: None,
+        talk_choices: None,
         // Dev hooks: `ACHLYDESA_PAUSE` starts on the pause menu, `ACHLYDESA_TAB=N` on tab N.
         paused: std::env::var("ACHLYDESA_PAUSE").is_ok(),
         menu_tab: std::env::var("ACHLYDESA_TAB").ok().and_then(|s| s.parse().ok()).unwrap_or(0),
@@ -316,11 +320,22 @@ fn main() {
     // The fauna layer runs as its own group: `sync_fauna` re-targets creatures when
     // the world ticks (idempotent in between, so loose ordering is fine) and
     // `animate_fauna` is purely visual.
-    .add_systems(Update, (smooth_follow, sync_fauna, fauna_art::animate_fauna, speech_act_input, recruit_input, sheet_input).chain())
+    .add_systems(Update, (smooth_follow, sync_fauna, fauna_art::animate_fauna, recruit_input, sheet_input).chain())
+    // The conversation panel + the who-to-talk-to chooser: fill them, style and handle their buttons.
+    .add_systems(
+        Update,
+        (
+            convo_ui::update_convo_panel,
+            convo_ui::style_speak_choices,
+            convo_ui::speak_choice_click,
+            convo_ui::update_talk_chooser,
+            convo_ui::talk_row_click,
+        ),
+    )
     // The pause layer: Esc/back + menu nav run *before* `talk_input` (which also reads Esc, to
     // leave a conversation), then the overlay's visibility + the dev screenshot hook.
     .add_systems(Update, (pause_input, menu_input).chain().before(talk_input))
-    .add_systems(Update, (update_menu, update_map, hide_overlays_when_paused, dev_capture))
+    .add_systems(Update, (update_menu, update_map, hide_overlays_when_paused, dev_capture, dev_open_convo, dev_talk_pick))
     // The framed HUD: keep the whole frame scaled to the window, then refresh the trays.
     .add_systems(
         Update,
@@ -477,6 +492,7 @@ fn setup(
     // The framed HUD: an opaque grassy-rock border (trays) around the centre world view.
     let grassy = asset_server.load("ui/grassy_rock.jpg");
     hud::spawn(&mut commands, &theme_fonts, grassy);
+    convo_ui::spawn(&mut commands, &theme_fonts);
     let parchment = asset_server.load("ui/parchment.jpg");
     spawn_pause_menu(&mut commands, &theme_fonts, parchment);
     commands.insert_resource(theme_fonts);
@@ -766,39 +782,18 @@ fn do_recruit(g: &mut Game) {
     };
 }
 
-/// The friendly **speech acts** the player can perform with a single key on the nearest soul —
-/// the model-free way to build a soul's opinion (toward recruiting). Each is a real authored
-/// intent whose moves land scaled by the avatar's speech skill (so a silver tongue persuades
-/// faster). (key, intent id, the verb shown in the status line.)
-const QUICK_ACTS: &[(KeyCode, &str, &str)] = &[
+/// The friendly **speech acts** offered as clickable *speak choices* in the conversation panel —
+/// the model-free way to build a soul's opinion (toward recruiting). Each is a real authored intent
+/// whose moves land scaled by the avatar's speech skill (so a silver tongue persuades faster). The
+/// leading `KeyCode` is unused now the acts are mouse choices, kept only to document their old keys.
+/// (key, intent id, the verb shown on the choice and in the status line.)
+pub const QUICK_ACTS: &[(KeyCode, &str, &str)] = &[
     (KeyCode::Digit1, "a_greeting", "greet"),
     (KeyCode::Digit2, "a_word_of_praise", "praise"),
     (KeyCode::Digit3, "a_confidence_shared", "confide in"),
     (KeyCode::Digit4, "a_consolation", "console"),
     (KeyCode::Digit5, "an_overture_of_peace", "make peace with"),
 ];
-
-/// **Speak** (1–5) — perform a friendly speech act on the nearest soul. Deterministic and
-/// model-free: the act's authored moves land scaled by the avatar's speech skill, nudging the
-/// soul's opinion (watch it climb in the status line — a devoted soul will follow you). One act
-/// is one turn.
-fn speech_act_input(keys: Res<ButtonInput<KeyCode>>, mut game: NonSendMut<Game>) {
-    let g = &mut *game;
-    if g.convo.is_some() || g.paused || g.sim.player_traveling() {
-        return;
-    }
-    let Some(&(_, intent, verb)) = QUICK_ACTS.iter().find(|(k, _, _)| keys.just_pressed(*k)) else {
-        return;
-    };
-    let Some((npc, _)) = g.sim.player_nearby_npcs().into_iter().next() else {
-        g.status = "No soul near to speak to.".into();
-        return;
-    };
-    let name = g.sim.display_name(npc);
-    g.sim.player_talk(npc, intent);
-    let dispo = g.sim.player_avatar().and_then(|a| g.sim.opinion_of(npc, a)).map(disposition_word).unwrap_or("unmoved");
-    g.status = format!("You {verb} {name}. {name} now {dispo}.");
-}
 
 /// **Character sheet** — press **C** to open or close the avatar's Worlds-Without-Number sheet
 /// (attributes, trained skills, gear, vitals, party). A look, not an action: no time passes.
@@ -814,6 +809,12 @@ fn sheet_input(keys: Res<ButtonInput<KeyCode>>, mut game: NonSendMut<Game>) {
 /// after this); otherwise Esc closes an open panel (journal/sheet), or toggles the pause menu.
 fn pause_input(keys: Res<ButtonInput<KeyCode>>, mut game: NonSendMut<Game>) {
     if game.convo.is_some() || !keys.just_pressed(KeyCode::Escape) {
+        return;
+    }
+    // Esc first dismisses the who-to-talk-to chooser; otherwise it toggles the pause menu.
+    if game.talk_choices.is_some() {
+        game.talk_choices = None;
+        game.status = "You hold your tongue.".into();
         return;
     }
     game.paused = !game.paused;
@@ -934,6 +935,30 @@ fn dev_capture(mut clock: ResMut<CaptureClock>, mut commands: Commands, mut exit
     }
     if clock.0 >= 48 {
         exit.write(AppExit::Success);
+    }
+}
+
+/// Dev hook: with `ACHLYDESA_CONVO` set, force open a conversation with any soul once, so the
+/// conversation panel can be screenshotted headlessly (it needs no nearby soul or model).
+fn dev_open_convo(mut game: NonSendMut<Game>) {
+    if std::env::var("ACHLYDESA_CONVO").is_err() || game.convo.is_some() {
+        return;
+    }
+    if let Some(npc) = game.sim.any_npc() {
+        let g = &mut *game;
+        open_conversation_with(g, npc);
+    }
+}
+
+/// Dev hook: with `ACHLYDESA_TALKPICK` set, seed the who-to-talk-to chooser with a few souls once,
+/// so the chooser can be screenshotted headlessly.
+fn dev_talk_pick(mut game: NonSendMut<Game>) {
+    if std::env::var("ACHLYDESA_TALKPICK").is_err() || game.talk_choices.is_some() || game.convo.is_some() {
+        return;
+    }
+    let some: Vec<Entity> = game.sim.npcs().into_iter().take(4).collect();
+    if !some.is_empty() {
+        game.talk_choices = Some(some);
     }
 }
 
@@ -1124,31 +1149,44 @@ fn npc_card(sim: &mut Simulation, npc: Entity) -> String {
 
 /// Open a free-text conversation with the nearest soul in reach (shared by T and the Talk button).
 /// Assembles the character card from real sim state and lets the soul speak first.
-fn open_conversation(g: &mut Game) {
+fn start_talk(g: &mut Game) {
     if g.sim.player_traveling() || g.paused || g.convo.is_some() {
         return;
     }
-    let Some((npc, _)) = g.sim.player_nearby_npcs().into_iter().next() else {
-        g.status = "There is no one close enough to speak with.".into();
-        return;
-    };
-    if !g.voice.is_ready() {
-        g.status = "The voice is still waking - conversation needs the model loaded.".into();
-        return;
+    let nearby: Vec<Entity> = g.sim.player_nearby_npcs().into_iter().map(|(e, _)| e).collect();
+    match nearby.len() {
+        0 => g.status = "There is no one close enough to speak with.".into(),
+        // One soul in reach — speak to them straight away.
+        1 => open_conversation_with(g, nearby[0]),
+        // Several — let the player choose (the conversation panel's chooser).
+        _ => {
+            g.status = "Choose who to speak with.".into();
+            g.talk_choices = Some(nearby);
+        }
     }
+}
+
+/// Open a conversation with a specific soul (the chosen one, from [`start_talk`]; any soul, for the
+/// `ACHLYDESA_CONVO` dev hook). Assembles the card and lets the soul speak first.
+fn open_conversation_with(g: &mut Game, npc: Entity) {
     let name = g.sim.display_name(npc);
     let card = npc_card(&mut g.sim, npc);
-    // The soul speaks first: an opening line generated from a scene cue (not shown verbatim).
-    g.req_seq += 1;
-    let req = g.req_seq;
-    let fallback = format!("{name} regards you in silence.");
-    let dispatched = g.voice.request_chat(req, &card, &[], "(A stranger approaches and meets your eyes.)", &fallback);
-    let greeting = Line {
-        from_player: false,
-        prefix: format!("{name}: "),
-        text: if dispatched { None } else { Some(fallback) },
-        reveal: 0.0,
-        pending: dispatched.then_some(req),
+    // The soul speaks first. With the voice model up, the opening line is generated from a scene
+    // cue; without it, a neutral opening — so the deterministic speak choices are still reachable.
+    let greeting = if g.voice.is_ready() {
+        g.req_seq += 1;
+        let req = g.req_seq;
+        let fallback = format!("{name} regards you in silence.");
+        let dispatched = g.voice.request_chat(req, &card, &[], "(A stranger approaches and meets your eyes.)", &fallback);
+        Line {
+            from_player: false,
+            prefix: format!("{name}: "),
+            text: if dispatched { None } else { Some(fallback) },
+            reveal: 0.0,
+            pending: dispatched.then_some(req),
+        }
+    } else {
+        Line { from_player: false, prefix: format!("{name}: "), text: Some(format!("{name} meets your eyes, and waits.")), reveal: 0.0, pending: None }
     };
     g.convo = Some(Convo { listener: npc, name: name.clone(), card, transcript: vec![greeting], input: String::new() });
     g.status = format!("You fall into talk with {name}.");
@@ -1167,7 +1205,7 @@ fn talk_input(keys: Res<ButtonInput<KeyCode>>, mut kb: MessageReader<KeyboardInp
         if g.sim.player_traveling() || g.paused || !keys.just_pressed(KeyCode::KeyT) {
             return;
         }
-        open_conversation(g);
+        start_talk(g);
         return;
     }
 
@@ -1447,23 +1485,15 @@ fn camera_control(
     *tf = cam_transform(Vec3::new(f.x, 0.0, f.z), &rig);
 }
 
-fn update_hud(mut game: NonSendMut<Game>, time: Res<Time>, mut texts: Query<(&HudKind, &mut Text, &mut Visibility)>) {
+fn update_hud(mut game: NonSendMut<Game>, mut texts: Query<(&HudKind, &mut Text, &mut Visibility)>) {
     let g = &mut *game;
     let view = g.sim.player_view();
     let day = g.sim.substrate().tick();
     let explored = g.sim.player_explored_count();
     let traveling = g.sim.player_traveling();
-    let talk: Vec<String> = g
-        .sim
-        .dialogue_log()
-        .iter()
-        .rev()
-        .take(5)
-        .map(|u| format!("  {} -> {}: {}", u.speaker_name, u.listener_name, u.surface))
-        .collect();
+    let in_convo = g.convo.is_some() || g.talk_choices.is_some();
     let status = g.status.clone();
     let voice_line = g.voice.status_line();
-    let can_talk = !traveling && g.convo.is_none() && view.as_ref().is_some_and(|v| !v.nearby.is_empty());
     // The lure: does the ground here hold something to find?
     let search_cue = match (traveling, g.sim.player_find_state()) {
         (false, FindState::Findable) => "\n  you sense something here — press F to search",
@@ -1471,61 +1501,26 @@ fn update_hud(mut game: NonSendMut<Game>, time: Res<Time>, mut texts: Query<(&Hu
         _ => "",
     };
 
-    // The soul's live disposition toward the player — it shifts as the conversation lands effects.
-    let avatar = g.sim.player_avatar();
-    let dispo: Option<String> = g.convo.as_ref().map(|c| {
-        let op = avatar.and_then(|a| g.sim.opinion_of(c.listener, a)).unwrap_or(0.0);
-        let word = disposition_word(op);
-        if avatar.is_some_and(|a| g.sim.bears_grudge(c.listener, a)) { format!("{word}, and bears a grudge") } else { word.to_string() }
-    });
-
-    // The bottom-left panel: an open conversation, else the voices around you.
-    let talk_panel = if let Some(c) = &g.convo {
-        // Animated "considering" ellipsis while a reply is still being generated.
-        let dots = [".", "..", "..."][((time.elapsed_secs() * 3.0) as usize) % 3];
-        let mut s = format!("— {} · {} —\n", c.name, dispo.as_deref().unwrap_or(""));
-        for ln in &c.transcript {
-            s.push_str(&ln.prefix);
-            match &ln.text {
-                // Type the words in (RPG-style); `reveal` is a char count.
-                Some(t) => s.extend(t.chars().take(ln.reveal as usize)),
-                // Not generated yet — the soul is considering.
-                None => s.push_str(dots),
-            }
-            s.push('\n');
-        }
-        // The input line the player is typing, with a cursor.
-        s.push_str("\n> ");
-        s.push_str(&c.input);
-        s.push('_');
-        s.push_str("\n(type to speak | Enter send | Esc leave)");
-        s
-    } else {
-        let mut s = if talk.is_empty() { "The world is quiet for now...".to_string() } else { format!("Nearby voices:\n{}", talk.join("\n")) };
-        if can_talk {
-            s.push_str("\n\na soul is near:\n  1 greet · 2 praise · 3 confide · 4 console · 5 make peace\n  T free-talk · R recruit (when they're devoted)");
-        }
-        s
-    };
-
     for (kind, mut text, mut vis) in &mut texts {
-        // Clear the gameplay HUD while the pause menu owns the screen.
-        *vis = if g.paused { Visibility::Hidden } else { Visibility::Inherited };
         text.0 = match kind {
-            HudKind::Look => match &view {
-                Some(v) => {
-                    let feats = if v.here.features.is_empty() { String::new() } else { format!("\nyou see: {}", v.here.features.join(", ")) };
-                    format!(
-                        "Day {day}\n({}, {})  {}  {:.0} m\nfertile {:.2}   {} soul(s) near\nfog lifted from {} tiles{}{}",
-                        v.pos.col, v.pos.row, v.here.terrain.name(), v.here.elevation, v.here.fertility, v.nearby.len(), explored, feats, search_cue,
-                    )
+            // The tile read-out: hidden under the pause menu and behind the conversation panel.
+            HudKind::Look => {
+                *vis = if g.paused || in_convo { Visibility::Hidden } else { Visibility::Inherited };
+                match &view {
+                    Some(v) => {
+                        let feats = if v.here.features.is_empty() { String::new() } else { format!("\nyou see: {}", v.here.features.join(", ")) };
+                        format!(
+                            "Day {day}\n({}, {})  {}  {:.0} m\nfertile {:.2}   {} soul(s) near\nfog lifted from {} tiles{}{}",
+                            v.pos.col, v.pos.row, v.here.terrain.name(), v.here.elevation, v.here.fertility, v.nearby.len(), explored, feats, search_cue,
+                        )
+                    }
+                    None => "no avatar".into(),
                 }
-                None => "no avatar".into(),
-            },
-            HudKind::Talk => talk_panel.clone(),
+            }
             // A single status line for the bottom tray; verbs live on the action buttons, camera
             // on A/D/W/S + scroll.
             HudKind::Help => {
+                *vis = if g.paused { Visibility::Hidden } else { Visibility::Inherited };
                 let mut h = status.clone();
                 if let Some(v) = &voice_line {
                     h.push_str("   ·   ");

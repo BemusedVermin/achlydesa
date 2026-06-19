@@ -133,7 +133,7 @@ fn pick_tile(window: &Window, cam: &Camera, cam_tf: &GlobalTransform, sim: &Simu
 
 /// Hover-pick every frame; left-click selects a tile to inspect, right-click travels to it.
 pub fn tile_interact(mouse: Res<ButtonInput<MouseButton>>, windows: Query<&Window>, cams: Query<(&Camera, &GlobalTransform), With<CamRig>>, mut game: NonSendMut<Game>) {
-    if game.convo.is_some() || game.paused {
+    if game.convo.is_some() || game.paused || game.talk_choices.is_some() {
         game.hovered = None;
         return;
     }

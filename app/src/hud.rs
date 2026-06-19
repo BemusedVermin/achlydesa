@@ -157,8 +157,8 @@ fn tray_bg(grassy: &Handle<Image>) -> (ImageNode, BorderColor) {
 }
 
 /// Hash a character's archetype+name into a muted, mid-dark portrait tint — deterministic, so the
-/// same soul always wears the same colour.
-fn archetype_tint(seed: &str) -> Color {
+/// same soul always wears the same colour. Shared with the conversation panel's speaker sigil.
+pub fn archetype_tint(seed: &str) -> Color {
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
     for b in seed.bytes() {
         h ^= b as u64;
@@ -402,7 +402,7 @@ pub fn spawn(commands: &mut Commands, f: &ThemeFonts, grassy: Handle<Image>) {
         GlobalZIndex(5),
     ));
 
-    // ── Centre overlays: the tile read-out (top-left) and the talk/voices box (bottom-left). ──
+    // ── Centre overlay: the tile read-out (top-left). The conversation has its own panel. ──
     let panel = |w: f32| Node {
         position_type: PositionType::Absolute,
         padding: UiRect::all(px(theme::SP_SM)),
@@ -417,14 +417,6 @@ pub fn spawn(commands: &mut Commands, f: &ThemeFonts, grassy: Handle<Image>) {
         theme::panel_chrome(),
         Text::new(""),
         TextFont { font: f.mono.clone(), font_size: theme::T_BODY, ..default() },
-        TextColor(theme::TEXT),
-    ));
-    commands.spawn((
-        crate::HudKind::Talk,
-        Node { left: px(LEFT_W + theme::SP_MD), bottom: px(BOTTOM_H + theme::SP_MD), ..panel(560.0) },
-        theme::panel_chrome(),
-        Text::new(""),
-        TextFont { font: f.mono.clone(), font_size: theme::T_LABEL, ..default() },
         TextColor(theme::TEXT),
     ));
 }
@@ -489,13 +481,13 @@ pub fn update_vitals(game: NonSend<Game>, mut q: Query<(&VitalFill, &mut Node)>)
     }
 }
 
-/// Everything an action needs to decide whether it is valid right now — gathered once a frame.
+/// Everything an action needs to decide whether it is valid right now — gathered once a frame. While
+/// a conversation is open the panel owns input, so `in_convo` disables the whole tray.
 struct ActionCtx {
     traveling: bool,
     has_sel: bool,
     findable: bool,
     soul_near: bool,
-    voice_ready: bool,
     in_convo: bool,
 }
 
@@ -506,19 +498,24 @@ fn action_ctx(g: &mut Game) -> ActionCtx {
         has_sel: g.selected.is_some() && g.selected != pos,
         findable: matches!(g.sim.player_find_state(), FindState::Findable),
         soul_near: !g.sim.player_nearby_npcs().is_empty(),
-        voice_ready: g.voice.is_ready(),
-        in_convo: g.convo.is_some(),
+        // A conversation or its who-to-talk-to chooser is modal over the tray.
+        in_convo: g.convo.is_some() || g.talk_choices.is_some(),
     }
 }
 
 fn enabled(c: &ActionCtx, a: ActionKind) -> bool {
+    if c.in_convo {
+        return false; // the conversation panel is modal over the action tray
+    }
     match a {
         ActionKind::Inspect => true,
         ActionKind::Travel => c.has_sel && !c.traveling,
         ActionKind::Search => !c.traveling && c.findable,
         ActionKind::Wait => !c.traveling,
-        ActionKind::Talk => c.soul_near && c.voice_ready && !c.traveling && !c.in_convo,
-        ActionKind::Recruit => c.soul_near && !c.traveling && !c.in_convo,
+        // Talk opens a conversation even without the voice model — the speak choices are
+        // deterministic; only the free-text line needs the model.
+        ActionKind::Talk => c.soul_near && !c.traveling,
+        ActionKind::Recruit => c.soul_near && !c.traveling,
     }
 }
 
@@ -548,7 +545,7 @@ pub fn update_action_buttons(
 /// Invoke a tile action when its button is pressed (ignoring disabled actions, and never while the
 /// pause menu owns the screen). Mirrors the keyboard verbs via the shared `crate::do_*` helpers.
 pub fn action_button_click(mut game: NonSendMut<Game>, q: Query<(&ActionButton, &Interaction), Changed<Interaction>>) {
-    if game.paused {
+    if game.paused || game.convo.is_some() || game.talk_choices.is_some() {
         return;
     }
     let Some(a) = q.iter().find(|(_, i)| **i == Interaction::Pressed).map(|(b, _)| b.0) else {
@@ -576,7 +573,7 @@ pub fn action_button_click(mut game: NonSendMut<Game>, q: Query<(&ActionButton, 
         }
         ActionKind::Search => crate::do_search(g),
         ActionKind::Wait => crate::do_wait(g),
-        ActionKind::Talk => crate::open_conversation(g),
+        ActionKind::Talk => crate::start_talk(g),
         ActionKind::Recruit => crate::do_recruit(g),
     }
 }
