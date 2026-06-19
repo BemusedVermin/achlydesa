@@ -66,9 +66,12 @@ pub fn parse<T: DeserializeOwned>(ron: &str) -> Result<T, ConfigError> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Asset {
     Appraisals,
+    Attributes,
     Beats,
     Bestiary,
+    Edges,
     Features,
+    Foci,
     Goals,
     Goods,
     Grammar,
@@ -77,6 +80,7 @@ pub enum Asset {
     Norms,
     Predicates,
     Recipes,
+    RpgSkills,
     Skills,
     Traits,
     Verbs,
@@ -85,11 +89,14 @@ pub enum Asset {
 impl Asset {
     /// Every asset, in declaration order — handy for "load them all" sweeps and
     /// for tests that assert the bundled set is complete.
-    pub const ALL: [Asset; 15] = [
+    pub const ALL: [Asset; 19] = [
         Asset::Appraisals,
+        Asset::Attributes,
         Asset::Beats,
         Asset::Bestiary,
+        Asset::Edges,
         Asset::Features,
+        Asset::Foci,
         Asset::Goals,
         Asset::Goods,
         Asset::Grammar,
@@ -98,6 +105,7 @@ impl Asset {
         Asset::Norms,
         Asset::Predicates,
         Asset::Recipes,
+        Asset::RpgSkills,
         Asset::Skills,
         Asset::Traits,
         Asset::Verbs,
@@ -108,9 +116,12 @@ impl Asset {
     pub const fn file_name(self) -> &'static str {
         match self {
             Asset::Appraisals => "appraisals.ron",
+            Asset::Attributes => "attributes.ron",
             Asset::Beats => "beats.ron",
             Asset::Bestiary => "bestiary.ron",
+            Asset::Edges => "edges.ron",
             Asset::Features => "features.ron",
+            Asset::Foci => "foci.ron",
             Asset::Goals => "goals.ron",
             Asset::Goods => "goods.ron",
             Asset::Grammar => "grammar.ron",
@@ -119,6 +130,7 @@ impl Asset {
             Asset::Norms => "norms.ron",
             Asset::Predicates => "predicates.ron",
             Asset::Recipes => "recipes.ron",
+            Asset::RpgSkills => "rpg_skills.ron",
             Asset::Skills => "skills.ron",
             Asset::Traits => "traits.ron",
             Asset::Verbs => "verbs.ron",
@@ -159,9 +171,12 @@ impl Bundled {
         }
         match asset {
             Asset::Appraisals => bundled!("appraisals.ron"),
+            Asset::Attributes => bundled!("attributes.ron"),
             Asset::Beats => bundled!("beats.ron"),
             Asset::Bestiary => bundled!("bestiary.ron"),
+            Asset::Edges => bundled!("edges.ron"),
             Asset::Features => bundled!("features.ron"),
+            Asset::Foci => bundled!("foci.ron"),
             Asset::Goals => bundled!("goals.ron"),
             Asset::Goods => bundled!("goods.ron"),
             Asset::Grammar => bundled!("grammar.ron"),
@@ -170,6 +185,7 @@ impl Bundled {
             Asset::Norms => bundled!("norms.ron"),
             Asset::Predicates => bundled!("predicates.ron"),
             Asset::Recipes => bundled!("recipes.ron"),
+            Asset::RpgSkills => bundled!("rpg_skills.ron"),
             Asset::Skills => bundled!("skills.ron"),
             Asset::Traits => bundled!("traits.ron"),
             Asset::Verbs => bundled!("verbs.ron"),

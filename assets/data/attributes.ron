@@ -1,0 +1,11 @@
+// The six Worlds Without Number attributes, in canonical order — their position here is
+// their id (0..5). Raw scores run 3..18 (modifiable past it by Edges/Foci); the flat ±2
+// modifier table is a fixed rule in code (`rpg::wwn_mod`), not authored here.
+[
+    (name: "Strength"),
+    (name: "Dexterity"),
+    (name: "Constitution"),
+    (name: "Intelligence"),
+    (name: "Wisdom"),
+    (name: "Charisma"),
+]

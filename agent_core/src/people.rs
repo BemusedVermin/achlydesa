@@ -180,7 +180,7 @@ pub struct WorldAffordances(pub Vec<AffordanceSite>);
 /// Resolve the placed features' authored affordances into live sites. Unknown
 /// goods/skills are skipped — a scenario whose economy lacks them simply has no such
 /// affordance — so the feature catalog and the registry stay independently editable.
-pub(crate) fn build_affordances(
+pub fn build_affordances(
     catalog: &FeatureCatalog,
     features: &Features,
     reg: &Registry,
@@ -322,7 +322,7 @@ fn deplete_resource(world: &mut GameWorld, c: Coord, kind: ResourceKind, amount:
 /// The planner's **movement graph**: the land tiles reachable in one step from each
 /// tile. It depends only on elevation and sea level — both fixed at worldgen, never
 /// touched by `evolve` — so it is *static for the whole run*. Built once (in
-/// [`Simulation::new`](crate::Simulation::new)) and shared as a resource, rather than
+/// `Simulation::new`) and shared as a resource, rather than
 /// rebuilt every tick. Stored CSR-style — one flat `neighbors` buffer plus per-tile
 /// `offsets` — so a lookup hands back a borrowed slice with no allocation, and the
 /// whole graph is two allocations instead of one small `Vec` per tile per tick.
@@ -905,7 +905,7 @@ fn workable_fertility(reg: &Registry) -> f32 {
 }
 
 /// Place `count` markets on fertile land; return their entities and tiles.
-pub(crate) fn spawn_markets(
+pub fn spawn_markets(
     world: &mut World,
     substrate: &GameWorld,
     rng: &mut SplitMix64,
@@ -961,7 +961,7 @@ pub(crate) fn smooth_prices(mut markets: Query<&mut Market, Without<Npc>>, econ:
 /// settlements (community features) rather than scattering them on raw fertility,
 /// so the economy hangs off the world's towns. Deterministic (no RNG): the caller
 /// supplies the tiles.
-pub(crate) fn spawn_markets_at(
+pub fn spawn_markets_at(
     world: &mut World,
     reg: &Registry,
     coords: &[Coord],
@@ -1009,7 +1009,7 @@ pub fn discover_features(
 
 /// Place `count` people on fertile tiles around the markets, each patron to one.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn spawn_npcs(
+pub fn spawn_npcs(
     world: &mut World,
     substrate: &GameWorld,
     rng: &mut SplitMix64,

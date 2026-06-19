@@ -82,7 +82,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
-name = "agents"
+name = "agent_core"
 version = "0.1.0"
 dependencies = [
  "bevy_ecs",
@@ -93,6 +93,19 @@ dependencies = [
  "serde",
  "sim",
  "smallvec",
+]
+
+[[package]]
+name = "agents"
+version = "0.1.0"
+dependencies = [
+ "agent_core",
+ "bevy_ecs",
+ "bevy_tasks",
+ "config",
+ "game_sim",
+ "rpg",
+ "sim",
 ]
 
 [[package]]
@@ -199,6 +212,7 @@ version = "0.1.0"
 dependencies = [
  "agents",
  "bevy",
+ "config",
  "game_sim",
  "hexx",
  "voice",
@@ -5736,6 +5750,16 @@ name = "roxmltree"
 version = "0.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6c20b6793b5c2fa6553b250154b78d6d0db37e72700ae35fad9387a46f487c97"
+
+[[package]]
+name = "rpg"
+version = "0.1.0"
+dependencies = [
+ "bevy_ecs",
+ "config",
+ "serde",
+ "sim",
+]
 
 [[package]]
 name = "rustc-hash"

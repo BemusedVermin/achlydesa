@@ -1,13 +1,10 @@
 [package]
-name = "agents"
+name = "rpg"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-agent_core = { path = "../agent_core" }
 bevy_ecs = { version = "0.18.1", features = ["multi_threaded"] }
-bevy_tasks = "0.18"
 config = { path = "../config" }
-game_sim = { path = "../game_sim" }
-rpg = { path = "../rpg" }
+serde = { version = "1.0.228", features = ["derive"] }
 sim = { path = "../sim" }

@@ -1,0 +1,78 @@
+// Worlds Without Number "Foci" — the feat system. Each focus has up to two levels; taking
+// it a second time grants the level-2 effect. `combat: true` marks a combat focus (authored
+// now, inert until the combat/job layer ships). Each level lists `grants` stamped onto the
+// character — the same generic bundle Edges use:
+//   SkillRank(skill: "Convince", by: 1)   raise a WWN skill (clamped -1..4)
+//   AttrBonus(attr: "Strength", by: 1)    add to an attribute score
+//   Focus(focus: "Specialist", level: 1)  grant another focus
+//   Flag("climbing_proficient")           set a capability flag other layers read
+//   PowerTier(1)                          raise the (deferred) cultivation tier
+// Skill / attribute / focus names must exist in their RON files (validated at load).
+[
+    (name: "Specialist", combat: false, levels: [
+        (desc: "Reliably good at one chosen skill.", grants: [Flag("specialist")]),
+        (desc: "Almost never fails it.",             grants: [Flag("specialist")]),
+    ]),
+    (name: "Diplomat", combat: false, levels: [
+        (desc: "A persuasive tongue.",   grants: [SkillRank(skill: "Convince", by: 1)]),
+        (desc: "A master negotiator.",   grants: [SkillRank(skill: "Convince", by: 1), Flag("mediator")]),
+    ]),
+    (name: "Leader", combat: false, levels: [
+        (desc: "Others fall in behind.", grants: [SkillRank(skill: "Lead", by: 1)]),
+        (desc: "A born commander.",      grants: [SkillRank(skill: "Lead", by: 1)]),
+    ]),
+    (name: "Connected", combat: false, levels: [
+        (desc: "Knows someone everywhere.", grants: [SkillRank(skill: "Connect", by: 1), Flag("connected")]),
+        (desc: "A web of useful contacts.", grants: [SkillRank(skill: "Connect", by: 1)]),
+    ]),
+    (name: "Survivalist", combat: false, levels: [
+        (desc: "At home in the wastes.",          grants: [SkillRank(skill: "Survive", by: 1), Flag("forager")]),
+        (desc: "Nothing the wild does surprises.", grants: [SkillRank(skill: "Survive", by: 1)]),
+    ]),
+    (name: "Pathfinder", combat: false, levels: [
+        (desc: "Reads every trail.",  grants: [SkillRank(skill: "Notice", by: 1), Flag("pathfinder")]),
+        (desc: "Never truly lost.",   grants: [SkillRank(skill: "Notice", by: 1)]),
+    ]),
+    (name: "Climber", combat: false, levels: [
+        (desc: "Sure on steep ground.",  grants: [SkillRank(skill: "Exert", by: 1), Flag("climbing_proficient")]),
+        (desc: "Scales the unscalable.", grants: [SkillRank(skill: "Exert", by: 1)]),
+    ]),
+    (name: "Sailor", combat: false, levels: [
+        (desc: "Sure on the water.",  grants: [SkillRank(skill: "Sail", by: 1), Flag("boatman")]),
+        (desc: "A master mariner.",   grants: [SkillRank(skill: "Sail", by: 1)]),
+    ]),
+    (name: "Healer", combat: false, levels: [
+        (desc: "Mends wounds and sickness.", grants: [SkillRank(skill: "Heal", by: 1), Flag("healer")]),
+        (desc: "Brings back the near-lost.", grants: [SkillRank(skill: "Heal", by: 1)]),
+    ]),
+    (name: "Scholar", combat: false, levels: [
+        (desc: "Deeply learned.",     grants: [SkillRank(skill: "Know", by: 1), Flag("literate")]),
+        (desc: "A living library.",   grants: [SkillRank(skill: "Know", by: 1)]),
+    ]),
+    (name: "Artisan", combat: false, levels: [
+        (desc: "A skilled maker.",     grants: [SkillRank(skill: "Craft", by: 1)]),
+        (desc: "A master craftsman.",  grants: [SkillRank(skill: "Craft", by: 1)]),
+    ]),
+    (name: "Rider", combat: false, levels: [
+        (desc: "One with the mount.",  grants: [SkillRank(skill: "Ride", by: 1)]),
+        (desc: "Rides anything.",      grants: [SkillRank(skill: "Ride", by: 1)]),
+    ]),
+
+    // --- Combat foci: authored, inert until the combat/job layer reads them. ---
+    (name: "Alert", combat: true, levels: [
+        (desc: "Hard to surprise.", grants: [Flag("alert")]),
+        (desc: "Always ready.",     grants: [Flag("alert")]),
+    ]),
+    (name: "Armsmaster", combat: true, levels: [
+        (desc: "Deadly in melee.",  grants: [Flag("armsmaster")]),
+        (desc: "A peerless blade.", grants: [Flag("armsmaster")]),
+    ]),
+    (name: "Deadeye", combat: true, levels: [
+        (desc: "Deadly at range.",  grants: [Flag("deadeye")]),
+        (desc: "Never misses.",     grants: [Flag("deadeye")]),
+    ]),
+    (name: "Die Hard", combat: true, levels: [
+        (desc: "Hard to put down.", grants: [Flag("die_hard")]),
+        (desc: "Refuses to fall.",  grants: [Flag("die_hard")]),
+    ]),
+]

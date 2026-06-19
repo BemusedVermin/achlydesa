@@ -104,11 +104,11 @@ impl PlayerState {
         v.sort_by_key(|c| (c.row, c.col));
         v
     }
-    pub(crate) fn set_path(&mut self, to: Coord, path: VecDeque<Coord>) {
+    pub fn set_path(&mut self, to: Coord, path: VecDeque<Coord>) {
         self.destination = Some(to);
         self.path = path;
     }
-    pub(crate) fn halt(&mut self) {
+    pub fn halt(&mut self) {
         self.path.clear();
         self.destination = None;
     }
@@ -199,7 +199,7 @@ fn ring(topo: &Topology, centre: Coord, radius: i32) -> Vec<Coord> {
 /// walk, in order (empty if already there). `None` if `to` is unreachable (e.g. across
 /// water): the avatar is a body, and bodies do not walk on the sea. Deterministic (BFS in
 /// the graph's fixed neighbour order).
-pub(crate) fn path_to(mg: &MoveGraph, topo: &Topology, from: Coord, to: Coord) -> Option<VecDeque<Coord>> {
+pub fn path_to(mg: &MoveGraph, topo: &Topology, from: Coord, to: Coord) -> Option<VecDeque<Coord>> {
     if from == to {
         return Some(VecDeque::new());
     }
@@ -251,7 +251,7 @@ fn uncover(world: &mut World, avatar: Entity, at: Coord) {
 }
 
 /// Place the avatar at `at` and reveal its surroundings. Replaces any prior avatar.
-pub(crate) fn spawn(world: &mut World, at: Coord) -> Entity {
+pub fn spawn(world: &mut World, at: Coord) -> Entity {
     let e = world.spawn((Player, Position(at), Known::default())).id();
     {
         let mut st = world.resource_mut::<PlayerState>();
@@ -264,7 +264,7 @@ pub(crate) fn spawn(world: &mut World, at: Coord) -> Entity {
 
 /// Build the "look" view — read-only over the world (takes `&mut World` only to run the
 /// nearby-bodies query, as the other inspection accessors do).
-pub(crate) fn view(world: &mut World) -> Option<PlayerView> {
+pub fn view(world: &mut World) -> Option<PlayerView> {
     let (avatar, sight) = {
         let st = world.resource::<PlayerState>();
         (st.avatar?, st.sight)
@@ -371,7 +371,7 @@ pub(crate) fn player_travel(
 /// gate the player satisfies, harvest the lore those places teach, and mark the tile visited.
 /// Deterministic — knowledge, not luck, decides what is found. Returns what turned up (empty if
 /// there is no avatar, or nothing the player can yet find here).
-pub(crate) fn search(world: &mut World) -> SearchOutcome {
+pub fn search(world: &mut World) -> SearchOutcome {
     let mut out = SearchOutcome::default();
     let Some(avatar) = world.resource::<PlayerState>().avatar else { return out };
     let Some(at) = world.get::<Position>(avatar).map(|p| p.0) else { return out };
@@ -406,7 +406,7 @@ pub(crate) fn search(world: &mut World) -> SearchOutcome {
 }
 
 /// Whether searching the avatar's current tile would find anything, given the lore it holds.
-pub(crate) fn find_state(world: &World) -> FindState {
+pub fn find_state(world: &World) -> FindState {
     let Some(avatar) = world.resource::<PlayerState>().avatar else { return FindState::Nothing };
     let Some(at) = world.get::<Position>(avatar).map(|p| p.0) else { return FindState::Nothing };
     let i = world.resource::<Substrate>().0.topology().index_of(at);

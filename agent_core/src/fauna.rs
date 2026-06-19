@@ -443,7 +443,7 @@ fn spawn_diet(
 }
 
 /// Place `count` herbivores, each in a biome its species favours.
-pub(crate) fn spawn_fauna(
+pub fn spawn_fauna(
     world: &mut World,
     substrate: &GameWorld,
     bestiary: &Bestiary,
@@ -455,7 +455,7 @@ pub(crate) fn spawn_fauna(
 }
 
 /// Place `count` carnivores, each in a biome its species favours (near its prey).
-pub(crate) fn spawn_carnivores(
+pub fn spawn_carnivores(
     world: &mut World,
     substrate: &GameWorld,
     bestiary: &Bestiary,

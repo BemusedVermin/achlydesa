@@ -18,67 +18,24 @@
 //! and all randomness comes from a seeded [`SimRng`].
 
 use bevy_ecs::prelude::*;
-use bevy_ecs::schedule::ExecutorKind;
 use game_sim::{SplitMix64, World as GameWorld};
 use sim::Substrate as SubstrateTrait;
 
-pub mod ai;
-pub mod beats;
-pub mod data;
-pub mod dialogue;
-pub mod director;
-pub mod events;
-pub mod factions;
-pub mod fauna;
-pub mod features;
-pub mod goals;
-pub mod norms;
-pub mod observe;
-pub mod people;
-pub mod plan;
-pub mod player;
+// The foundational simulation lives in `agent_core`; this `agents` crate is the thin
+// assembler on top of it (and the feature crates). Re-export the whole core surface so
+// existing users — `app`, the examples, the tests — keep importing everything from
+// `agents` unchanged.
+pub use agent_core::*;
+// The RPG layer (WWN attributes/skills/foci/edges) is its own crate; re-export its character
+// types so `app`, the demos and the tests reach them through `agents`. The `rpg::check` engine
+// and `rpg::wwn_mod` are used internally — depend on `rpg` directly to call them.
+pub use rpg::{Abilities, Archetype, CheckOutcome, FociHeld, Flags, PowerTier, Proficiencies, Rolled, RpgData, Save};
 
-pub use ai::{Consideration, Curve, Input};
-pub use data::{GoodDef, GoodId, MoodDef, MoodId, Recipe, Registry, ResourceKind, SkillId, TraitDef, TraitId};
-pub use beats::{Beat, BeatBook, Effect, Phase, Pre, Register, Role};
-pub use dialogue::{Dialogue, DialogueConfig, IntentBook, SlmRealizer, SpeechAct, TextGen, Utterance};
-pub use player::{Player, PlayerKnowledge, PlayerState, PlayerView, Rumor, SearchOutcome, Terrain, TileInfo};
-pub use game_sim::{Coord, Topology};
-pub use director::{Cadence, Director, DirectorConfig, Protagonist, Thread};
-pub use events::{AgentEvent, Appraisals, EventQueue};
-pub use factions::{Allegiance, Bond, Detained, Faction, FactionConfig, Factions, Government, Law, Opinion};
-pub use fauna::{Bestiary, Carnivore, Diet, Energy, FaunaConfig, FaunaRng, Form, Herbivore, Species, SpeciesId};
-pub use features::{
-    AffordanceDef, Category, Discovery, EffectDef, Feature, FeatureCatalog, FeatureConfig, FeatureDef, FeatureId,
-    Features, FindState, NeedKind,
-};
-pub use goals::{Goal, Goals};
-pub use norms::{Modality, Norm, Norms};
-pub use observe::{Census, Violation, check};
-pub use people::{
-    AffordanceSite, EconConfig, Grievance, Inventory, Known, Liege, Market, Mood, Needs, NeedsConfig, Npc, Patron,
-    Personality, Plan, Skills, Throne, WorldAffordances, price,
-};
-pub use plan::{Affordance, AffordEffect, Condition, Deed, GoodSel, MarketSnapshot, Need, PlanCtx, PlanState, Step, plan};
-
-// --- Shared components / resources ---
-
-/// Which hex an agent stands on.
-#[derive(Component, Clone, Copy, Debug)]
-pub struct Position(pub Coord);
-
-/// The climate/ecosystem substrate, owned by the ECS world as a resource.
-#[derive(Resource)]
-pub struct Substrate(pub GameWorld);
-
-/// Seeded randomness shared by substrate `evolve` and agent placement.
-#[derive(Resource)]
-pub struct SimRng(pub SplitMix64);
-
-/// Advance the substrate one day (`Φ`).
-fn advance_substrate(mut substrate: ResMut<Substrate>, mut rng: ResMut<SimRng>) {
-    substrate.0.evolve(&mut rng.0);
-}
+/// Seed for the RPG layer's dedicated RNG stream, kept so the avatar can be rolled from it in
+/// [`Simulation::spawn_player`] (after the NPCs were rolled at construction). Present as a
+/// resource only when the RPG layer is enabled.
+#[derive(Resource, Clone, Copy)]
+struct RpgSeed(u64);
 
 // --- Scenario ---
 
@@ -89,6 +46,12 @@ pub struct Setup {
     pub width: i32,
     pub height: i32,
     pub seed: u64,
+    /// World-generation + climate/ecology tunables used by the convenience
+    /// [`Simulation::new`] to generate a world. Defaults to the figment-layered
+    /// `params.ron`. The app builds its own (much larger, US-scale) world via
+    /// `game_sim::World::generate` and injects it with [`Simulation::from_world`], so this
+    /// only shapes the small default world used by headless/test runs.
+    pub params: config::Params,
     /// Substrate days to spin up before agents are introduced.
     pub warmup: u64,
     pub fauna: usize,
@@ -159,6 +122,11 @@ pub struct Setup {
     /// [`Setup::dialogue_cfg`]; its `enabled` is OR'd with this switch.
     pub dialogue: bool,
     pub dialogue_cfg: DialogueConfig,
+    /// Wake the **RPG layer** (WWN attributes/skills/foci/edges): stamp every NPC — and the
+    /// avatar, when spawned — with rolled stats from a dedicated seeded stream. Off by
+    /// default, so a world without it is byte-identical (no components, no resource, no
+    /// stream drawn). The social/world-interaction skills it adds are read by later layers.
+    pub rpg: bool,
 }
 
 impl Default for Setup {
@@ -167,6 +135,7 @@ impl Default for Setup {
             width: 36,
             height: 26,
             seed: 0,
+            params: config::tunables::params(),
             warmup: 300,
             fauna: 0,
             carnivores: 0,
@@ -197,6 +166,7 @@ impl Default for Setup {
             director_cfg: config::tunables::director(),
             dialogue: false,
             dialogue_cfg: config::tunables::dialogue(),
+            rpg: false,
         }
     }
 }
@@ -210,15 +180,29 @@ pub struct Simulation {
 }
 
 impl Simulation {
-    /// Build a run from a [`Setup`].
+    /// Build a run from a [`Setup`] — the headless/test convenience. Generates a world
+    /// from the `Setup`'s world knobs (`width`/`height`/`params`/`seed`), then hands it to
+    /// [`Self::from_world`]. The **app owns world generation itself** and calls `from_world`
+    /// directly; the terrain generator lives in [`game_sim`](game_sim::World::generate),
+    /// never here — this crate only *drives* a substrate, it does not author one.
     pub fn new(setup: Setup) -> Self {
+        let world = GameWorld::generate(setup.width, setup.height, setup.params.clone(), setup.seed);
+        Self::from_world(world, setup)
+    }
+
+    /// Build a run on an **already-generated** substrate that the caller owns. Warms the
+    /// climate (`Setup::warmup`) and introduces the population; the world's dimensions come
+    /// from `world` itself, so `Setup::{width,height,params}` are ignored here (they only
+    /// drive the convenience [`Self::new`]). `Setup::seed` still seeds every agent-layer
+    /// RNG stream — pass the same seed the world was generated with for a reproducible run.
+    pub fn from_world(world: GameWorld, setup: Setup) -> Self {
         // The compute pool backs `people_plan`'s parallel planning. Idempotent, so
         // it's safe to call for every simulation built in the process. Planning
         // writes only each person's own `Plan` from read-only shared state, so the
         // result is identical regardless of how work is split across threads.
         bevy_tasks::ComputeTaskPool::get_or_init(bevy_tasks::TaskPool::default);
 
-        let mut substrate = GameWorld::generate(setup.width, setup.height, config::tunables::params(), setup.seed);
+        let mut substrate = world;
         let mut rng = SplitMix64::new(setup.seed ^ 0x9E37_79B9_7F4A_7C15);
         for _ in 0..setup.warmup {
             substrate.evolve(&mut rng);
@@ -295,6 +279,28 @@ impl Simulation {
             }
         }
 
+        // Wake the RPG layer, if asked: stamp every NPC with rolled WWN stats from a
+        // dedicated seeded stream, drawn *after* every spawn above so it never perturbs their
+        // RNG. The avatar is rolled later (in `spawn_player`) from the same seed. Off → nothing
+        // is drawn, no resource inserted, no component added, so the world is byte-identical.
+        if setup.rpg {
+            let data = rpg::RpgData::bundled();
+            let rpg_seed = setup.seed ^ 0x2790_F00D_0FF1_CE00;
+            let mut rpg_rng = SplitMix64::new(rpg_seed);
+            let npcs: Vec<Entity> = {
+                let mut q = world.query_filtered::<Entity, With<people::Npc>>();
+                q.iter(&world).collect()
+            };
+            for e in npcs {
+                let r = rpg::roll(&mut rpg_rng, &data);
+                world
+                    .entity_mut(e)
+                    .insert((r.abilities, r.proficiencies, r.foci, r.flags, r.power, rpg::Archetype(r.edge)));
+            }
+            world.insert_resource(RpgSeed(rpg_seed));
+            world.insert_resource(data);
+        }
+
         // Wake the narrative director, if asked. Its `enabled` is the OR of the
         // convenience switch and the config's own flag. When enabled, the first NPC
         // becomes the protagonist it stages drama for; when not, the resources are
@@ -356,37 +362,8 @@ impl Simulation {
         world.insert_resource(setup.appraisals);
         world.insert_resource(events::EventQueue::default());
 
-        let mut schedule = Schedule::default();
-        schedule.set_executor_kind(ExecutorKind::SingleThreaded);
-        schedule.add_systems(
-            (
-                advance_substrate,
-                fauna::forage,
-                fauna::lifecycle,
-                fauna::hunt,
-                fauna::carnivore_lifecycle,
-                people::people_plan,
-                people::people_execute,
-                people::smooth_prices,
-                people::discover_features,
-                // The player walks its route, revealing the map and finding what it passes.
-                player::player_travel,
-                events::appraise,
-                people::mood_shapes_traits,
-                people::mood_decay,
-                people::people_metabolism,
-                people::regen_affordances,
-                factions::faction_turn,
-                factions::detention_countdown,
-                // Γ runs late: it charges itself for this tick's deaths inside its
-                // footprints, reads the stage, and may manufacture an escalation.
-                director::director_step,
-                // Dialogue runs last: it voices the social state the rest of the tick (and
-                // the director) just shaped — emergent intents, and Γ's forced `Voice` beats.
-                dialogue::converse,
-            )
-                .chain(),
-        );
+        // The fixed-order, single-threaded per-step schedule is owned by `agent_core`.
+        let schedule = agent_core::build_schedule();
 
         Self { world, schedule }
     }
@@ -617,7 +594,26 @@ impl Simulation {
     /// re-homes the player. Until called, the world runs with no player and is unchanged.
     pub fn spawn_player(&mut self, at: Option<Coord>) -> bevy_ecs::entity::Entity {
         let start = at.unwrap_or_else(|| self.default_start());
-        player::spawn(&mut self.world, start)
+        let avatar = player::spawn(&mut self.world, start);
+        // If the RPG layer is awake, roll the avatar's WWN stats too — from a dedicated
+        // sub-stream of the RPG seed, so re-homing yields the same character and the roll is
+        // independent of the NPCs'. The avatar gets capabilities (stats/skills), never a mind.
+        if let Some(&RpgSeed(s)) = self.world.get_resource::<RpgSeed>() {
+            let mut rng = SplitMix64::new(s ^ 0xA7A7_0FF1_CE00_0A7A);
+            let rolled = {
+                let data = self.world.resource::<RpgData>();
+                rpg::roll(&mut rng, data)
+            };
+            self.world.entity_mut(avatar).insert((
+                rolled.abilities,
+                rolled.proficiencies,
+                rolled.foci,
+                rolled.flags,
+                rolled.power,
+                rpg::Archetype(rolled.edge),
+            ));
+        }
+        avatar
     }
 
     /// A reasonable place to drop a fresh avatar: where the people already are (so it is on
@@ -782,6 +778,39 @@ impl Simulation {
     /// Coins held by a specific person, if alive.
     pub fn money_of(&self, e: bevy_ecs::entity::Entity) -> Option<i64> {
         self.world.get::<Inventory>(e).map(|i| i.money)
+    }
+
+    /// Whether the RPG layer is awake for this run (NPCs and the avatar carry WWN stats).
+    pub fn rpg_enabled(&self) -> bool {
+        self.world.get_resource::<RpgData>().is_some()
+    }
+
+    /// The WWN attribute scores of an entity, if it carries them.
+    pub fn abilities_of(&self, e: bevy_ecs::entity::Entity) -> Option<&Abilities> {
+        self.world.get::<Abilities>(e)
+    }
+
+    /// An entity's proficiency rank (`-1` unskilled … `4`) in a named WWN skill, if it has stats.
+    pub fn proficiency_of(&self, e: bevy_ecs::entity::Entity, skill: &str) -> Option<i8> {
+        let id = self.world.get_resource::<RpgData>()?.skill_id(skill)?;
+        self.world.get::<Proficiencies>(e).map(|p| p.rank(id))
+    }
+
+    /// The RPG content set this run uses (attributes, skills, foci, edges), if enabled.
+    pub fn rpg_data(&self) -> Option<&RpgData> {
+        self.world.get_resource::<RpgData>()
+    }
+
+    /// The name of the archetype Edge an entity was rolled with (e.g. "Wanderer"), if any.
+    pub fn archetype_of(&self, e: bevy_ecs::entity::Entity) -> Option<&str> {
+        let id = self.world.get::<Archetype>(e)?.0?;
+        Some(self.world.get_resource::<RpgData>()?.edge_name(id))
+    }
+
+    /// Every living NPC entity (deterministic iteration order).
+    pub fn npcs(&mut self) -> Vec<bevy_ecs::entity::Entity> {
+        let mut q = self.world.query_filtered::<Entity, With<Npc>>();
+        q.iter(&self.world).collect()
     }
 
     /// `who`'s opinion of `toward` (`-1..1`; `0` if they have no opinion or no `Opinion`).
@@ -1063,6 +1092,35 @@ mod tests {
         let mut sim = economy(60);
         sim.run(150);
         assert!(sim.npc_count() > 5, "the economy collapsed ({} left)", sim.npc_count());
+    }
+
+    // --- RPG layer (Worlds Without Number) ---
+
+    #[test]
+    fn rpg_layer_stamps_npcs_and_the_avatar() {
+        let mut sim = Simulation::new(Setup { width: 40, height: 30, seed: 2026, npcs: 30, rpg: true, ..Default::default() });
+        assert!(sim.rpg_enabled(), "the rpg resource is present when enabled");
+        let npc = sim.any_npc().expect("npcs spawned");
+        assert!(sim.abilities_of(npc).is_some(), "an NPC carries WWN attributes");
+        // The rolled edge / background trained at least one skill above unskilled.
+        let names: Vec<String> = sim.rpg_data().unwrap().skills().iter().map(|s| s.name.clone()).collect();
+        assert!(
+            names.iter().any(|s| sim.proficiency_of(npc, s).is_some_and(|r| r > -1)),
+            "the NPC has at least one trained skill",
+        );
+        // The avatar gets capabilities too.
+        let avatar = sim.spawn_player(None);
+        assert!(sim.abilities_of(avatar).is_some(), "the avatar carries WWN attributes");
+    }
+
+    #[test]
+    fn rpg_rolls_are_deterministic() {
+        let first_scores = || {
+            let mut sim = Simulation::new(Setup { width: 40, height: 30, seed: 2026, npcs: 20, rpg: true, ..Default::default() });
+            let npc = sim.any_npc().unwrap();
+            sim.abilities_of(npc).unwrap().scores
+        };
+        assert_eq!(first_scores(), first_scores(), "same seed → identical rolled stats");
     }
 
     #[test]

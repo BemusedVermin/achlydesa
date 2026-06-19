@@ -1,0 +1,43 @@
+// "Edges" — grafted from Cities Without Number (Worlds Without Number itself has none): broad
+// archetype packages chosen alongside Foci. Each is a `grants` bundle (the same generic seam
+// Foci use) stamped onto a character at creation — and the job-system-friendly hook the future
+// combat "jobs" reuse. Flavoured for the dream-purgatory: nothing here belongs to the waking
+// world. Skill / attribute / focus names must exist in their RON files (validated at load).
+[
+    (name: "Wanderer", desc: "A rootless traveller of the wastes.", grants: [
+        SkillRank(skill: "Survive", by: 1), SkillRank(skill: "Notice", by: 1),
+        Focus(focus: "Survivalist", level: 1), Flag("climbing_proficient"),
+    ]),
+    (name: "Spice-Touched", desc: "Marked by the deep desert's gifts.", grants: [
+        AttrBonus(attr: "Wisdom", by: 1), SkillRank(skill: "Survive", by: 1), Flag("desert_born"),
+    ]),
+    (name: "Cult-Leader", desc: "A voice that gathers the lost.", grants: [
+        SkillRank(skill: "Convince", by: 1), SkillRank(skill: "Lead", by: 1),
+        Focus(focus: "Diplomat", level: 1),
+    ]),
+    (name: "Archivist", desc: "A keeper of the world's dead knowledge.", grants: [
+        AttrBonus(attr: "Intelligence", by: 1), SkillRank(skill: "Know", by: 2),
+        Focus(focus: "Scholar", level: 1), Flag("literate"),
+    ]),
+    (name: "Hedge-Healer", desc: "Mends the body with old craft.", grants: [
+        SkillRank(skill: "Heal", by: 1), SkillRank(skill: "Craft", by: 1),
+        Focus(focus: "Healer", level: 1),
+    ]),
+    (name: "Factor", desc: "Reads a market and a mark alike.", grants: [
+        SkillRank(skill: "Trade", by: 1), SkillRank(skill: "Connect", by: 1),
+        Focus(focus: "Connected", level: 1),
+    ]),
+    (name: "Mariner", desc: "Born to the drowned roads.", grants: [
+        SkillRank(skill: "Sail", by: 2), Focus(focus: "Sailor", level: 1), Flag("boatman"),
+    ]),
+    (name: "Outrider", desc: "Scout of the long trails.", grants: [
+        SkillRank(skill: "Ride", by: 1), SkillRank(skill: "Notice", by: 1),
+        Focus(focus: "Pathfinder", level: 1),
+    ]),
+    (name: "Footpad", desc: "Moves unseen, takes unfelt.", grants: [
+        AttrBonus(attr: "Dexterity", by: 1), SkillRank(skill: "Sneak", by: 1),
+    ]),
+    (name: "Warden", desc: "Stands between the weak and the dark.", grants: [
+        AttrBonus(attr: "Constitution", by: 1), Focus(focus: "Die Hard", level: 1), Flag("guardian"),
+    ]),
+]

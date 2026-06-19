@@ -1,0 +1,30 @@
+// The Worlds Without Number skill list — the adventuring skills, SEPARATE from the economy
+// `skills.ron` (farming/baking, which gate trades and scale yield). Ranks run -1 (unskilled)
+// to 4. Tags steer which skills the early game wires up first:
+//   social: a speech / persuasion skill (gates how dialogue intents land)
+//   world:  a world-interaction / exploration skill (search, survive, travel, heal, …)
+// Combat skills (Punch/Shoot/Stab) and casting (Magic) are neither — authored, but inert
+// until the combat layer ships. Add skills freely; new names just need an id here.
+[
+    (name: "Administer", social: true),
+    (name: "Connect",    social: true),
+    (name: "Convince",   social: true),
+    (name: "Craft",      world: true),
+    (name: "Exert",      world: true),
+    (name: "Heal",       world: true),
+    (name: "Know",       world: true),
+    (name: "Lead",       social: true),
+    (name: "Magic"),
+    (name: "Notice",     world: true),
+    (name: "Perform",    social: true),
+    (name: "Pray",       world: true),
+    (name: "Punch"),
+    (name: "Ride",       world: true),
+    (name: "Sail",       world: true),
+    (name: "Shoot"),
+    (name: "Sneak",      world: true),
+    (name: "Stab"),
+    (name: "Survive",    world: true),
+    (name: "Trade",      social: true),
+    (name: "Work",       world: true),
+]
