@@ -247,6 +247,9 @@ struct CamRig {
 enum HudKind {
     Look,
     Help,
+    /// The narrative banner under the tabs — the world's drama pushed at the player as it moves
+    /// (gossip overheard, or the unrest it can sense). See [`Simulation::tidings`].
+    Tidings,
 }
 
 fn main() {
@@ -1731,6 +1734,8 @@ fn update_hud(mut game: NonSendMut<Game>, mut texts: Query<(&HudKind, &mut Text,
         (false, FindState::Locked) => "\n  something here eludes you — you lack the knowledge",
         _ => "",
     };
+    // The world's current drama, pushed at the player as it moves (hidden under the menu / a talk).
+    let tidings = if g.paused || in_convo { None } else { g.sim.tidings() };
 
     for (kind, mut text, mut vis) in &mut texts {
         text.0 = match kind {
@@ -1759,6 +1764,18 @@ fn update_hud(mut game: NonSendMut<Game>, mut texts: Query<(&HudKind, &mut Text,
                 }
                 h
             }
+            // The narrative banner: shown only when the world has something to say (else hidden, so
+            // the centre stays clear).
+            HudKind::Tidings => match &tidings {
+                Some(t) => {
+                    *vis = Visibility::Inherited;
+                    t.clone()
+                }
+                None => {
+                    *vis = Visibility::Hidden;
+                    String::new()
+                }
+            },
         };
     }
 }

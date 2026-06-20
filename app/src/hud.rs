@@ -428,6 +428,36 @@ pub fn spawn(commands: &mut Commands, f: &ThemeFonts, grassy: Handle<Image>) {
         TextFont { font: f.mono.clone(), font_size: theme::T_BODY, ..default() },
         TextColor(theme::TEXT),
     ));
+
+    // ── Tidings banner: the world's drama pushed under the tab bar, centred, as the player moves. ──
+    commands
+        .spawn(Node {
+            position_type: PositionType::Absolute,
+            left: px(LEFT_W),
+            right: px(RIGHT_W),
+            top: px(TOP_H + theme::SP_SM),
+            justify_content: JustifyContent::Center,
+            ..default()
+        })
+        .with_children(|row| {
+            row.spawn((
+                crate::HudKind::Tidings,
+                Node {
+                    padding: UiRect::axes(px(theme::SP_LG), px(theme::SP_XS)),
+                    border: UiRect::all(px(theme::BORDER_W)),
+                    border_radius: BorderRadius::all(px(theme::RADIUS_SM)),
+                    max_width: px(680.0),
+                    ..default()
+                },
+                BackgroundColor(Color::srgba(0.04, 0.05, 0.08, 0.72)),
+                BorderColor::all(theme::AWE),
+                Text::new(""),
+                TextFont { font: f.serif.clone(), font_size: theme::T_BODY, ..default() },
+                TextColor(theme::AWE),
+                TextLayout::new_with_justify(Justify::Center),
+                GlobalZIndex(6),
+            ));
+        });
 }
 
 // ── Update systems ───────────────────────────────────────────────────────────────────────────────

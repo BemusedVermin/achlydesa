@@ -894,7 +894,9 @@ impl Simulation {
     /// travelled*, not merely the player's distance. `None` when no one in earshot knows anything
     /// (no avatar, no gossip layer, or the locals simply haven't heard). Read-only & deterministic.
     pub fn overheard(&mut self) -> Option<String> {
-        let nearby: Vec<bevy_ecs::entity::Entity> = self.player_nearby_npcs().into_iter().map(|(e, _)| e).collect();
+        // You catch talk from a good way off, not just your own tile — a wider net than sight.
+        const HEARING: i32 = 8;
+        let nearby = self.souls_within(HEARING);
         if nearby.is_empty() {
             return None; // gossip needs a teller in earshot
         }
@@ -916,6 +918,42 @@ impl Simulation {
         let other = r.other.map(|e| self.display_name(e));
         let dir = compass_dir(at, r.place, width);
         Some(gossip_line(r.register, r.fidelity, &lead_titled, other.as_deref(), dir))
+    }
+
+    /// The NPCs within `radius` hexes of the avatar (wrapped E–W) — a wider net than sight, for what
+    /// the avatar can *hear* talk from. Empty if there is no avatar.
+    fn souls_within(&mut self, radius: i32) -> Vec<bevy_ecs::entity::Entity> {
+        let Some(at) = self.player_position() else { return Vec::new() };
+        let width = self.substrate().topology().width();
+        let mut q = self.world.query_filtered::<(bevy_ecs::entity::Entity, &agent_core::Position), With<people::Npc>>();
+        q.iter(&self.world).filter(|(_, p)| wrapped_dist(at, p.0, width) <= radius).map(|(e, _)| e).collect()
+    }
+
+    /// The **current narrative pulse**, pushed at the player as it moves — the world *telling* its
+    /// drama instead of waiting to be asked. The loudest gossip a nearby soul holds, when there is
+    /// any ("Word here — they say…"); else the unrest the avatar can sense, pointed and given a face
+    /// ("Unrest stirs to the east — Allogenes, the Avenger."); else `None` (the land is quiet here).
+    /// Read-only; safe to call every frame.
+    pub fn tidings(&mut self) -> Option<String> {
+        if let Some(g) = self.overheard() {
+            return Some(format!("Word here \u{2014} {g}"));
+        }
+        let at = self.player_position()?;
+        let width = self.substrate().topology().width();
+        let strongest = self.drama_marks().into_iter().max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())?;
+        let dir = compass_dir(at, strongest.0, width);
+        // Give the unrest a face: the figure the director's drama turns on, if one is staged.
+        let who = match self.protagonist() {
+            Some(p) => {
+                let n = self.display_name(p);
+                match self.npc_epithet(p) {
+                    Some(ep) => format!(" \u{2014} {n}, {ep}"),
+                    None => format!(" \u{2014} {n}"),
+                }
+            }
+            None => String::new(),
+        };
+        Some(format!("Unrest stirs {dir}{who}."))
     }
 
     /// Where recent drama can be **sensed** — `(place, fidelity)` for each recent beat within
