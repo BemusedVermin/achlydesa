@@ -446,11 +446,18 @@ Built so far on branch `narrative-surfacing`, in milestone order:
 - **Phase 2 (first cut) — gossip + fidelity (the veil).** The director records each beat as a
   `BeatEvent` (place + cast); `Simulation::overheard` renders a line whose sharpness scales with a
   **deterministic fidelity** (distance + age); a conversation opens with the soul sharing that word.
+- **Phase 3 (first cut) — drama markers.** `Simulation::drama_marks` exposes the recent drama the
+  avatar can sense (by the same fidelity); the minimap and Map tab draw a crimson pip at each (even
+  over fog) — "a commotion to the east" — and arriving makes the gossip sharp by proximity (the
+  chosen *markers + sharp-on-arrival* shape, not staged scenes).
+- **Phase 4 (first cut) — the ledger.** The Journal tab lists the souls the avatar has met (recorded
+  when a conversation opens) with where each one's story stands now; a soul since dead is remembered
+  as gone. Player-side memory; never feeds the sim.
 
 **Deferred / next:** Phase 2b (true NPC-to-NPC propagation, structured rumour mutation, SLM-graded
-confabulation at low fidelity); **Phase 3** witnessable scenes (drama markers + the witness-vs-aftermath
-question, §9); **Phase 4** the ledger; the debug overlay; POI-C narrative affordance effects; POI-D
-reactivity; POI-E interiors. Trading the avatar's gathered goods is the next economic step.
+confabulation at low fidelity); drama-marker refresh while stationary; the ledger's per-soul **rumour
+history + contradictions** (the curiosity-gap hook); the debug overlay; POI-C narrative affordance
+effects; POI-D reactivity; POI-E interiors; trading the avatar's gathered goods.
 
 All determinism / off-by-default invariants hold; the only standing test failures are 3 pre-existing
 ones unrelated to this work.
