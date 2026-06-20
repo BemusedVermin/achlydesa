@@ -443,9 +443,12 @@ Built so far on branch `narrative-surfacing`, in milestone order:
   avatar now carries an `Inventory` satchel and economy `Skills`, so `Yield`/`Teach` sites genuinely
   **gather goods and teach callings** — the same effects an NPC's `Step::Use` gets — shown on the
   Inventory tab. Relief sites refresh the avatar's vitals.
-- **Phase 2 (first cut) — gossip + fidelity (the veil).** The director records each beat as a
-  `BeatEvent` (place + cast); `Simulation::overheard` renders a line whose sharpness scales with a
-  **deterministic fidelity** (distance + age); a conversation opens with the soul sharing that word.
+- **Phase 2 + 2b — gossip + fidelity (the veil, with teeth).** Each beat seeds a rumour into its
+  witnesses (fidelity 1.0); the new `gossip` module spreads it **soul-to-soul each tick, decaying a
+  hop at a time** and shedding the counterpart once worn thin — deterministic, no randomness,
+  order-independent, off until the director seeds. `Simulation::overheard` renders the sharpest
+  rumour a *nearby soul actually holds*, by that copy's fidelity; a conversation opens on it. So the
+  garbling is how far the telephone game travelled, not merely the player's distance.
 - **Phase 3 (first cut) — drama markers.** `Simulation::drama_marks` exposes the recent drama the
   avatar can sense (by the same fidelity); the minimap and Map tab draw a crimson pip at each (even
   over fog) — "a commotion to the east" — and arriving makes the gossip sharp by proximity (the
@@ -454,10 +457,11 @@ Built so far on branch `narrative-surfacing`, in milestone order:
   when a conversation opens) with where each one's story stands now; a soul since dead is remembered
   as gone. Player-side memory; never feeds the sim.
 
-**Deferred / next:** Phase 2b (true NPC-to-NPC propagation, structured rumour mutation, SLM-graded
-confabulation at low fidelity); drama-marker refresh while stationary; the ledger's per-soul **rumour
-history + contradictions** (the curiosity-gap hook); the debug overlay; POI-C narrative affordance
-effects; POI-D reactivity; POI-E interiors; trading the avatar's gathered goods.
+**Deferred / next:** Phase 2c (structured subject-drift *mutation* of rumours, and SLM-graded
+confabulation at low fidelity, out-of-band when the voice model is on); drama-marker refresh while
+stationary; the ledger's per-soul **rumour history + contradictions** (the curiosity-gap hook); the
+debug overlay; POI-C narrative affordance effects; POI-D reactivity; POI-E interiors; trading the
+avatar's gathered goods.
 
 All determinism / off-by-default invariants hold; the only standing test failures are 3 pre-existing
 ones unrelated to this work.
