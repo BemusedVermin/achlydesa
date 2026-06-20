@@ -457,6 +457,20 @@ Built so far on branch `narrative-surfacing`, in milestone order:
   when a conversation opens) with where each one's story stands now; a soul since dead is remembered
   as gone. Player-side memory; never feeds the sim.
 
+**Engagement pass (branch `narrative-engagement`)** — after a playtest reported it "feels the same".
+Diagnosis via the new `app_drama_probe` example: the drama *was* firing and gossip *was* reaching the
+avatar, but it was all **pull** (you had to open a conversation), hearing was sight-only (3 hexes),
+and the world never told you anything. Fixes:
+
+- **Push — the tidings banner.** `Simulation::tidings` is the world's current pulse, shown under the
+  tab bar as you move: the loudest gossip a nearby soul holds, else the unrest it senses, *pointed
+  and given a face* ("Unrest stirs to the east — Belias, the Avenger"). Hearing widened to 8 hexes.
+  Following the markers keeps you among people and at the heart of the story (probe-confirmed).
+- **Stake — `player_counsel(npc, calm)`.** Two conversation choices, *counsel peace* / *stoke
+  grievance*, persuasion-scaled, directly move a soul's vengeance + anger — the state the director's
+  avenge beats read — so you can cool a vendetta or feed it. Player-only; byte-identical headless.
+- **Density.** The app's default populace 300 → 420 (LOD-bounded; `ACHLYDESA_NPCS` tunes).
+
 **Deferred / next:** Phase 2c (structured subject-drift *mutation* of rumours, and SLM-graded
 confabulation at low fidelity, out-of-band when the voice model is on); drama-marker refresh while
 stationary; the ledger's per-soul **rumour history + contradictions** (the curiosity-gap hook); the
