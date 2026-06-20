@@ -1383,7 +1383,19 @@ fn open_conversation_with(g: &mut Game, npc: Entity) {
     } else {
         Line { from_player: false, prefix: format!("{name}: "), text: Some(format!("{name} meets your eyes, and waits.")), reveal: 0.0, pending: None }
     };
-    g.convo = Some(Convo { listener: npc, name: titled, card, transcript: vec![greeting], input: String::new() });
+    let mut transcript = vec![greeting];
+    // The soul shares what word has reached it — a recent beat the director staged, sharp or vague
+    // by how near and recent it was (the fidelity veil) — when there is news worth the telling.
+    if let Some(gossip) = g.sim.overheard() {
+        transcript.push(Line {
+            from_player: false,
+            prefix: String::new(),
+            text: Some(format!("\u{2014} Word's about: {gossip}")),
+            reveal: 0.0,
+            pending: None,
+        });
+    }
+    g.convo = Some(Convo { listener: npc, name: titled, card, transcript, input: String::new() });
     g.status = format!("You fall into talk with {name}.");
 }
 

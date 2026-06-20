@@ -75,6 +75,98 @@ fn activity_phrase(goal: &str) -> &'static str {
     }
 }
 
+/// Wrapped Chebyshev hex distance (the world wraps east–west) — the cheap proximity gossip fidelity
+/// reads. Mirrors `agent_core::director`'s private `hex_dist`.
+fn wrapped_dist(a: Coord, b: Coord, width: i32) -> i32 {
+    let drow = (a.row - b.row).abs();
+    let dcol = {
+        let d = (a.col - b.col).abs();
+        d.min(width - d)
+    };
+    drow.max(dcol)
+}
+
+/// A rumour's **fidelity** in `0..1` from how far (`dist` hexes) and how long ago (`age` ticks) the
+/// beat fell — the veil's dial. Falls to 0 beyond gossip-range or once it has gone stale, so such
+/// events are not heard at all. Pure arithmetic, so it is deterministic.
+fn gossip_fidelity(dist: i32, age: u64) -> f32 {
+    const RANGE: f32 = 40.0;
+    const MAX_AGE: f32 = 90.0;
+    let near = (1.0 - dist as f32 / RANGE).clamp(0.0, 1.0);
+    let fresh = (1.0 - age as f32 / MAX_AGE).clamp(0.0, 1.0);
+    near * fresh
+}
+
+/// A rough compass bearing from `from` to `to` (wrapped east–west), or "nearby" when close — the
+/// vague "somewhere to the east" a low-fidelity rumour carries.
+fn compass_dir(from: Coord, to: Coord, width: i32) -> &'static str {
+    let drow = to.row - from.row;
+    let dcol = {
+        let r = to.col - from.col;
+        if r > width / 2 {
+            r - width
+        } else if r < -width / 2 {
+            r + width
+        } else {
+            r
+        }
+    };
+    if drow.abs() <= 2 && dcol.abs() <= 2 {
+        return "nearby";
+    }
+    if dcol.abs() >= drow.abs() {
+        if dcol > 0 { "to the east" } else { "to the west" }
+    } else if drow > 0 {
+        "to the south"
+    } else {
+        "to the north"
+    }
+}
+
+/// The plain noun a rumour gives a beat's register ("a betrayal", "a reckoning") — what the world
+/// calls the drama when it does not know the particulars.
+fn rumor_noun(register: agent_core::Register) -> &'static str {
+    use agent_core::Register::*;
+    match register {
+        Betrayal => "betrayal",
+        Vengeance => "reckoning",
+        Ambition => "grasping after power",
+        War => "war",
+        Disaster => "calamity",
+        Persecution => "hounding",
+        Romance => "love-match",
+        Triumph => "triumph",
+        Wonder => "wonder",
+        _ => "strange turn",
+    }
+}
+
+/// Render the overheard line, sharpening or blurring by `fid` (the veil): high fidelity names the
+/// figures in a register-specific sentence; middling fidelity gives the lead and a bearing; low
+/// fidelity is loose talk — a rumour and a direction, no names.
+fn gossip_line(register: agent_core::Register, fid: f32, lead: &str, other: Option<&str>, dir: &str) -> String {
+    use agent_core::Register::*;
+    let noun = rumor_noun(register);
+    if fid >= 0.6 {
+        match (register, other) {
+            (Betrayal, Some(o)) => format!("They say {lead} was betrayed by {o}."),
+            (Vengeance, Some(o)) => format!("They say {lead} has sworn vengeance on {o}."),
+            (Ambition, Some(o)) => format!("They say {lead} reaches for power, with {o} in the way."),
+            (War, Some(o)) => format!("They say {lead}'s people have gone to war with {o}'s."),
+            (Persecution, Some(o)) => format!("They say {o} hounds {lead} without mercy."),
+            (Romance, Some(o)) => format!("They say {lead} has given their heart to {o}."),
+            (Triumph, Some(o)) => format!("They say {lead} stands triumphant, and {o} eclipsed."),
+            (Disaster, _) => format!("They say a calamity has fallen on {lead}'s house."),
+            (Wonder, _) => format!("They say {lead} has seen a wonder none can explain."),
+            _ => format!("They say {lead} is caught up in a {noun}."),
+        }
+    } else if fid >= 0.3 {
+        format!("Word reaches you of a {noun} {dir} — {lead}, they think, at the heart of it.")
+    } else {
+        format!("There's loose talk of a {noun} {dir}. Who can say.")
+    }
+}
+
 // --- Scenario ---
 
 /// Everything that defines one run. Defaults to an empty 36×26 world; fill in
@@ -781,6 +873,46 @@ impl Simulation {
     /// ordinary soul (or the director asleep). Surface flavour; moves no state.
     pub fn npc_situation(&self, e: bevy_ecs::entity::Entity) -> Option<String> {
         self.world.get_resource::<Director>()?.situation_of(e).map(str::to_string)
+    }
+
+    /// **Word reaches you** — a line of gossip about a recent beat the director staged, heard from a
+    /// soul in earshot. Picks the most salient recent event (nearest + freshest), computes its
+    /// **fidelity** from how far and how long ago it fell, and renders the line sharp (naming the
+    /// figures) or vague (a rumour and a bearing) accordingly — the dream-purgatory's veil
+    /// (`docs/narrative_surfacing.md` §3): close, fresh news is true; distant, stale news is a
+    /// half-remembered murmur. `None` when there is no teller in earshot, no avatar, no director, or
+    /// nothing recent in range. Read-only; the fidelity is deterministic arithmetic.
+    pub fn overheard(&mut self) -> Option<String> {
+        let _avatar = self.player_avatar()?;
+        if self.player_nearby_npcs().is_empty() {
+            return None; // gossip needs a teller in earshot
+        }
+        let at = self.player_position()?;
+        let width = self.substrate().topology().width();
+        let now = self.substrate().tick();
+        // The most salient recent event in gossip-range — nearest + freshest wins (highest fidelity).
+        let (fid, dist, ev) = {
+            let director = self.world.get_resource::<Director>()?;
+            director
+                .recent_events()
+                .iter()
+                .filter_map(|ev| {
+                    let dist = wrapped_dist(at, ev.place, width);
+                    let fid = gossip_fidelity(dist, now.saturating_sub(ev.tick));
+                    (fid > 0.0).then(|| (fid, dist, ev.clone()))
+                })
+                .max_by(|a, b| a.0.partial_cmp(&b.0).unwrap().then(b.1.cmp(&a.1)))?
+        };
+        // Name the cast (sharp only at high fidelity) and a compass bearing to where it fell.
+        let lead = self.display_name(ev.lead);
+        let lead_titled = match self.npc_epithet(ev.lead) {
+            Some(ep) => format!("{lead}, {ep}"),
+            None => lead,
+        };
+        let other = ev.other.map(|e| self.display_name(e));
+        let dir = compass_dir(at, ev.place, width);
+        let _ = dist;
+        Some(gossip_line(ev.register, fid, &lead_titled, other.as_deref(), dir))
     }
 
     /// The souls standing on tile `c` and what each is about — "Aldric, the Betrayed — chasing coin"

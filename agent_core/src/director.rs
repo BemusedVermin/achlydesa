@@ -150,6 +150,22 @@ pub struct Cadence {
     pub collision: bool,
 }
 
+/// A beat the director lately staged, kept so the world can **gossip** about it: where it fell and
+/// who it turned on. The player overhears these from nearby souls — sharp or vague by how near and
+/// how recent the event is (the fidelity veil, `docs/narrative_surfacing.md` §3). Append-only and
+/// read-only to the tick: recording it changes no decision, so a director run is byte-identical with
+/// or without anyone listening.
+#[derive(Clone, Debug)]
+pub struct BeatEvent {
+    pub tick: u64,
+    pub register: Register,
+    /// Where it fell — the protagonist's tile when it was staged.
+    pub place: Coord,
+    /// The figure the beat turned on, and its key counterpart (the friend who turned, the foe).
+    pub lead: Entity,
+    pub other: Option<Entity>,
+}
+
 /// The narrative director `Γ`, read and written by [`director_step`].
 #[derive(Resource)]
 pub struct Director {
@@ -188,6 +204,9 @@ pub struct Director {
     pub log: Vec<(u64, String)>,
     /// The legible cadence — the rhythm and prominence→reversal correlation it leaves.
     pub cadence: Vec<Cadence>,
+    /// The recent beats, as gossip material (place + cast) — what the world murmurs about. A short
+    /// ring; append-only, read-only to the tick (see [`BeatEvent`]).
+    pub events: Vec<BeatEvent>,
 }
 
 impl Director {
@@ -211,6 +230,7 @@ impl Director {
             tension_now: 0.0,
             log: Vec::new(),
             cadence: Vec::new(),
+            events: Vec::new(),
         }
     }
 
@@ -249,6 +269,12 @@ impl Director {
     pub fn situation_of(&self, e: Entity) -> Option<&'static str> {
         let t = self.threads.iter().find(|t| t.lead == e || t.other == Some(e))?;
         Some(situation_for(t.spine, t.lead == e))
+    }
+
+    /// The beats the director has lately staged, oldest first — the raw material the world gossips
+    /// about ([`BeatEvent`]). Capped to the recent few.
+    pub fn recent_events(&self) -> &[BeatEvent] {
+        &self.events
     }
 }
 
@@ -1245,6 +1271,16 @@ pub(crate) fn director_step(
         lead_prominence,
         collision,
     });
+    // Record it as gossip material — where it fell, and the figure (and a cast counterpart) it turned
+    // on — so the world can murmur about it (a short ring; append-only, perturbs no decision).
+    let gossip_other =
+        slots.iter().enumerate().find(|(i, s)| *i != Role::Protagonist.slot() && s.is_some()).and_then(|(_, s)| *s);
+    director.events.push(BeatEvent { tick, register: beat.register, place: proto_pos, lead: proto, other: gossip_other });
+    const EVENT_CAP: usize = 16;
+    if director.events.len() > EVENT_CAP {
+        let drop = director.events.len() - EVENT_CAP;
+        director.events.drain(0..drop);
+    }
     *director.id_heat.entry(beat.id.clone()).or_insert(0.0) += cfg.novelty_heat;
     for tag in &beat.tags {
         *director.tag_heat.entry(tag.clone()).or_insert(0.0) += cfg.novelty_heat;
