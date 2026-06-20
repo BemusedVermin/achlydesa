@@ -849,6 +849,12 @@ impl Simulation {
         dialogue::display_name(&self.world, e)
     }
 
+    /// Whether the soul `e` is still in the world (alive). A despawned soul fails this — used by the
+    /// ledger to mark someone the avatar knew who is now gone. Read-only.
+    pub fn npc_present(&self, e: bevy_ecs::entity::Entity) -> bool {
+        self.world.get::<agent_core::Position>(e).is_some()
+    }
+
     /// The arc-aware **honorific** a soul has earned in the director's live threads — "the Betrayed",
     /// "the Faithless" — or `None` for a soul not woven into a story (or the director asleep).
     /// Surface flavour for the HUD and conversation; never affects the sim.
@@ -913,6 +919,29 @@ impl Simulation {
         let dir = compass_dir(at, ev.place, width);
         let _ = dist;
         Some(gossip_line(ev.register, fid, &lead_titled, other.as_deref(), dir))
+    }
+
+    /// Where recent drama can be **sensed** — `(place, fidelity)` for each recent beat within
+    /// gossip-range of the avatar (deduped by tile, strongest kept). The map markers that draw the
+    /// player toward unrest ("a commotion to the east"); travelling there makes [`Self::overheard`]
+    /// sharp by proximity. Empty with no avatar or director. Read-only; fidelity is deterministic.
+    pub fn drama_marks(&self) -> Vec<(Coord, f32)> {
+        let Some(at) = self.player_position() else { return Vec::new() };
+        let Some(director) = self.world.get_resource::<Director>() else { return Vec::new() };
+        let width = self.substrate().topology().width();
+        let now = self.substrate().tick();
+        let mut marks: Vec<(Coord, f32)> = Vec::new();
+        for ev in director.recent_events() {
+            let fid = gossip_fidelity(wrapped_dist(at, ev.place, width), now.saturating_sub(ev.tick));
+            if fid <= 0.0 {
+                continue;
+            }
+            match marks.iter_mut().find(|(c, _)| *c == ev.place) {
+                Some(m) => m.1 = m.1.max(fid),
+                None => marks.push((ev.place, fid)),
+            }
+        }
+        marks
     }
 
     /// The souls standing on tile `c` and what each is about — "Aldric, the Betrayed — chasing coin"

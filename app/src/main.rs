@@ -182,6 +182,10 @@ struct Game {
     /// re-renders when new ground is uncovered or the avatar moves (the pip follows).
     last_hud_explored: usize,
     last_hud_avatar: Coord,
+    /// The souls the avatar has met (spoken with), in the order first met — the **ledger**: a who's-who
+    /// of acquaintances, shown on the Journal tab with where each one's story stands now. Player-side
+    /// memory, so it never feeds the sim; a dead acquaintance is remembered as gone.
+    met: Vec<Entity>,
 }
 
 /// An open, free-text conversation with one soul within reach. The player *types* to the
@@ -279,6 +283,7 @@ fn main() {
         last_map_render: None,
         last_hud_explored: usize::MAX,
         last_hud_avatar: Coord::new(i32::MIN, i32::MIN),
+        met: Vec::new(),
     };
 
     let mut app = App::new();
@@ -955,7 +960,7 @@ fn update_menu(
         bg.0 = if game.menu_tab == TAB_SYSTEM && r.0 == game.sys_cursor { Color::srgba(0.55, 0.40, 0.18, 0.35) } else { Color::NONE };
     }
     if let Ok(mut t) = journal.single_mut() {
-        t.0 = ui::journal_text(&game.sim);
+        t.0 = ui::journal_text(&game.sim, &game.met);
     }
     if let Ok(mut t) = sheet.single_mut() {
         t.0 = sheet_text(&game);
@@ -1352,6 +1357,10 @@ fn start_talk(g: &mut Game) {
 /// Open a conversation with a specific soul (the chosen one, from [`start_talk`]; any soul, for the
 /// `ACHLYDESA_CONVO` dev hook). Assembles the card and lets the soul speak first.
 fn open_conversation_with(g: &mut Game, npc: Entity) {
+    // Remember the meeting for the ledger (the Journal tab's who's-who of acquaintances).
+    if !g.met.contains(&npc) {
+        g.met.push(npc);
+    }
     let name = g.sim.display_name(npc);
     // The director's investment shows on the name: a thread's figure is met not as "a villager" but
     // as "Aldric, the Betrayed" — the arc made legible the moment you face them.

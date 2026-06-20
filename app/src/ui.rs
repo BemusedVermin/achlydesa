@@ -289,9 +289,28 @@ pub fn update_labels(
     }
 }
 
-/// The discoveries journal — the Outer-Wilds ship-log: every place found (grouped) and every lore
-/// fact held. Rendered into the pause menu's Journal tab (see `update_menu`).
-pub fn journal_text(sim: &Simulation) -> String {
+/// One ledger line for a soul the avatar has met: its name, any arc honorific, and where its story
+/// stands now ("Aldric, the Betrayed — still raw from a trusted friend's turning"); a soul who has
+/// since died is remembered as gone. The avatar's fallible who's-who — never touches the sim.
+fn ledger_line(sim: &Simulation, e: Entity) -> String {
+    let name = sim.display_name(e);
+    if !sim.npc_present(e) {
+        return format!("{name} \u{2014} you knew them once; they are gone.");
+    }
+    let titled = match sim.npc_epithet(e) {
+        Some(ep) => format!("{name}, {ep}"),
+        None => name,
+    };
+    match sim.npc_situation(e) {
+        Some(sit) => format!("{titled} \u{2014} {sit}"),
+        None => titled,
+    }
+}
+
+/// The discoveries journal — the Outer-Wilds ship-log: every place found (grouped), every lore fact
+/// held, and the **ledger** of souls the avatar has met (`met`, in the order first met). Rendered
+/// into the pause menu's Journal tab (see `update_menu`).
+pub fn journal_text(sim: &Simulation, met: &[Entity]) -> String {
     let cat = sim.feature_catalog();
     // Discovered features on explored tiles, grouped by category.
     let mut groups: [Vec<String>; 4] = [Vec::new(), Vec::new(), Vec::new(), Vec::new()];
@@ -320,6 +339,16 @@ pub fn journal_text(sim: &Simulation) -> String {
     } else {
         for l in &lore {
             s.push_str(&format!("  \u{2022} {}\n", pretty(l)));
+        }
+    }
+
+    // The ledger — the souls the avatar has met, and where each one's story stands now.
+    s.push_str(&format!("\nPeople known: {}\n", met.len()));
+    if met.is_empty() {
+        s.push_str("  (you have spoken with no one yet)\n");
+    } else {
+        for &e in met {
+            s.push_str(&format!("  \u{2022} {}\n", ledger_line(sim, e)));
         }
     }
     s

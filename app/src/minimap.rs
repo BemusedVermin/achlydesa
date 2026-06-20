@@ -55,6 +55,17 @@ pub fn render(sim: &Simulation, center: Vec2, world_per_px: f32, avatar: Coord, 
             disc(&mut buf, w, h, p, (hex_r * 0.42).max(1.5), marker_rgb(category));
         }
     }
+    // Recent drama the avatar can sense — a crimson pip drawing the eye toward unrest (drawn even
+    // over fog, since the lure is to go and find it). Brighter for fresher / nearer events.
+    for (c, fid) in sim.drama_marks() {
+        let p = to_px(tile_world(c.col, c.row));
+        if inside(p) {
+            let r = (hex_r * 0.5).max(2.0);
+            let v = (110.0 + 140.0 * fid.clamp(0.0, 1.0)) as u8;
+            disc(&mut buf, w, h, p, r, [v, 36, 44]);
+            ring(&mut buf, w, h, p, (r * 1.6).max(3.0), [224, 72, 72]);
+        }
+    }
     // The avatar: a gold pip in a white ring, when it's within the window.
     let ap = to_px(tile_world(avatar.col, avatar.row));
     if ap.x >= 0.0 && ap.y >= 0.0 && ap.x < w as f32 && ap.y < h as f32 {
