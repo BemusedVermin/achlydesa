@@ -822,6 +822,43 @@ impl Simulation {
         Some((line, reply))
     }
 
+    /// **Intervene in a soul's drama** — counsel it toward peace (`calm`), or stoke its grievance.
+    /// Directly, persuasion-scaled (the same speech check as a spoken line), moves the figure's drive
+    /// for *vengeance* and its heat of *anger* — the very state the director's avenge/betrayal beats
+    /// read — so the player can talk a vendetta down or feed it: a real lever on the threads. A
+    /// player action (spends a tick); never feeds the NPC dialogue path and draws no RNG, so a
+    /// player-less world is byte-identical. Returns what your words did (a failed check moves nothing).
+    pub fn player_counsel(&mut self, npc: bevy_ecs::entity::Entity, calm: bool) -> Option<String> {
+        let avatar = self.world.resource::<player::PlayerState>().avatar()?;
+        let scale = self.speech_strength(avatar, npc);
+        let name = self.display_name(npc);
+        let (veng, anger) = {
+            let reg = self.world.resource::<Registry>();
+            (reg.trait_id("vengeance"), reg.mood_id("anger"))
+        };
+        let mag = 0.2 * scale * if calm { -1.0 } else { 1.0 };
+        if let Some(t) = veng
+            && let Some(mut p) = self.world.get_mut::<people::Personality>(npc)
+            && let Some(v) = p.0.get_mut(t)
+        {
+            *v = (*v + mag).clamp(0.0, 1.0);
+        }
+        if let Some(m) = anger
+            && let Some(mut mood) = self.world.get_mut::<people::Mood>(npc)
+            && let Some(v) = mood.0.get_mut(m)
+        {
+            *v = (*v + mag).clamp(0.0, 1.0);
+        }
+        self.step(); // counsel is an action; the world lives a moment on
+        Some(if scale <= 0.0 {
+            format!("{name} will not be moved by your words.")
+        } else if calm {
+            format!("Your counsel cools {name}'s fury \u{2014} the reckoning loses its heat.")
+        } else {
+            format!("You feed {name}'s grievance \u{2014} the wound stays raw.")
+        })
+    }
+
     /// The avatar entity, if the player is in the world.
     pub fn player_avatar(&self) -> Option<bevy_ecs::entity::Entity> {
         self.world.resource::<player::PlayerState>().avatar()

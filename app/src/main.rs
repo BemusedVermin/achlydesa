@@ -347,6 +347,8 @@ fn main() {
             convo_ui::update_convo_panel,
             convo_ui::style_speak_choices,
             convo_ui::speak_choice_click,
+            convo_ui::style_counsel_choices,
+            convo_ui::counsel_click,
             convo_ui::update_talk_chooser,
             convo_ui::talk_row_click,
         ),
@@ -431,7 +433,9 @@ fn build_world() -> Simulation {
             // harsh world, and only those on explored tiles are drawn, so survivors are met.
             fauna: env("ACHLYDESA_FAUNA", 1000),
             carnivores: env("ACHLYDESA_CARN", 200),
-            npcs: env("ACHLYDESA_NPCS", 300),
+            // A denser populace so settlements bustle and you run into people (and their drama) more
+            // often; LOD keeps the per-tick cost local. Tune with `ACHLYDESA_NPCS`.
+            npcs: env("ACHLYDESA_NPCS", 420),
             markets: 12,
             markets_on_settlements: true,
             dialogue: true,

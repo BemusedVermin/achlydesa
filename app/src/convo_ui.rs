@@ -27,6 +27,11 @@ pub struct ConvoPortrait;
 #[derive(Component)]
 pub struct SpeakChoice(pub usize);
 
+/// A clickable **intervention** — directly move the soul's drama (`true` = counsel toward peace,
+/// `false` = stoke its grievance). The lever on the director's threads (see `player_counsel`).
+#[derive(Component)]
+pub struct CounselChoice(pub bool);
+
 /// The "speak with whom?" chooser shown when several souls are in reach.
 #[derive(Component)]
 pub struct TalkChooserRoot;
@@ -199,6 +204,29 @@ pub fn spawn(commands: &mut Commands, f: &ThemeFonts) {
                                     });
                                 }
                             });
+                            // Intervene in the drama: talk the soul down, or feed its grievance — a
+                            // real lever on the director's threads (persuasion-scaled).
+                            sc.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(theme::SP_SM), ..default() })
+                                .with_children(|row| {
+                                    for (calm, label) in [(true, "counsel peace"), (false, "stoke grievance")] {
+                                        let edge = if calm { theme::AWE } else { Color::srgb(0.80, 0.42, 0.38) };
+                                        row.spawn((
+                                            CounselChoice(calm),
+                                            Button,
+                                            Node {
+                                                padding: UiRect::axes(px(theme::SP_MD), px(theme::SP_XS)),
+                                                border: UiRect::all(px(theme::BORDER_W)),
+                                                border_radius: BorderRadius::all(px(theme::RADIUS_SM)),
+                                                ..default()
+                                            },
+                                            BackgroundColor(CHOICE_BG),
+                                            BorderColor::all(edge),
+                                        ))
+                                        .with_children(|b| {
+                                            b.spawn(theme::mono(f, cap(label), theme::T_LABEL, theme::TEXT));
+                                        });
+                                    }
+                                });
                             // The free-text line / prompt.
                             sc.spawn((
                                 ConvoText::Footer,
@@ -379,6 +407,43 @@ pub fn speak_choice_click(mut game: NonSendMut<Game>, q: Query<(&SpeakChoice, &I
     }
     let dispo = g.sim.player_avatar().and_then(|a| g.sim.opinion_of(npc, a)).map(crate::disposition_word).unwrap_or("unmoved");
     g.status = format!("You {verb} {name}. {name} now {dispo}.");
+}
+
+/// Light the intervention buttons on hover (the same feel as the speak choices).
+pub fn style_counsel_choices(mut q: Query<(&Interaction, &mut BackgroundColor), With<CounselChoice>>) {
+    for (interaction, mut bg) in &mut q {
+        bg.0 = if matches!(interaction, Interaction::Hovered | Interaction::Pressed) { CHOICE_BG_HOT } else { CHOICE_BG };
+    }
+}
+
+/// Apply a clicked intervention — counsel the soul toward peace, or stoke its grievance — through
+/// `player_counsel` (persuasion-scaled), noting what your words did in the dialog and the status.
+pub fn counsel_click(mut game: NonSendMut<Game>, q: Query<(&CounselChoice, &Interaction), Changed<Interaction>>) {
+    let Some(calm) = q.iter().find(|(_, i)| **i == Interaction::Pressed).map(|(c, _)| c.0) else {
+        return;
+    };
+    let g = &mut *game;
+    let Some(npc) = g.convo.as_ref().map(|c| c.listener) else {
+        return;
+    };
+    let name = g.sim.display_name(npc);
+    if let Some(outcome) = g.sim.player_counsel(npc, calm) {
+        if let Some(c) = g.convo.as_mut() {
+            let verb = if calm { "counsel peace with" } else { "goad" };
+            c.transcript.push(Line {
+                from_player: true,
+                prefix: String::new(),
+                text: Some(format!("[you {verb} {name}]")),
+                reveal: f32::MAX,
+                pending: None,
+            });
+            let overflow = c.transcript.len().saturating_sub(10);
+            if overflow > 0 {
+                c.transcript.drain(0..overflow);
+            }
+        }
+        g.status = outcome;
+    }
 }
 
 // ── The who-to-talk-to chooser ────────────────────────────────────────────────────────────────────
