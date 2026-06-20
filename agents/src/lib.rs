@@ -43,6 +43,10 @@ pub use explore::{ExploreConfig, Gear, Roads};
 #[derive(Resource, Clone, Copy)]
 struct RpgSeed(u64);
 
+/// Proficiency a freshly-apprenticed calling starts at for the avatar — a novice, mirroring
+/// `people::LEARNED_SKILL` (private there), grown by working `Yield` sites.
+const NOVICE_SKILL: f32 = 0.25;
+
 /// The short verb phrase the Use action offers for an affordance, by its effect — generic by kind
 /// (the site carries only its effect, not the authored action word), which the feature's own name in
 /// the inspect read-out already colours ("the hot springs", "the oasis").
@@ -823,12 +827,12 @@ impl Simulation {
             .collect()
     }
 
-    /// **Use the affordance** `idx` where the avatar stands: engage the smart-object (refreshing the
-    /// avatar's body where the survival layer gives it `Vitals`), draw the site down one use, and let
-    /// the world live a tick around the act (one action = one tick). Returns a line describing what
-    /// happened, or `None` if the site is gone, worked out, or out of reach. The avatar is no
-    /// economic agent, so `Yield`/`Teach` sites give only the fiction and the spent moment — full
-    /// participation in the goods/skills economy is a later step (`docs/narrative_surfacing.md`).
+    /// **Use the affordance** `idx` where the avatar stands: engage the smart-object — refresh the
+    /// avatar's body at a relief site, fill its satchel and grow the calling at a `Yield` site, learn
+    /// a craft at a `Teach` site — the **same effects an NPC's `Step::Use` gets**. When it applies,
+    /// the site is drawn down a use and the world lives a tick around the act (one action = one
+    /// tick). Returns a line describing what happened (or why it could not), or `None` if the site is
+    /// gone, worked out, or out of reach.
     pub fn player_use_affordance(&mut self, idx: usize) -> Option<String> {
         let avatar = self.world.resource::<player::PlayerState>().avatar()?;
         let at = self.world.get::<agent_core::Position>(avatar)?.0;
@@ -841,21 +845,34 @@ impl Simulation {
             }
             s.effect
         };
-        let outcome = self.apply_affordance_to_avatar(avatar, effect);
-        if let Some(s) = self.world.resource_mut::<people::WorldAffordances>().0.get_mut(idx) {
-            s.uses += 1;
-            if s.capacity > 0 {
-                s.remaining -= 1.0;
+        match self.apply_affordance_to_avatar(avatar, effect) {
+            // It applied: draw the site down a use, and let the world live a tick around the act.
+            Ok(outcome) => {
+                if let Some(s) = self.world.resource_mut::<people::WorldAffordances>().0.get_mut(idx) {
+                    s.uses += 1;
+                    if s.capacity > 0 {
+                        s.remaining -= 1.0;
+                    }
+                }
+                self.step(); // engaging a place is an action; the world lives a moment on
+                Some(outcome)
             }
+            // It could not (a craft the avatar lacks, a calling it already holds): say why, no tick.
+            Err(reason) => Some(reason),
         }
-        self.step(); // engaging a place is an action; the world lives a moment on
-        Some(outcome)
     }
 
-    /// Apply an affordance's effect to the **avatar** where it maps: a relief site refreshes its
-    /// `Vitals` (the survival layer); a `Yield`/`Teach` site the avatar can't truly join gives only
-    /// the fiction. Returns the line to show.
-    fn apply_affordance_to_avatar(&mut self, avatar: bevy_ecs::entity::Entity, effect: agent_core::AffordEffect) -> String {
+    /// Apply an affordance's effect to the **avatar**, mirroring an NPC's `Step::Use`: a relief site
+    /// refreshes its `Vitals` (survival); a `Yield` site fills its satchel (`Inventory`) and grows
+    /// the calling (`Skills`); a `Teach` site lifts a calling above zero (a novice). `Ok` = applied
+    /// (the caller depletes the site and spends a tick); `Err` = it could not (the avatar lacks the
+    /// craft a yield needs, or already holds the calling a guild teaches) — the reason to show, with
+    /// no tick spent.
+    fn apply_affordance_to_avatar(
+        &mut self,
+        avatar: bevy_ecs::entity::Entity,
+        effect: agent_core::AffordEffect,
+    ) -> Result<String, String> {
         use agent_core::{AffordEffect, Need};
         match effect {
             AffordEffect::Relieve { need, .. } => {
@@ -871,16 +888,84 @@ impl Simulation {
                         }
                     }
                 }
-                match need {
+                Ok(match need {
                     Need::Rest => "You take your rest here, and the ache eases from your limbs.".into(),
                     Need::Sustenance => "You tend your body here; water and forage ease the day's wear.".into(),
+                })
+            }
+            AffordEffect::Yield { good, units, skill } => {
+                // Resolve names/rates from the read-only registry first, then mutate the components.
+                let (good_name, craft_name, rate) = {
+                    let reg = self.world.resource::<Registry>();
+                    let sk_name = skill.map(|sk| reg.skill(sk).name.clone());
+                    let sk_rate = skill.map(|sk| {
+                        let sd = reg.skill(sk);
+                        (sd.gain, sd.cap)
+                    });
+                    (reg.good(good).name.clone(), sk_name, sk_rate)
+                };
+                // A craft the avatar has not learned cannot be worked here — the lure to go apprentice.
+                let has_craft = match skill {
+                    Some(sk) => self.world.get::<people::Skills>(avatar).is_some_and(|s| s.0.get(sk).is_some_and(|&v| v > 0.0)),
+                    None => true,
+                };
+                if !has_craft {
+                    let craft = craft_name.unwrap_or_else(|| "craft".into());
+                    return Err(format!("You could work this place, but you have not learned the {craft}'s craft."));
+                }
+                if let Some(mut inv) = self.world.get_mut::<people::Inventory>(avatar)
+                    && let Some(slot) = inv.stock.get_mut(good)
+                {
+                    *slot += units;
+                }
+                if let (Some(sk), Some((gain, cap))) = (skill, rate)
+                    && let Some(mut sks) = self.world.get_mut::<people::Skills>(avatar)
+                    && let Some(v) = sks.0.get_mut(sk)
+                {
+                    *v = (*v + gain).min(cap);
+                }
+                Ok(format!("You gather {units} {good_name}."))
+            }
+            AffordEffect::Teach { skill } => {
+                let craft = self.world.resource::<Registry>().skill(skill).name.clone();
+                let already =
+                    self.world.get::<people::Skills>(avatar).is_some_and(|s| s.0.get(skill).is_some_and(|&v| v > 0.0));
+                if already {
+                    return Err(format!("You already know the {craft}'s craft."));
+                }
+                let mut learned = false;
+                if let Some(mut sks) = self.world.get_mut::<people::Skills>(avatar)
+                    && let Some(v) = sks.0.get_mut(skill)
+                {
+                    *v = NOVICE_SKILL;
+                    learned = true;
+                }
+                if learned {
+                    Ok(format!("You apprentice here, and learn the {craft}'s craft."))
+                } else {
+                    Err("There is no craft to learn here.".into())
                 }
             }
-            AffordEffect::Yield { .. } => {
-                "You work the place a while — the labour is not yours to keep, but its rhythm steadies you.".into()
-            }
-            AffordEffect::Teach { .. } => "You watch the craft worked here, and something of it stays with you.".into(),
         }
+    }
+
+    /// The goods in the avatar's satchel — `(name, count)` for each it carries (gathered at `Yield`
+    /// sites). Empty if there is no avatar or it carries nothing. For the Inventory tab.
+    pub fn player_goods(&self) -> Vec<(String, u32)> {
+        let Some(avatar) = self.player_avatar() else { return Vec::new() };
+        let Some(inv) = self.world.get::<people::Inventory>(avatar) else { return Vec::new() };
+        let reg = self.world.resource::<Registry>();
+        inv.stock.iter().enumerate().filter(|&(_, &n)| n > 0).map(|(i, &n)| (reg.good(i).name.clone(), n)).collect()
+    }
+
+    /// The **callings** the avatar has learned — `(craft, proficiency)` for each economy skill above
+    /// zero (taught at a guild, grown by working). Empty if there is no avatar or it has learned
+    /// none. For the Inventory tab. These are the *crafts* economy, distinct from the WWN skills.
+    pub fn player_callings(&self) -> Vec<(String, f32)> {
+        let Some(avatar) = self.player_avatar() else { return Vec::new() };
+        let Some(sk) = self.world.get::<people::Skills>(avatar) else { return Vec::new() };
+        let reg = self.world.resource::<Registry>();
+        sk.0.iter().enumerate().filter(|&(_, &v)| v > 0.0).map(|(i, &v)| (reg.skill(i).name.clone(), v)).collect()
     }
 
     // --- Exploration: the player avatar (an ordinary body in the world) ---
@@ -924,6 +1009,22 @@ impl Simulation {
         // Exploration on: the avatar can carry gear (climbing gear, a boat, …) — start empty.
         if self.world.get_resource::<ExploreConfig>().is_some() {
             self.world.entity_mut(avatar).insert(Gear::default());
+        }
+        // A satchel and a blank set of callings, so the avatar can join the **crafts economy**: it
+        // learns a trade by apprenticing at a guild (a `Teach` affordance) then gathers goods at a
+        // `Yield` site — the same effects an NPC gets, applied by `player_use_affordance`. Inert to
+        // the NPC-gated economy systems (the avatar is no `Npc`), so it never auto-trades or gets
+        // planned; only the Use verb touches these. Starts empty (no money minted, no goods).
+        {
+            let (n_goods, n_skills) = {
+                let reg = self.world.resource::<Registry>();
+                (reg.good_count(), reg.skill_count())
+            };
+            if n_goods > 0 {
+                self.world
+                    .entity_mut(avatar)
+                    .insert((people::Inventory { money: 0, stock: vec![0; n_goods] }, people::Skills(vec![0.0; n_skills])));
+            }
         }
         avatar
     }

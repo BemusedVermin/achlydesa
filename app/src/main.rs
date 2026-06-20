@@ -1189,12 +1189,37 @@ fn sheet_text(g: &Game) -> String {
     s
 }
 
-/// The **Inventory** tab — the avatar's carried gear, read straight off the sim.
+/// The **Inventory** tab — the avatar's satchel, the callings it has learned, and its carried gear,
+/// read straight off the sim. The satchel and callings grow by *using* the world's POIs (forage at
+/// the wilds, apprentice at a guild — the Use verb).
 fn inventory_text(g: &Game) -> String {
-    let gear = g.sim.player_gear();
     let mut s = String::from("— INVENTORY —\n\n");
+
+    // The crafts economy: goods gathered at Yield sites, and the callings learned at guilds.
+    let goods = g.sim.player_goods();
+    if goods.is_empty() {
+        s.push_str("Satchel: empty — gather at the wilds and the crafts (Use, by a feature)\n");
+    } else {
+        s.push_str("Satchel:\n");
+        for (name, n) in &goods {
+            s.push_str(&format!("  • {} \u{00d7}{}\n", ui::pretty(name), n));
+        }
+    }
+    let callings = g.sim.player_callings();
+    s.push('\n');
+    if callings.is_empty() {
+        s.push_str("Callings: none — apprentice at a guild to learn a craft\n");
+    } else {
+        s.push_str("Callings:\n");
+        for (name, lvl) in &callings {
+            s.push_str(&format!("  • {} ({:.2})\n", ui::pretty(name), lvl));
+        }
+    }
+
+    let gear = g.sim.player_gear();
+    s.push('\n');
     if gear.is_empty() {
-        s.push_str("(you carry nothing of note)\n");
+        s.push_str("Gear: you carry nothing of note\n");
     } else {
         s.push_str(&format!("Gear ({}):\n", gear.len()));
         for it in &gear {
