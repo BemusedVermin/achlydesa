@@ -56,23 +56,59 @@ fn main() {
     let apos = sim.player_position().unwrap();
     println!("avatar spawned at ({},{}); {} NPCs in the world.", apos.col, apos.row, sim.npc_count());
     println!("NPCs within the avatar's sight at spawn: {}", sim.player_nearby_npcs().len());
-    println!("\nNow simulating a player who *follows the unrest* (travels toward the strongest mark):");
-    println!("  tick | beats | nearby | tidings (what the HUD banner would say)");
-    println!("  -----+-------+--------+----------------------------------------");
-    for i in 1..=800u32 {
+    println!("\nNow simulating a player who *takes up a charge* and follows it to fulfilment:");
+    println!("  tick | beats | nearby | charge / tidings");
+    println!("  -----+-------+--------+-----------------");
+    let mut quest: Option<agents::Quest> = None;
+    let mut taken = 0u32;
+    let mut done = 0u32;
+    for i in 1..=900u32 {
         sim.step();
-        // Chase the drama like a player reading the crimson pips: head for the strongest mark.
-        if !sim.player_traveling()
-            && let Some((place, _)) = sim.drama_marks().into_iter().max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
+        // Take up the protagonist's charge when we have none.
+        if quest.is_none()
+            && let Some(p) = sim.protagonist()
+            && let Some(q) = sim.quest_for(p)
         {
-            sim.player_travel_to(place);
+            let reachable = sim.player_travel_to(q.target);
+            println!(
+                "  >>> charge taken: {} (target ({},{}), on foot: {})",
+                q.objective,
+                q.target.col,
+                q.target.row,
+                if reachable { "yes" } else { "NO" }
+            );
+            quest = Some(q);
+            taken += 1;
+        }
+        // Close it on reaching the place, or when the director resolves the drama.
+        if let Some(q) = &quest
+            && (sim.quest_reached(q) || !sim.quest_thread_open(q))
+        {
+            let why = if sim.quest_reached(q) { "reached the place" } else { "drama resolved" };
+            println!("  >>> CHARGE CLOSED (tick {}): {} ({why})", sim.substrate().tick(), q.objective);
+            quest = None;
+            done += 1;
+        }
+        // Head for the charge's other (else the strongest unrest).
+        if !sim.player_traveling() {
+            let target = quest
+                .as_ref()
+                .map(|q| q.target)
+                .or_else(|| sim.drama_marks().into_iter().max_by(|a, b| a.1.partial_cmp(&b.1).unwrap()).map(|(c, _)| c));
+            if let Some(t) = target {
+                sim.player_travel_to(t);
+            }
         }
         if i % 50 == 0 {
             let nearby = sim.player_nearby_npcs().len();
-            let tid = sim.tidings().unwrap_or_else(|| "(the land is quiet)".into());
-            println!("  {:>4} | {:>5} | {:>6} | {}", sim.substrate().tick(), sim.director_beats_fired(), nearby, tid);
+            let line = match &quest {
+                Some(q) => format!("CHARGE: {} {}", q.objective, sim.quest_bearing(q)),
+                None => sim.tidings().unwrap_or_else(|| "(the land is quiet)".into()),
+            };
+            println!("  {:>4} | {:>5} | {:>6} | {}", sim.substrate().tick(), sim.director_beats_fired(), nearby, line);
         }
     }
+    println!("\nCharges taken: {taken}, fulfilled: {done}.");
     // A peek at who is around the avatar at the end — the souls it could actually talk to.
     println!("\nSouls on the avatar's tile at the end:");
     if let Some(p) = sim.player_position() {

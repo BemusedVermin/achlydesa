@@ -186,6 +186,12 @@ struct Game {
     /// of acquaintances, shown on the Journal tab with where each one's story stands now. Player-side
     /// memory, so it never feeds the sim; a dead acquaintance is remembered as gone.
     met: Vec<Entity>,
+    /// The **charges** the avatar has taken up (the director's drama as goals), and the lines of those
+    /// it has closed — player-side, shown in the HUD objective and the Journal. Never feed the sim.
+    quests: Vec<agents::Quest>,
+    done_quests: Vec<String>,
+    /// `(giver, other)` pairs already closed, so a giver doesn't re-offer the same charge.
+    quest_done_pairs: std::collections::HashSet<(Entity, Entity)>,
 }
 
 /// An open, free-text conversation with one soul within reach. The player *types* to the
@@ -202,6 +208,9 @@ struct Convo {
     transcript: Vec<Line>,
     /// What the player is currently typing.
     input: String,
+    /// A **charge** this soul is offering (it leads a live thread) — `None` if it has none, or it has
+    /// already been taken. The "take up the charge" button reads this.
+    offer: Option<agents::Quest>,
 }
 
 /// One line of the open conversation, revealed like classic RPG text. The character's reply
@@ -287,6 +296,9 @@ fn main() {
         last_hud_explored: usize::MAX,
         last_hud_avatar: Coord::new(i32::MIN, i32::MIN),
         met: Vec::new(),
+        quests: Vec::new(),
+        done_quests: Vec::new(),
+        quest_done_pairs: std::collections::HashSet::new(),
     };
 
     let mut app = App::new();
@@ -349,6 +361,8 @@ fn main() {
             convo_ui::speak_choice_click,
             convo_ui::style_counsel_choices,
             convo_ui::counsel_click,
+            convo_ui::update_quest_offer,
+            convo_ui::quest_accept_click,
             convo_ui::update_talk_chooser,
             convo_ui::talk_row_click,
         ),
@@ -356,7 +370,7 @@ fn main() {
     // The pause layer: Esc/back + menu nav run *before* `talk_input` (which also reads Esc, to
     // leave a conversation), then the overlay's visibility + the dev screenshot hook.
     .add_systems(Update, (pause_input, menu_input).chain().before(talk_input))
-    .add_systems(Update, (update_menu, update_map, map_drag, hide_overlays_when_paused, dev_capture, dev_open_convo, dev_talk_pick, dev_walk))
+    .add_systems(Update, (update_menu, update_map, map_drag, hide_overlays_when_paused, dev_capture, dev_open_convo, dev_talk_pick, dev_walk, update_quests))
     // The framed HUD: keep the whole frame scaled to the window, then refresh the trays.
     .add_systems(
         Update,
@@ -967,7 +981,7 @@ fn update_menu(
         bg.0 = if game.menu_tab == TAB_SYSTEM && r.0 == game.sys_cursor { Color::srgba(0.55, 0.40, 0.18, 0.35) } else { Color::NONE };
     }
     if let Ok(mut t) = journal.single_mut() {
-        t.0 = ui::journal_text(&game.sim, &game.met);
+        t.0 = ui::journal_text(&game.sim, &game.met, &game.quests, &game.done_quests);
     }
     if let Ok(mut t) = sheet.single_mut() {
         t.0 = sheet_text(&game);
@@ -1411,7 +1425,22 @@ fn open_conversation_with(g: &mut Game, npc: Entity) {
             pending: None,
         });
     }
-    g.convo = Some(Convo { listener: npc, name: titled, card, transcript, input: String::new() });
+    // A charge from a thread's figure — the director's drama offered as a goal. Only if this soul
+    // leads a live thread and we have not already taken (or closed) its charge; spoken here.
+    let offer = g
+        .sim
+        .quest_for(npc)
+        .filter(|q| !g.quests.iter().any(|a| a.giver == npc) && !g.quest_done_pairs.contains(&(npc, q.other)));
+    if let Some(q) = &offer {
+        transcript.push(Line {
+            from_player: false,
+            prefix: format!("{name}: "),
+            text: Some(q.request.clone()),
+            reveal: 0.0,
+            pending: None,
+        });
+    }
+    g.convo = Some(Convo { listener: npc, name: titled, card, transcript, input: String::new(), offer });
     g.status = format!("You fall into talk with {name}.");
 }
 
@@ -1723,6 +1752,45 @@ fn camera_control(
     *tf = cam_transform(Vec3::new(f.x, 0.0, f.z), &rig);
 }
 
+/// Check the avatar's taken **charges** each frame: a charge is fulfilled when the other is reached
+/// (or gone), or moot when its giver dies. Closed charges are announced and move to the journal.
+fn update_quests(mut game: NonSendMut<Game>) {
+    let g = &mut *game;
+    if g.quests.is_empty() {
+        return;
+    }
+    // Decide which are closed (read-only over the sim), then prune from the back and announce.
+    let mut closed: Vec<(usize, String, Entity, Entity)> = Vec::new();
+    for (i, q) in g.quests.iter().enumerate() {
+        let line = if !g.sim.quest_giver_alive(q) {
+            format!("{} — the charge passes ({} is gone)", q.objective, q.giver_name)
+        } else if g.sim.quest_reached(q) {
+            format!("{} — {} found", q.objective, q.other_name)
+        } else if !g.sim.quest_thread_open(q) {
+            // The director resolved the drama before the avatar arrived — the matter is settled.
+            format!("{} — the matter is settled, {}'s reckoning come and gone", q.objective, q.giver_name)
+        } else {
+            continue;
+        };
+        closed.push((i, line, q.giver, q.other));
+    }
+    if closed.is_empty() {
+        return;
+    }
+    for &(_, _, giver, other) in &closed {
+        g.quest_done_pairs.insert((giver, other)); // the giver won't re-offer this charge
+    }
+    for &(i, _, _, _) in closed.iter().rev() {
+        g.quests.remove(i);
+    }
+    if let Some((_, last, _, _)) = closed.last() {
+        g.status = format!("Charge fulfilled \u{2014} {last}");
+    }
+    for (_, line, _, _) in closed {
+        g.done_quests.push(line);
+    }
+}
+
 fn update_hud(mut game: NonSendMut<Game>, mut texts: Query<(&HudKind, &mut Text, &mut Visibility)>) {
     let g = &mut *game;
     let view = g.sim.player_view();
@@ -1740,6 +1808,8 @@ fn update_hud(mut game: NonSendMut<Game>, mut texts: Query<(&HudKind, &mut Text,
     };
     // The world's current drama, pushed at the player as it moves (hidden under the menu / a talk).
     let tidings = if g.paused || in_convo { None } else { g.sim.tidings() };
+    // The avatar's taken charges, as objective lines with a bearing to the soul to find.
+    let charges: String = g.quests.iter().map(|q| format!("\nCharge: {} {}", q.objective, g.sim.quest_bearing(q))).collect();
 
     for (kind, mut text, mut vis) in &mut texts {
         text.0 = match kind {
@@ -1750,8 +1820,8 @@ fn update_hud(mut game: NonSendMut<Game>, mut texts: Query<(&HudKind, &mut Text,
                     Some(v) => {
                         let feats = if v.here.features.is_empty() { String::new() } else { format!("\nyou see: {}", v.here.features.join(", ")) };
                         format!(
-                            "Day {day}\n({}, {})  {}  {:.0} m\nfertile {:.2}   {} soul(s) near\nfog lifted from {} tiles{}{}",
-                            v.pos.col, v.pos.row, v.here.terrain.name(), v.here.elevation, v.here.fertility, v.nearby.len(), explored, feats, search_cue,
+                            "Day {day}\n({}, {})  {}  {:.0} m\nfertile {:.2}   {} soul(s) near\nfog lifted from {} tiles{}{}{}",
+                            v.pos.col, v.pos.row, v.here.terrain.name(), v.here.elevation, v.here.fertility, v.nearby.len(), explored, feats, search_cue, charges,
                         )
                     }
                     None => "no avatar".into(),

@@ -308,9 +308,9 @@ fn ledger_line(sim: &Simulation, e: Entity) -> String {
 }
 
 /// The discoveries journal — the Outer-Wilds ship-log: every place found (grouped), every lore fact
-/// held, and the **ledger** of souls the avatar has met (`met`, in the order first met). Rendered
-/// into the pause menu's Journal tab (see `update_menu`).
-pub fn journal_text(sim: &Simulation, met: &[Entity]) -> String {
+/// held, the **ledger** of souls the avatar has met (`met`), and the **charges** it has taken up
+/// (`quests` active, `done` closed). Rendered into the pause menu's Journal tab (see `update_menu`).
+pub fn journal_text(sim: &Simulation, met: &[Entity], quests: &[agents::Quest], done: &[String]) -> String {
     let cat = sim.feature_catalog();
     // Discovered features on explored tiles, grouped by category.
     let mut groups: [Vec<String>; 4] = [Vec::new(), Vec::new(), Vec::new(), Vec::new()];
@@ -349,6 +349,22 @@ pub fn journal_text(sim: &Simulation, met: &[Entity]) -> String {
     } else {
         for &e in met {
             s.push_str(&format!("  \u{2022} {}\n", ledger_line(sim, e)));
+        }
+    }
+
+    // The charges taken — the director's drama as goals, each with a bearing to the soul to seek.
+    s.push_str(&format!("\nCharges taken: {}\n", quests.len()));
+    if quests.is_empty() {
+        s.push_str("  (none \u{2014} take up a soul's charge in conversation)\n");
+    } else {
+        for q in quests {
+            s.push_str(&format!("  \u{2022} {} {}\n", q.objective, sim.quest_bearing(q)));
+        }
+    }
+    if !done.is_empty() {
+        s.push_str(&format!("Charges closed: {}\n", done.len()));
+        for d in done {
+            s.push_str(&format!("  \u{00b7} {d}\n"));
         }
     }
     s

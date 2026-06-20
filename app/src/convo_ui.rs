@@ -32,6 +32,13 @@ pub struct SpeakChoice(pub usize);
 #[derive(Component)]
 pub struct CounselChoice(pub bool);
 
+/// The "take up the charge" button — shown only when the soul in focus is offering a quest
+/// ([`crate::Convo::offer`]). Accepting adds it to the avatar's charges.
+#[derive(Component)]
+pub struct QuestAccept;
+#[derive(Component)]
+pub struct QuestAcceptLabel;
+
 /// The "speak with whom?" chooser shown when several souls are in reach.
 #[derive(Component)]
 pub struct TalkChooserRoot;
@@ -167,7 +174,7 @@ pub fn spawn(commands: &mut Commands, f: &ThemeFonts) {
                     right
                         .spawn((
                             Node {
-                                height: px(150.0),
+                                height: px(190.0),
                                 flex_direction: FlexDirection::Column,
                                 row_gap: px(theme::SP_SM),
                                 justify_content: JustifyContent::SpaceBetween,
@@ -177,6 +184,26 @@ pub fn spawn(commands: &mut Commands, f: &ThemeFonts) {
                             well().2,
                         ))
                         .with_children(|sc| {
+                            // The charge on offer (a thread figure's request) — shown only when there
+                            // is one (toggled by `update_quest_offer`).
+                            sc.spawn((
+                                QuestAccept,
+                                Button,
+                                Node {
+                                    display: Display::None,
+                                    width: Val::Percent(100.0),
+                                    padding: UiRect::axes(px(theme::SP_MD), px(theme::SP_XS)),
+                                    border: UiRect::all(px(theme::BORDER_W)),
+                                    border_radius: BorderRadius::all(px(theme::RADIUS_SM)),
+                                    justify_content: JustifyContent::Center,
+                                    ..default()
+                                },
+                                BackgroundColor(CHOICE_BG),
+                                BorderColor::all(theme::AWE),
+                            ))
+                            .with_children(|b| {
+                                b.spawn((QuestAcceptLabel, theme::mono(f, "", theme::T_LABEL, theme::HEADING)));
+                            });
                             // The deterministic social acts, as clickable choices.
                             sc.spawn(Node {
                                 flex_direction: FlexDirection::Row,
@@ -444,6 +471,47 @@ pub fn counsel_click(mut game: NonSendMut<Game>, q: Query<(&CounselChoice, &Inte
         }
         g.status = outcome;
     }
+}
+
+/// Show/hide the "take up the charge" button from the conversation's pending offer, and label it with
+/// the objective.
+pub fn update_quest_offer(
+    game: NonSend<Game>,
+    mut btn: Query<&mut Node, With<QuestAccept>>,
+    mut label: Query<&mut Text, With<QuestAcceptLabel>>,
+) {
+    let offer = game.convo.as_ref().and_then(|c| c.offer.as_ref());
+    if let Ok(mut node) = btn.single_mut() {
+        node.display = if offer.is_some() { Display::Flex } else { Display::None };
+    }
+    if let Ok(mut text) = label.single_mut() {
+        text.0 = offer.map(|q| format!("Take up the charge: {}", q.objective)).unwrap_or_default();
+    }
+}
+
+/// Accept the offered charge — move it from the conversation's offer into the avatar's charges, and
+/// note it in the dialog and the status line.
+pub fn quest_accept_click(mut game: NonSendMut<Game>, q: Query<&Interaction, (With<QuestAccept>, Changed<Interaction>)>) {
+    if !q.iter().any(|i| *i == Interaction::Pressed) {
+        return;
+    }
+    let g = &mut *game;
+    let Some(offer) = g.convo.as_mut().and_then(|c| c.offer.take()) else {
+        return;
+    };
+    let obj = offer.objective.clone();
+    let giver = offer.giver_name.clone();
+    g.quests.push(offer);
+    if let Some(c) = g.convo.as_mut() {
+        c.transcript.push(Line {
+            from_player: true,
+            prefix: String::new(),
+            text: Some(format!("[you take up {giver}'s charge]")),
+            reveal: f32::MAX,
+            pending: None,
+        });
+    }
+    g.status = format!("Charge taken \u{2014} {obj}");
 }
 
 // ── The who-to-talk-to chooser ────────────────────────────────────────────────────────────────────

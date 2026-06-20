@@ -167,6 +167,62 @@ fn gossip_line(register: agent_core::Register, fid: f32, lead: &str, other: Opti
     }
 }
 
+/// A **charge** the player can take up — the director's emergent drama, offered as a concrete goal: a
+/// thread's figure (the `giver`) asks the avatar to seek out their counterpart (the `other` — a foe
+/// to face, a beloved to reach). Plain data (no borrow); derived by [`Simulation::quest_for`],
+/// tracked player-side, fulfilled by reaching the other ([`Simulation::quest_reached`]) — the
+/// player's counsel/talk then decides how it ends.
+#[derive(Clone, Debug)]
+pub struct Quest {
+    pub giver: bevy_ecs::entity::Entity,
+    pub other: bevy_ecs::entity::Entity,
+    /// The other's **last-known whereabouts**, snapshotted when the charge is taken — a *fixed*,
+    /// reachable goal (a wandering soul can't be run down by pure pursuit at equal pace; you go to
+    /// where it was, where its trail and the local talk pick up).
+    pub target: Coord,
+    pub giver_name: String,
+    pub other_name: String,
+    /// The giver's spoken request — shown in the conversation (more dialog, and the hook).
+    pub request: String,
+    /// The one-line objective — shown in the HUD and the journal.
+    pub objective: String,
+}
+
+/// The giver's spoken request and the objective line for a charge, framed by the thread's register.
+fn quest_text(register: agent_core::Register, giver: &str, other: &str) -> (String, String) {
+    use agent_core::Register::*;
+    match register {
+        Betrayal | Vengeance => (
+            format!("\"{other} wronged me, and I cannot let it lie. Find them \u{2014} and I will know whether you stand with me.\""),
+            format!("Seek out {other}, who wronged {giver}."),
+        ),
+        War => (
+            format!("\"{other}'s people move against mine. Find them, and we will see this settled.\""),
+            format!("Find {other}, {giver}'s enemy."),
+        ),
+        Persecution => (
+            format!("\"{other} hounds me without end. Find them \u{2014} I would not face them alone.\""),
+            format!("Seek out {other}, who hounds {giver}."),
+        ),
+        Ambition => (
+            format!("\"{other} stands between me and what is mine. Find them.\""),
+            format!("Find {other}, {giver}'s rival."),
+        ),
+        Romance => (
+            format!("\"My heart is with {other}, and we are kept apart. Carry word to them, will you?\""),
+            format!("Bear word to {other}, whom {giver} loves."),
+        ),
+        Wonder => (
+            format!("\"I have seen a thing I cannot explain, and {other} was there. Find them.\""),
+            format!("Seek out {other}, who shared {giver}'s wonder."),
+        ),
+        _ => (
+            format!("\"Find {other} for me \u{2014} there is a matter between us.\""),
+            format!("Find {other} for {giver}."),
+        ),
+    }
+}
+
 // --- Scenario ---
 
 /// Everything that defines one run. Defaults to an empty 36×26 world; fill in
@@ -896,6 +952,11 @@ impl Simulation {
         self.world.get::<agent_core::Position>(e).is_some()
     }
 
+    /// The tile a soul stands on, if it is still in the world. Read-only.
+    pub fn npc_position(&self, e: bevy_ecs::entity::Entity) -> Option<Coord> {
+        self.world.get::<agent_core::Position>(e).map(|p| p.0)
+    }
+
     /// The arc-aware **honorific** a soul has earned in the director's live threads — "the Betrayed",
     /// "the Faithless" — or `None` for a soul not woven into a story (or the director asleep).
     /// Surface flavour for the HUD and conversation; never affects the sim.
@@ -991,6 +1052,62 @@ impl Simulation {
             None => String::new(),
         };
         Some(format!("Unrest stirs {dir}{who}."))
+    }
+
+    /// The **charge** the soul `npc` would lay on the avatar — the director's emergent drama offered
+    /// as an accept-able goal. If `npc` leads a live thread with a living counterpart, it asks the
+    /// avatar to seek that counterpart out (a foe to face, a beloved to reach). `None` for an
+    /// ordinary soul. Read-only; the app owns the accepted charges.
+    pub fn quest_for(&self, npc: bevy_ecs::entity::Entity) -> Option<Quest> {
+        let d = self.world.get_resource::<Director>()?;
+        let t = d.threads().iter().find(|t| t.lead == npc)?;
+        let other = t.other?;
+        let target = self.npc_position(other)?; // also gates on the other being present
+        let giver_name = match self.npc_epithet(npc) {
+            Some(e) => format!("{}, {e}", self.display_name(npc)),
+            None => self.display_name(npc),
+        };
+        let other_name = self.display_name(other);
+        let (request, objective) = quest_text(t.spine, &giver_name, &other_name);
+        Some(Quest { giver: npc, other, target, giver_name, other_name, request, objective })
+    }
+
+    /// Whether a taken charge is fulfilled — the avatar has reached the other's last-known place
+    /// (within 5 hexes), or the other is gone (the matter settled by the world itself).
+    pub fn quest_reached(&self, q: &Quest) -> bool {
+        if !self.npc_present(q.other) {
+            return true;
+        }
+        let Some(at) = self.player_position() else { return false };
+        wrapped_dist(at, q.target, self.substrate().topology().width()) <= 5
+    }
+
+    /// Whether the giver of a charge still lives (else the charge is moot and the app should drop it).
+    pub fn quest_giver_alive(&self, q: &Quest) -> bool {
+        self.npc_present(q.giver)
+    }
+
+    /// Whether the charge's drama is still **live** — its giver still leads a director thread bent on
+    /// the same counterpart. When false, the director has resolved it (the reckoning came and went,
+    /// or the thread moved on), so the charge can close even if the avatar never ran the other down.
+    pub fn quest_thread_open(&self, q: &Quest) -> bool {
+        self.world
+            .get_resource::<Director>()
+            .is_some_and(|d| d.threads().iter().any(|t| t.lead == q.giver && t.other == Some(q.other)))
+    }
+
+    /// A short bearing to the other, for the objective read-out ("— to the east", "— close at hand").
+    pub fn quest_bearing(&self, q: &Quest) -> String {
+        if !self.npc_present(q.other) {
+            return "\u{2014} the matter is ended".into();
+        }
+        let Some(at) = self.player_position() else { return String::new() };
+        let width = self.substrate().topology().width();
+        if wrapped_dist(at, q.target, width) <= 5 {
+            "\u{2014} close at hand".into()
+        } else {
+            format!("\u{2014} {}", compass_dir(at, q.target, width))
+        }
     }
 
     /// Where recent drama can be **sensed** — `(place, fidelity)` for each recent beat within

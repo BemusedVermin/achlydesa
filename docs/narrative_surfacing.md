@@ -469,6 +469,12 @@ and the world never told you anything. Fixes:
 - **Stake — `player_counsel(npc, calm)`.** Two conversation choices, *counsel peace* / *stoke
   grievance*, persuasion-scaled, directly move a soul's vengeance + anger — the state the director's
   avenge beats read — so you can cool a vendetta or feed it. Player-only; byte-identical headless.
+- **Quests (charges).** A thread's figure offers the player a **charge** — its drama as an
+  accept-able goal ("Seek out Oraios, who wronged Allogenes, the Betrayed"). Derived read-only from a
+  live thread (`quest_for`); the giver speaks the request, a button takes it up, the objective + a
+  bearing show in the Look panel and Journal. The target is the other's *last-known place* (a fixed,
+  reachable snapshot); a charge closes by reaching it **or** when the director resolves the drama (so
+  it never hangs on an unreachable/fast soul). Player-side; tick byte-identical.
 - **Density.** The app's default populace 300 → 420 (LOD-bounded; `ACHLYDESA_NPCS` tunes).
 
 **Deferred / next:** Phase 2c (structured subject-drift *mutation* of rumours, and SLM-graded
