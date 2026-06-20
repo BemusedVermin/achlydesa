@@ -427,3 +427,30 @@ layer adds no suffering/brightness — like `Voice`, it is inert to `staged(t)`)
   irreversible by design — but needs a clear diegetic warning so it reads as a *choice*, not a trap.
 - **The Octopath interior — scope & timing.** A full second spatial mode (interior procgen + art
   pipeline) is the largest deferred item; decide if/when the *threshold* panel (POI-A) suffices.
+
+---
+
+## 10. Implementation status (2026-06)
+
+Built so far on branch `narrative-surfacing`, in milestone order:
+
+- **Phase 0 + 1 — director woken & surfaced.** Director on by default in `app`
+  (`ACHLYDESA_NODIRECTOR` disables); **avatar-proximity casting bias** (avatar-gated → headless
+  byte-identical, all 7 director V&V tests pass). Arc-aware **epithets** ("the Betrayed") +
+  **situational openers**, and a soul's recent forced `Voice` line, open a conversation on its story.
+- **POI-A — legibility.** The inspect read-out lists who is present on a tile and what each is doing.
+- **POI-B + the crafts bridge.** A **Use** verb (E / tray button) engages a POI's affordance; the
+  avatar now carries an `Inventory` satchel and economy `Skills`, so `Yield`/`Teach` sites genuinely
+  **gather goods and teach callings** — the same effects an NPC's `Step::Use` gets — shown on the
+  Inventory tab. Relief sites refresh the avatar's vitals.
+- **Phase 2 (first cut) — gossip + fidelity (the veil).** The director records each beat as a
+  `BeatEvent` (place + cast); `Simulation::overheard` renders a line whose sharpness scales with a
+  **deterministic fidelity** (distance + age); a conversation opens with the soul sharing that word.
+
+**Deferred / next:** Phase 2b (true NPC-to-NPC propagation, structured rumour mutation, SLM-graded
+confabulation at low fidelity); **Phase 3** witnessable scenes (drama markers + the witness-vs-aftermath
+question, §9); **Phase 4** the ledger; the debug overlay; POI-C narrative affordance effects; POI-D
+reactivity; POI-E interiors. Trading the avatar's gathered goods is the next economic step.
+
+All determinism / off-by-default invariants hold; the only standing test failures are 3 pre-existing
+ones unrelated to this work.
