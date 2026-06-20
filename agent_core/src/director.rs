@@ -157,6 +157,8 @@ pub struct Cadence {
 /// or without anyone listening.
 #[derive(Clone, Debug)]
 pub struct BeatEvent {
+    /// Stable id of the originating beat — shared with the [`gossip`](crate::gossip) rumour it seeds.
+    pub id: u64,
     pub tick: u64,
     pub register: Register,
     /// Where it fell — the protagonist's tile when it was staged.
@@ -207,6 +209,8 @@ pub struct Director {
     /// The recent beats, as gossip material (place + cast) — what the world murmurs about. A short
     /// ring; append-only, read-only to the tick (see [`BeatEvent`]).
     pub events: Vec<BeatEvent>,
+    /// Monotonic id stamped on each staged beat — ties a [`BeatEvent`] to the rumour it seeds.
+    next_event: u64,
 }
 
 impl Director {
@@ -231,6 +235,7 @@ impl Director {
             log: Vec::new(),
             cadence: Vec::new(),
             events: Vec::new(),
+            next_event: 0,
         }
     }
 
@@ -682,6 +687,9 @@ pub(crate) fn director_step(
     throne: Option<Res<Throne>>,
     mut director: ResMut<Director>,
     mut dialogue: Option<ResMut<Dialogue>>,
+    // Where the rumour of a fresh beat is seeded — every witness learns it firsthand. Absent in a
+    // world without the gossip layer, so seeding is simply skipped (byte-identical).
+    mut gossip: Option<ResMut<crate::gossip::Gossip>>,
     // The player avatar (if any) and a read of every body's tile — so the director can draw its
     // casting toward the avatar. Both inert in a headless run: no avatar → no draw → byte-identical.
     player: Option<Res<crate::player::PlayerState>>,
@@ -1200,6 +1208,28 @@ pub(crate) fn director_step(
     for s in slots.into_iter().flatten() {
         watched.insert(s);
     }
+
+    // This beat's identity and the cast counterpart it turned on — shared by the gossip seed and the
+    // event log. Everyone in the wake (the cast + the locale) witnessed it, so they learn it
+    // firsthand (fidelity 1.0) and it can begin to spread. A no-op when the gossip layer is absent.
+    let event_id = director.next_event;
+    director.next_event += 1;
+    let gossip_other =
+        slots.iter().enumerate().find(|(i, s)| *i != Role::Protagonist.slot() && s.is_some()).and_then(|(_, s)| *s);
+    if let Some(g) = gossip.as_deref_mut() {
+        let r = crate::gossip::Rumor {
+            event_id,
+            register: beat.register,
+            lead: proto,
+            other: gossip_other,
+            place: proto_pos,
+            fidelity: 1.0,
+        };
+        for &w in &watched {
+            g.witness(w, r);
+        }
+    }
+
     director.active.push(Wake { expires: tick + cfg.wake_ttl, watched });
 
     // --- Advance the active thread along its groom → climax → fall arc, and perpetuate
@@ -1271,11 +1301,9 @@ pub(crate) fn director_step(
         lead_prominence,
         collision,
     });
-    // Record it as gossip material — where it fell, and the figure (and a cast counterpart) it turned
-    // on — so the world can murmur about it (a short ring; append-only, perturbs no decision).
-    let gossip_other =
-        slots.iter().enumerate().find(|(i, s)| *i != Role::Protagonist.slot() && s.is_some()).and_then(|(_, s)| *s);
-    director.events.push(BeatEvent { tick, register: beat.register, place: proto_pos, lead: proto, other: gossip_other });
+    // Record it as gossip material — a short append-only ring; perturbs no decision. Reuses the
+    // `event_id`/`gossip_other` computed for the rumour seed above, so the log and the rumour agree.
+    director.events.push(BeatEvent { id: event_id, tick, register: beat.register, place: proto_pos, lead: proto, other: gossip_other });
     const EVENT_CAP: usize = 16;
     if director.events.len() > EVENT_CAP {
         let drop = director.events.len() - EVENT_CAP;

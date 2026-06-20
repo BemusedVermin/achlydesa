@@ -30,6 +30,7 @@ pub mod factions;
 pub mod fauna;
 pub mod features;
 pub mod goals;
+pub mod gossip;
 pub mod norms;
 pub mod observe;
 pub mod people;
@@ -51,6 +52,9 @@ pub use features::{
     Features, FindState, NeedKind,
 };
 pub use goals::{Goal, Goals};
+// Only `Gossip` is re-exported at the root; `gossip::Rumor` would clash with `player::Rumor`
+// (a different concept — a place heard-of, not a beat overheard), so reach it via the module.
+pub use gossip::Gossip;
 pub use norms::{Modality, Norm, Norms};
 pub use observe::{Census, Violation, check};
 pub use people::{
@@ -187,35 +191,46 @@ fn within(a: Coord, b: Coord, r: i32, width: i32) -> bool {
 pub fn build_schedule() -> Schedule {
     let mut schedule = Schedule::default();
     schedule.set_executor_kind(ExecutorKind::SingleThreaded);
+    // Split into two chained groups (a tuple of systems caps at 20; chaining the outer pair keeps
+    // the *total* order intact — group A's last runs strictly before group B's first).
     schedule.add_systems(
         (
-            // Level-of-detail first: freeze NPCs far from the avatar so only the local populace
-            // pays the per-tick planning cost (off by default — see `SimRadius`).
-            lod_dormancy,
-            advance_substrate,
-            fauna::forage,
-            fauna::lifecycle,
-            fauna::hunt,
-            fauna::carnivore_lifecycle,
-            people::people_plan,
-            people::people_execute,
-            people::smooth_prices,
-            people::discover_features,
-            // The player walks its route, revealing the map and finding what it passes.
-            player::player_travel,
-            events::appraise,
-            people::mood_shapes_traits,
-            people::mood_decay,
-            people::people_metabolism,
-            people::regen_affordances,
-            factions::faction_turn,
-            factions::detention_countdown,
-            // Γ runs late: it charges itself for this tick's deaths inside its
-            // footprints, reads the stage, and may manufacture an escalation.
-            director::director_step,
-            // Dialogue runs last: it voices the social state the rest of the tick (and
-            // the director) just shaped — emergent intents, and Γ's forced `Voice` beats.
-            dialogue::converse,
+            (
+                // Level-of-detail first: freeze NPCs far from the avatar so only the local populace
+                // pays the per-tick planning cost (off by default — see `SimRadius`).
+                lod_dormancy,
+                advance_substrate,
+                fauna::forage,
+                fauna::lifecycle,
+                fauna::hunt,
+                fauna::carnivore_lifecycle,
+                people::people_plan,
+                people::people_execute,
+                people::smooth_prices,
+                people::discover_features,
+                // The player walks its route, revealing the map and finding what it passes.
+                player::player_travel,
+            )
+                .chain(),
+            (
+                events::appraise,
+                people::mood_shapes_traits,
+                people::mood_decay,
+                people::people_metabolism,
+                people::regen_affordances,
+                factions::faction_turn,
+                factions::detention_countdown,
+                // Γ runs late: it charges itself for this tick's deaths inside its
+                // footprints, reads the stage, and may manufacture an escalation.
+                director::director_step,
+                // Dialogue runs last: it voices the social state the rest of the tick (and
+                // the director) just shaped — emergent intents, and Γ's forced `Voice` beats.
+                dialogue::converse,
+                // Gossip spreads after the talk: rumours of Γ's beats pass between co-located souls,
+                // decaying each hop. A no-op (byte-identical) until the director seeds the first one.
+                gossip::gossip_spread,
+            )
+                .chain(),
         )
             .chain(),
     );

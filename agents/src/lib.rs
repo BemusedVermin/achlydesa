@@ -547,6 +547,10 @@ impl Simulation {
         world.insert_resource(dialogue::DialogueRes(dialogue_cfg));
         world.insert_resource(intents);
         world.insert_resource(dialogue::Dialogue::seeded(setup.seed ^ 0xD1A1_706E_0FF1_CE00));
+        // Gossip of the director's beats spreads between co-located souls (`gossip_spread`). Always
+        // present (the schedule reads it), but empty until the director seeds the first rumour — so a
+        // director-free world never gossips and stays byte-identical. No RNG: the spread is arithmetic.
+        world.insert_resource(agent_core::Gossip::default());
 
         // The player avatar's state — empty (no avatar) until `spawn_player` is called, so
         // a world with no player is byte-identical (the travel system early-returns).
@@ -881,44 +885,37 @@ impl Simulation {
         self.world.get_resource::<Director>()?.situation_of(e).map(str::to_string)
     }
 
-    /// **Word reaches you** — a line of gossip about a recent beat the director staged, heard from a
-    /// soul in earshot. Picks the most salient recent event (nearest + freshest), computes its
-    /// **fidelity** from how far and how long ago it fell, and renders the line sharp (naming the
-    /// figures) or vague (a rumour and a bearing) accordingly — the dream-purgatory's veil
-    /// (`docs/narrative_surfacing.md` §3): close, fresh news is true; distant, stale news is a
-    /// half-remembered murmur. `None` when there is no teller in earshot, no avatar, no director, or
-    /// nothing recent in range. Read-only; the fidelity is deterministic arithmetic.
+    /// **Word reaches you** — a line of gossip about the director's drama, heard from a soul in
+    /// earshot, in *that soul's own worn copy*. Reads the sharpest rumour any nearby soul actually
+    /// holds (the gossip layer, propagated soul-to-soul) and renders it by its **fidelity** — sharp
+    /// (naming the figures) when the teller heard it firsthand or close to it, vague (a rumour and a
+    /// bearing) when it has passed through many mouths to reach them. This is the veil with real
+    /// teeth (`docs/narrative_surfacing.md` §3): the garbling is *how far the telephone game
+    /// travelled*, not merely the player's distance. `None` when no one in earshot knows anything
+    /// (no avatar, no gossip layer, or the locals simply haven't heard). Read-only & deterministic.
     pub fn overheard(&mut self) -> Option<String> {
-        let _avatar = self.player_avatar()?;
-        if self.player_nearby_npcs().is_empty() {
+        let nearby: Vec<bevy_ecs::entity::Entity> = self.player_nearby_npcs().into_iter().map(|(e, _)| e).collect();
+        if nearby.is_empty() {
             return None; // gossip needs a teller in earshot
         }
         let at = self.player_position()?;
         let width = self.substrate().topology().width();
-        let now = self.substrate().tick();
-        // The most salient recent event in gossip-range — nearest + freshest wins (highest fidelity).
-        let (fid, dist, ev) = {
-            let director = self.world.get_resource::<Director>()?;
-            director
-                .recent_events()
+        // The sharpest rumour anyone in earshot holds — its fidelity is *their* wear, not the player's.
+        let r = {
+            let gossip = self.world.get_resource::<agent_core::Gossip>()?;
+            nearby
                 .iter()
-                .filter_map(|ev| {
-                    let dist = wrapped_dist(at, ev.place, width);
-                    let fid = gossip_fidelity(dist, now.saturating_sub(ev.tick));
-                    (fid > 0.0).then(|| (fid, dist, ev.clone()))
-                })
-                .max_by(|a, b| a.0.partial_cmp(&b.0).unwrap().then(b.1.cmp(&a.1)))?
+                .flat_map(|&e| gossip.rumors_of(e).iter().copied())
+                .max_by(|a, b| a.fidelity.partial_cmp(&b.fidelity).unwrap().then(a.event_id.cmp(&b.event_id)))?
         };
-        // Name the cast (sharp only at high fidelity) and a compass bearing to where it fell.
-        let lead = self.display_name(ev.lead);
-        let lead_titled = match self.npc_epithet(ev.lead) {
+        let lead = self.display_name(r.lead);
+        let lead_titled = match self.npc_epithet(r.lead) {
             Some(ep) => format!("{lead}, {ep}"),
             None => lead,
         };
-        let other = ev.other.map(|e| self.display_name(e));
-        let dir = compass_dir(at, ev.place, width);
-        let _ = dist;
-        Some(gossip_line(ev.register, fid, &lead_titled, other.as_deref(), dir))
+        let other = r.other.map(|e| self.display_name(e));
+        let dir = compass_dir(at, r.place, width);
+        Some(gossip_line(r.register, r.fidelity, &lead_titled, other.as_deref(), dir))
     }
 
     /// Where recent drama can be **sensed** — `(place, fidelity)` for each recent beat within
