@@ -47,7 +47,7 @@
 //! Off by default and deterministic (its one source of variety is a dedicated, seeded
 //! [`SplitMix64`] stream).
 
-use crate::beats::{Beat, BeatBook, Effect, Phase, Pre, Register, Role, SLOTS};
+use crate::beats::{Beat, BeatBook, Casting, Effect, Phase, Pre, Register, Role, SLOTS};
 use crate::data::Registry;
 use crate::dialogue::Dialogue;
 use crate::factions::{Allegiance, Factions, Law, Opinion};
@@ -295,59 +295,13 @@ impl Director {
 /// without a tuned pair fall through to a generic "the Storied" — the generated half being the
 /// register/role composition itself.
 fn epithet_for(spine: Register, is_lead: bool) -> &'static str {
-    use Register::*;
-    match (spine, is_lead) {
-        (Betrayal, true) => "the Betrayed",
-        (Betrayal, false) => "the Faithless",
-        (Vengeance, true) => "the Avenger",
-        (Vengeance, false) => "the Hunted",
-        (Ambition, true) => "the Ambitious",
-        (Ambition, false) => "the Rival",
-        (War, true) => "the Warlord",
-        (War, false) => "the Enemy",
-        (Disaster, true) => "the Stricken",
-        (Disaster, false) => "the Bereaved",
-        (Persecution, true) => "the Hunted",
-        (Persecution, false) => "the Persecutor",
-        (Romance, true) => "the Beloved",
-        (Romance, false) => "the Lover",
-        (Triumph, true) => "the Triumphant",
-        (Triumph, false) => "the Eclipsed",
-        (Wonder, true) => "the Seeker",
-        (Wonder, false) => "the Awed",
-        (Grace, true) => "the Redeemed",
-        (Grace, false) => "the Merciful",
-        (_, _) => "the Storied",
-    }
+    spine.def().epithet(is_lead)
 }
 
 /// The matching one-line situational opener — the soul's plight, present-tense, for a conversation
 /// to begin on. Short by design (never a wall of text): the player learns the story by *meeting* it.
 fn situation_for(spine: Register, is_lead: bool) -> &'static str {
-    use Register::*;
-    match (spine, is_lead) {
-        (Betrayal, true) => "still raw from a trusted friend's turning.",
-        (Betrayal, false) => "something unconfessed moving behind its eyes.",
-        (Vengeance, true) => "cold with a purpose it means to see through.",
-        (Vengeance, false) => "watchful, as one who knows it is hunted.",
-        (Ambition, true) => "hungry for a seat it does not yet hold.",
-        (Ambition, false) => "wary of a rival climbing past it.",
-        (War, true) => "hardened by a war it cannot lay down.",
-        (War, false) => "an enemy's shadow never far from its mind.",
-        (Disaster, true) => "hollowed by a ruin that fell on its house.",
-        (Disaster, false) => "grieving a loss the famine took.",
-        (Persecution, true) => "flinching, as the cornered do.",
-        (Persecution, false) => "certain of its right to hound the weak.",
-        (Romance, true) => "lit, for once, by something like joy.",
-        (Romance, false) => "tender toward one it should not love.",
-        (Triumph, true) => "borne up by a triumph still warm.",
-        (Triumph, false) => "smarting, eclipsed by another's rise.",
-        (Wonder, true) => "haunted by a marvel it half-understands.",
-        (Wonder, false) => "awed by something it cannot name.",
-        (Grace, true) => "lifted by a grace it did not earn.",
-        (Grace, false) => "moved to a mercy it did not owe.",
-        (_, _) => "a story heavy on its shoulders.",
-    }
+    spine.def().situation(is_lead)
 }
 
 impl Default for Director {
@@ -672,12 +626,11 @@ fn pick_other(spine: Register, proto: Entity, cands: &[Cand], cfg: &DirectorConf
     let pious = || {
         cands.iter().filter(|c| c.e != proto).max_by(|a, b| a.piety.partial_cmp(&b.piety).unwrap().then(a.e.cmp(&b.e))).map(|c| c.e)
     };
-    match spine {
-        Register::Romance | Register::Betrayal | Register::Disaster | Register::Sacrifice | Register::Loss => warmest(),
-        Register::Vengeance | Register::Persecution => coldest(),
-        Register::Ambition | Register::War => ambitious(),
-        Register::Wonder | Register::Reunion => pious(),
-        _ => warmest(),
+    match spine.def().casting {
+        Casting::Warmest => warmest(),
+        Casting::Coldest => coldest(),
+        Casting::Ambitious => ambitious(),
+        Casting::Pious => pious(),
     }
 }
 
@@ -1328,10 +1281,7 @@ pub(crate) fn director_step(
     };
     if closing {
         let closed = director.threads.remove(active_ix);
-        let seeds_vengeance = matches!(
-            closed.spine,
-            Register::Betrayal | Register::Loss | Register::Sacrifice | Register::Romance | Register::Persecution
-        );
+        let seeds_vengeance = closed.spine.def().seeds_vengeance;
         if seeds_vengeance && director.threads.len() < cfg.max_threads {
             let id = director.next_thread;
             director.next_thread += 1;
