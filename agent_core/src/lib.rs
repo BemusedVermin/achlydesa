@@ -22,6 +22,7 @@ use sim::Substrate as SubstrateTrait;
 
 pub mod ai;
 pub mod beats;
+pub mod chronicle;
 pub mod data;
 pub mod dialogue;
 pub mod director;
@@ -40,6 +41,7 @@ pub mod player;
 pub use ai::{Consideration, Curve, Input};
 pub use data::{GoodDef, GoodId, MoodDef, MoodId, Recipe, Registry, ResourceKind, SkillId, TraitDef, TraitId};
 pub use beats::{Beat, BeatBook, Effect, Phase, Pre, Register, Role};
+pub use chronicle::{Chronicle, Episode, EpisodeKind};
 pub use dialogue::{Dialogue, DialogueConfig, IntentBook, SlmRealizer, SpeechAct, TextGen, Utterance};
 pub use player::{Player, PlayerKnowledge, PlayerState, PlayerView, Rumor, SearchOutcome, Terrain, TileInfo};
 pub use game_sim::{Coord, Topology};
