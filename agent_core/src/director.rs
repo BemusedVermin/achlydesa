@@ -70,7 +70,7 @@ pub struct Protagonist;
 
 /// The registers a thread can take as its **spine**. Relief is excluded — it is a *Fall*
 /// flavour, not a story's engine. Betrayal/Vengeance are the **trunk**.
-const SPINES: [Register; 9] = [
+const SPINES: [Register; 10] = [
     Register::Betrayal,
     Register::Vengeance,
     Register::Ambition,
@@ -80,6 +80,8 @@ const SPINES: [Register; 9] = [
     Register::Romance,
     Register::Triumph,
     Register::Wonder,
+    // The bright counterweight to the trunk: a redemption/mercy arc as a story engine.
+    Register::Grace,
 ];
 
 // Drama-manager knobs ([`DirectorConfig`]) live Bevy-free in the `config` crate;
@@ -101,6 +103,11 @@ impl std::ops::Deref for DirectorRes {
 /// disasters — so a famine threatens the lead but doesn't end their story outright (the
 /// world's own hunger, and the drama of a foe's knife, still can).
 const PROTAGONIST_FLOOR: f32 = 18.0;
+
+/// Sustenance a [`Slay`](crate::beats::Effect::Slay) drains — far past any larder, so the
+/// metabolism finishes the kill next tick regardless of the victim's reserves (interim, until
+/// combat lands). The protagonist's floor still shields the avatar from a staged death.
+const SLAY_SEVERITY: f32 = 999.0;
 
 /// A beat's lingering wake: the people standing in its shadow when it was told, watched
 /// so that any who die before it lifts are charged to the director.
@@ -308,6 +315,8 @@ fn epithet_for(spine: Register, is_lead: bool) -> &'static str {
         (Triumph, false) => "the Eclipsed",
         (Wonder, true) => "the Seeker",
         (Wonder, false) => "the Awed",
+        (Grace, true) => "the Redeemed",
+        (Grace, false) => "the Merciful",
         (_, _) => "the Storied",
     }
 }
@@ -335,6 +344,8 @@ fn situation_for(spine: Register, is_lead: bool) -> &'static str {
         (Triumph, false) => "smarting, eclipsed by another's rise.",
         (Wonder, true) => "haunted by a marvel it half-understands.",
         (Wonder, false) => "awed by something it cannot name.",
+        (Grace, true) => "lifted by a grace it did not earn.",
+        (Grace, false) => "moved to a mercy it did not owe.",
         (_, _) => "a story heavy on its shoulders.",
     }
 }
@@ -1183,6 +1194,62 @@ pub(crate) fn director_step(
                     && w != proto
                 {
                     dlg.force(w, proto, intent.clone());
+                }
+            }
+            Effect::Relieve { who, need, amount } => {
+                // The bright twin of Afflict: restore a need (heal a struck body, feed the
+                // starving), mirroring the affordance Relieve write to Needs. Material grace.
+                if let Some(w) = role_entity(*who)
+                    && let Ok((.., mut needs, _)) = people.get_mut(w)
+                {
+                    let a = *amount as f32;
+                    match need {
+                        crate::features::NeedKind::Sustenance => needs.sustenance = (needs.sustenance + a).min(100.0),
+                        crate::features::NeedKind::Rest => needs.rest = (needs.rest + a).min(100.0),
+                    }
+                    brightness += (a / 100.0).clamp(0.0, 0.5);
+                }
+            }
+            Effect::Slay { who, .. } => {
+                // Interim: a mortal wound drains the body past saving; `people_metabolism`
+                // finishes it next tick (a plausible in-world death preserving the deniability
+                // rule; true Slay routes through combat later). The death is charged to the
+                // director by its wake; the slayer (`by`) is recorded as a `Killed` episode
+                // once the Chronicle is wired (Phase 3).
+                if let Some(w) = role_entity(*who)
+                    && let Ok((.., mut needs, _)) = people.get_mut(w)
+                {
+                    needs.sustenance -= SLAY_SEVERITY;
+                    if w == proto {
+                        needs.sustenance = needs.sustenance.max(PROTAGONIST_FLOOR);
+                    }
+                    suffering += 5.0;
+                }
+            }
+            Effect::Exalt { who } => {
+                // The heavenly apex (interim): raise the soul's standing — narrative
+                // prominence, pride/devotion, and a soaring high. The true ascendant-tier
+                // raise awaits the rpg power tier.
+                if let Some(w) = role_entity(*who) {
+                    let p = director.prominence.entry(w).or_insert(0.0);
+                    *p = (*p + cfg.groom_gain).min(cfg.prom_cap);
+                    if let Ok((_, _, mut pers, mut m, _, _, _, _)) = people.get_mut(w) {
+                        for tname in ["pride", "devotion"] {
+                            if let Some(tid) = reg.trait_id(tname)
+                                && let Some(v) = pers.0.get_mut(tid)
+                            {
+                                *v = (*v + 0.15).clamp(0.0, 1.0);
+                            }
+                        }
+                        for mname in ["awe", "elation"] {
+                            if let Some(mid) = reg.mood_id(mname)
+                                && let Some(v) = m.0.get_mut(mid)
+                            {
+                                *v = (*v + 0.3).clamp(0.0, 1.0);
+                            }
+                        }
+                    }
+                    brightness += 0.6;
                 }
             }
         }
