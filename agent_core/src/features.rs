@@ -184,11 +184,16 @@ pub struct FeatureDef {
     pub reveals: Vec<String>,
 }
 
-/// A placed feature: which kind, and whether it has been discovered yet.
+/// A placed feature: which kind, whether it has been discovered yet, and whether it has
+/// been ruined.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Feature {
     pub kind: FeatureId,
     pub discovered: bool,
+    /// Desecrated by a [`Defile`](crate::beats::Effect::Defile) beat — the dark twin of
+    /// discovery. A defiled marvel stays on the map (still `discovered`) but its wonder is
+    /// spoilt; the surface/art layer may show it scarred. Defaults `false`.
+    pub defiled: bool,
 }
 
 /// The placed features of a world, one list per tile (indexed by topology storage
@@ -282,6 +287,22 @@ impl Features {
             }
         }
         revealed
+    }
+
+    /// Defile the first discovered, unspoilt feature on tile `i` — the dark twin of
+    /// [`discover_at_index`](Self::discover_at_index): mark it `defiled` and return its kind,
+    /// or `None` if there is no marvel here to ruin. Used by the
+    /// [`Defile`](crate::beats::Effect::Defile) beat effect.
+    pub fn defile_at_index(&mut self, i: usize) -> Option<FeatureId> {
+        if let Some(fs) = self.tiles.get_mut(i) {
+            for f in fs {
+                if f.discovered && !f.defiled {
+                    f.defiled = true;
+                    return Some(f.kind);
+                }
+            }
+        }
+        None
     }
 }
 
@@ -428,7 +449,7 @@ pub fn place(substrate: &GameWorld, catalog: &FeatureCatalog, cfg: &FeatureConfi
         }
         if let Some(kind) = choose(Category::Community, i, &sig, &tiles, catalog, cfg, rng) {
             let discovered = catalog.def(kind).discovery == Discovery::Landmark;
-            tiles[i].push(Feature { kind, discovered });
+            tiles[i].push(Feature { kind, discovered, defiled: false });
             block_within(topo, &mut blocked, i, cfg.community_spacing);
         }
     }
@@ -444,7 +465,7 @@ pub fn place(substrate: &GameWorld, catalog: &FeatureCatalog, cfg: &FeatureConfi
             }
             if let Some(kind) = choose(cat, i, &sig, &tiles, catalog, cfg, rng) {
                 let discovered = catalog.def(kind).discovery == Discovery::Landmark;
-                tiles[i].push(Feature { kind, discovered });
+                tiles[i].push(Feature { kind, discovered, defiled: false });
             }
         }
     }
@@ -614,7 +635,7 @@ mod tests {
         .unwrap();
         let (seer, gate) = (cat.id_of("seer").unwrap(), cat.id_of("gate").unwrap());
         let mut feats =
-            Features { tiles: vec![vec![Feature { kind: seer, discovered: false }, Feature { kind: gate, discovered: false }]] };
+            Features { tiles: vec![vec![Feature { kind: seer, discovered: false, defiled: false }, Feature { kind: gate, discovered: false, defiled: false }]] };
         let mut lore = HashSet::new();
 
         // The seer is ungated → findable; searching reveals it but NOT the gate.

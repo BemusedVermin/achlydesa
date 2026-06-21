@@ -1901,4 +1901,151 @@
             Turn(who: Bystander, toward: Protagonist, delta: 0.3),
         ],
     ),
+
+    // ======================================================================
+    // === THE EXTREMES, with teeth (Phase 2) ===
+    // Beats needing the heavier levers: Defile (ruin a marvel), Bind/Free (captivity, and
+    // striking off chains), Bond (a love kept), and lethal Slay. Deplorable beats heavily
+    // gated (cruelty + faction + a marvel/captive/bond) so a freed world starves them.
+    // ======================================================================
+
+    (
+        id: "the_shrine_defiled", // Persecution Climax — a discovered marvel razed (Defile)
+        register: Persecution,
+        tags: ["persecution", "cruelty", "myth"],
+        phases: [Climax],
+        tension: 2.0,
+        stakes: 1.8,
+        cast: [Protagonist, Foe],
+        // A cruel Foe desecrates a wonder the world had found - the dark twin of Reveal. Gated
+        // on a discovered, unspoilt marvel in reach (DiscoveredMarvelNearby) and the Foe's cruelty.
+        pre: [
+            Exists(who: Foe),
+            TraitAtLeast(who: Foe, trait_name: "cruelty", v: 0.3),
+            DiscoveredMarvelNearby(yes: true),
+        ],
+        effects: [
+            Defile,
+            Stir(who: Protagonist, mood: "sorrow", delta: 0.3),
+            Voice(who: Foe, intent: "a_cruel_taunt"),
+        ],
+    ),
+    (
+        id: "the_bound_in_chains", // Persecution Climax — a loved one taken in chains (Bind)
+        register: Persecution,
+        tags: ["persecution", "cruelty", "myth"],
+        phases: [Climax],
+        tension: 2.2,
+        stakes: 1.9,
+        cast: [Protagonist, Ally, Foe],
+        // The Archons' jailing made personal: a cruel Foe with the faction's enforcers takes an
+        // ally in chains, and the protagonist's grudge is born.
+        pre: [
+            Exists(who: Ally),
+            Exists(who: Foe),
+            InFaction(yes: true),
+            TraitAtLeast(who: Foe, trait_name: "cruelty", v: 0.3),
+        ],
+        effects: [
+            Bind(who: Ally),
+            Grudge(who: Protagonist, against: Foe),
+            Stir(who: Protagonist, mood: "anger", delta: 0.3),
+            Stir(who: Protagonist, mood: "sorrow", delta: 0.3),
+            Voice(who: Foe, intent: "a_warning_of_retribution"),
+        ],
+    ),
+    (
+        id: "the_bound_set_free", // Grace Climax — striking off another's chains (Free; the defiant deed)
+        register: Grace,
+        tags: ["grace", "myth", "defiance"],
+        phases: [Climax],
+        tension: -1.5,
+        stakes: 1.1,
+        cast: [Protagonist, Ally],
+        // The signature defiant/heavenly act (chains after the_bound_in_chains): free a soul the
+        // Law has bound. The Law forbids it (norms.ron `free`); the protagonist does it anyway.
+        pre: [
+            Exists(who: Ally),
+            Bound(who: Ally, yes: true),
+        ],
+        effects: [
+            Free(who: Ally),
+            Turn(who: Ally, toward: Protagonist, delta: 0.7),
+            Stir(who: Ally, mood: "hope", delta: 0.4),
+            Stir(who: Protagonist, mood: "awe", delta: 0.3),
+            Sway(who: Protagonist, trait_name: "defiance", delta: 0.15),
+        ],
+    ),
+    (
+        id: "the_vow_that_holds", // Romance Climax — love consummated and KEPT (Bond; the missing bright climax)
+        register: Romance,
+        tags: ["romance", "relief", "personal"],
+        phases: [Climax],
+        tension: -1.0,
+        stakes: 1.2,
+        cast: [Protagonist, Lover],
+        // The romance register's one bright climax - a bond that endures rather than breaks (a
+        // tributary that resolves on its own). Chains after the courtship grooming. The director
+        // may still groom toward this only to reverse it elsewhere - the gift is the bait.
+        pre: [
+            Exists(who: Lover),
+            MoodAtLeast(who: Protagonist, mood: "love", v: 0.2),
+        ],
+        effects: [
+            Bond(who: Protagonist, to: Lover),
+            Bond(who: Lover, to: Protagonist),
+            Turn(who: Protagonist, toward: Lover, delta: 0.8),
+            Turn(who: Lover, toward: Protagonist, delta: 0.8),
+            Stir(who: Protagonist, mood: "joy", delta: 0.4),
+            Stir(who: Protagonist, mood: "love", delta: 0.3),
+        ],
+    ),
+    (
+        id: "the_kinslayer", // Loss Climax — a bonded soul slain in fury (Slay; Polti: Murder of a Kinsman)
+        register: Loss,
+        tags: ["loss", "violence", "betrayal"],
+        phases: [Climax],
+        tension: 2.6,
+        stakes: 2.5,
+        cast: [Protagonist, Ally],
+        // The intimate atrocity: a protagonist who holds a bond and is consumed by fury kills one
+        // it loved. Gated on a real bond + high anger (a crime of passion - plausible, so the
+        // hand stays hidden).
+        pre: [
+            Exists(who: Ally),
+            Bonded(who: Protagonist, yes: true),
+            MoodAtLeast(who: Protagonist, mood: "anger", v: 0.4),
+        ],
+        effects: [
+            Slay(who: Ally, by: Protagonist),
+            Sway(who: Protagonist, trait_name: "cruelty", delta: 0.1),
+            Stir(who: Protagonist, mood: "guilt", delta: 0.5),
+            Stir(who: Protagonist, mood: "sorrow", delta: 0.4),
+            Voice(who: Protagonist, intent: "a_despairing_confession"),
+        ],
+    ),
+    (
+        id: "the_execution", // Persecution Climax — a captive put to death (Slay + Bound)
+        register: Persecution,
+        tags: ["persecution", "cruelty", "violence", "myth"],
+        phases: [Climax],
+        tension: 2.5,
+        stakes: 2.2,
+        cast: [Protagonist, Bystander, Foe],
+        // The Law's end for the bound (chains after a binding): a captive is put to death by a
+        // cruel Foe under the faction's decree, and the protagonist must witness it.
+        pre: [
+            Exists(who: Bystander),
+            Exists(who: Foe),
+            InFaction(yes: true),
+            Bound(who: Bystander, yes: true),
+            TraitAtLeast(who: Foe, trait_name: "cruelty", v: 0.3),
+        ],
+        effects: [
+            Slay(who: Bystander, by: Foe),
+            Stir(who: Protagonist, mood: "dread", delta: 0.4),
+            Stir(who: Protagonist, mood: "sorrow", delta: 0.3),
+            Voice(who: Foe, intent: "a_warning_of_retribution"),
+        ],
+    ),
 ]

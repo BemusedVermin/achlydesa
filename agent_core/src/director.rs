@@ -50,15 +50,27 @@
 use crate::beats::{Beat, BeatBook, Casting, Effect, Phase, Pre, Register, Role, SLOTS};
 use crate::data::Registry;
 use crate::dialogue::Dialogue;
-use crate::factions::{Allegiance, Factions, Law, Opinion};
+use crate::factions::{Allegiance, Detained, Factions, Law, Opinion};
 use crate::features::{Discovery, FeatureCatalog, Features};
-use crate::people::{Grievance, Mood, Needs, Npc, Personality, Throne};
+use crate::people::{Bond, Grievance, Mood, Needs, Npc, Personality, Throne};
 use crate::{Position, Substrate};
 use bevy_ecs::prelude::*;
+use bevy_ecs::system::SystemParam;
 use game_sim::{Coord, SplitMix64, Topology};
 use sim::Rng;
 use smallvec::SmallVec;
 use std::collections::{HashMap, HashSet};
+
+/// The director's optional **out-of-band sinks**, each absent unless its layer is awake: the
+/// dialogue queue it forces `Voice` lines into, and the gossip store it seeds rumours into.
+/// Bundled into one `SystemParam` so `director_step` stays within bevy's system-param limit
+/// (and so the Chronicle can join them in a later phase); each is `None` when its layer is off,
+/// so the director stays byte-identical.
+#[derive(SystemParam)]
+pub(crate) struct Sinks<'w> {
+    dialogue: Option<ResMut<'w, Dialogue>>,
+    gossip: Option<ResMut<'w, crate::gossip::Gossip>>,
+}
 
 /// The NPC the director stages its drama for — the audience of one. `Γ`'s threads weave
 /// around the *player's* accumulated investments (its [`prominence`](Director::prominence)
@@ -108,6 +120,11 @@ const PROTAGONIST_FLOOR: f32 = 18.0;
 /// metabolism finishes the kill next tick regardless of the victim's reserves (interim, until
 /// combat lands). The protagonist's floor still shields the avatar from a staged death.
 const SLAY_SEVERITY: f32 = 999.0;
+
+/// Ticks a [`Bind`](crate::beats::Effect::Bind) holds a soul captive (via [`Detained`]), unless
+/// a [`Free`](crate::beats::Effect::Free) beat strikes the chains first. Counted down by
+/// `detention_countdown` like any detention.
+const BIND_TICKS: u32 = 60;
 
 /// A beat's lingering wake: the people standing in its shadow when it was told, watched
 /// so that any who die before it lifts are charged to the director.
@@ -325,6 +342,10 @@ struct Cand {
     traits: Vec<f32>,
     moods: Vec<f32>,
     grudge_target: Option<Entity>,
+    /// The soul this one holds a durable [`Bond`] to (for `Bonded`), if any.
+    bond_target: Option<Entity>,
+    /// Whether this soul is held captive ([`Detained`]) — for `Bound`.
+    detained: bool,
 }
 
 /// Resolved mood ids the objective reads, looked up once.
@@ -537,6 +558,8 @@ struct PreCtx<'a> {
     at_war: bool,
     /// Tile indices within the protagonist's reach (for `VictimNearby`).
     region: &'a HashSet<usize>,
+    /// Whether a discovered, unspoilt marvel lies in reach (for `DiscoveredMarvelNearby`).
+    marvel_nearby: bool,
 }
 
 /// Whether a beat's preconditions hold for a tentative cast.
@@ -566,6 +589,9 @@ fn pre_ok(beat: &Beat, slots: &[Option<Entity>; SLOTS], cands: &[Cand], idx_of: 
             Pre::VictimNearby { need_below } => {
                 cands.iter().any(|c| ctx.region.contains(&c.pos_index) && c.need < *need_below)
             }
+            Pre::Bonded { who, yes } => slots[who.slot()].and_then(cand).is_some_and(|c| c.bond_target.is_some() == *yes),
+            Pre::Bound { who, yes } => slots[who.slot()].and_then(cand).is_some_and(|c| c.detained == *yes),
+            Pre::DiscoveredMarvelNearby { yes } => ctx.marvel_nearby == *yes,
         };
         if !ok {
             return false;
@@ -650,10 +676,8 @@ pub(crate) fn director_step(
     mut factions: ResMut<Factions>,
     throne: Option<Res<Throne>>,
     mut director: ResMut<Director>,
-    mut dialogue: Option<ResMut<Dialogue>>,
-    // Where the rumour of a fresh beat is seeded — every witness learns it firsthand. Absent in a
-    // world without the gossip layer, so seeding is simply skipped (byte-identical).
-    mut gossip: Option<ResMut<crate::gossip::Gossip>>,
+    // The optional out-of-band sinks (dialogue queue + gossip store), bundled (see `Sinks`).
+    mut sinks: Sinks,
     // The player avatar (if any) and a read of every body's tile — so the director can draw its
     // casting toward the avatar. Both inert in a headless run: no avatar → no draw → byte-identical.
     player: Option<Res<crate::player::PlayerState>>,
@@ -672,6 +696,10 @@ pub(crate) fn director_step(
         ),
         With<Npc>,
     >,
+    // Per-soul Bond/Detained reads for the `Bonded`/`Bound` preconditions — a separate
+    // read-only query, so the big mutating query above keeps its shape (and its destructurings).
+    // Both components are absent until a Bond/Bind beat creates them, so this is empty until then.
+    bonds: Query<(Entity, Option<&Bond>, Option<&Detained>), With<Npc>>,
 ) {
     director.gratuitous_now = 0.0;
     if !cfg.enabled {
@@ -697,6 +725,10 @@ pub(crate) fn director_step(
     let amb = reg.trait_id("ambition");
     let soc = reg.trait_id("sociability");
     let pie = reg.trait_id("piety");
+    // Per-soul Bond/Detained, for the Cand fields the `Bonded`/`Bound` preconditions read
+    // (empty until a Bond/Bind beat creates a component — so off-by-default is byte-identical).
+    let bond_det: HashMap<Entity, (Option<Entity>, bool)> =
+        bonds.iter().map(|(e, b, d)| (e, (b.map(|x| x.0), d.is_some()))).collect();
     let mut alive: HashSet<Entity> = HashSet::new();
     let mut cands: Vec<Cand> = Vec::new();
     {
@@ -717,6 +749,8 @@ pub(crate) fn director_step(
                 traits: pers.0.clone(),
                 moods: mood.0.clone(),
                 grudge_target: gr.map(|g| g.0),
+                bond_target: bond_det.get(&e).and_then(|x| x.0),
+                detained: bond_det.get(&e).is_some_and(|x| x.1),
             });
         }
     }
@@ -906,7 +940,9 @@ pub(crate) fn director_step(
         let topo = substrate.0.topology();
         region(topo, proto_pos, cfg.reach)
     };
-    let ctx = PreCtx { proto, throne_holder, proto_in_faction, at_war, region: &region_set };
+    let marvel_nearby =
+        region_tiles.iter().any(|&i| features.at_index(i).iter().any(|f| f.discovered && !f.defiled));
+    let ctx = PreCtx { proto, throne_holder, proto_in_faction, at_war, region: &region_set, marvel_nearby };
 
     // --- Score every *tellable* beat by drama × novelty ÷ resistance, biased toward the
     // active thread's phase and spine, and track the most *impactful* the world supports.
@@ -1143,7 +1179,7 @@ pub(crate) fn director_step(
             Effect::Voice { who, intent } => {
                 // Put words in their mouth — the manufactured drama *heard*. Forced onto
                 // the dialogue layer (a no-op if it is asleep); the protagonist is the ear.
-                if let (Some(w), Some(dlg)) = (role_entity(*who), dialogue.as_deref_mut())
+                if let (Some(w), Some(dlg)) = (role_entity(*who), sinks.dialogue.as_deref_mut())
                     && w != proto
                 {
                     dlg.force(w, proto, intent.clone());
@@ -1205,6 +1241,50 @@ pub(crate) fn director_step(
                     brightness += 0.6;
                 }
             }
+            Effect::Defile => {
+                // Dark twin of Reveal: ruin the nearest discovered marvel in reach, and fill the
+                // cast with despair. (Gated by `DiscoveredMarvelNearby`, so there is one to ruin.)
+                for &i in &region_tiles {
+                    if features.defile_at_index(i).is_some() {
+                        break;
+                    }
+                }
+                for s in slots.into_iter().flatten() {
+                    if let Ok((_, _, _, mut m, _, _, _, _)) = people.get_mut(s)
+                        && let Some(mid) = reg.mood_id("despair")
+                        && let Some(v) = m.0.get_mut(mid)
+                    {
+                        *v = (*v + 0.3).clamp(0.0, 1.0);
+                    }
+                }
+                suffering += 2.0;
+            }
+            Effect::Bond { who, to } => {
+                // Forge a durable tie — the bright setup a later betrayal can reverse.
+                if let (Some(w), Some(t)) = (role_entity(*who), role_entity(*to))
+                    && w != t
+                {
+                    commands.entity(w).insert(Bond(t));
+                    brightness += 0.4;
+                }
+            }
+            Effect::Bind { who } => {
+                // Captivity made personal — reuse the faction-enforcer Detained machinery (the
+                // captive cannot act until freed or the term elapses). Never bind the avatar.
+                if let Some(w) = role_entity(*who)
+                    && w != proto
+                {
+                    commands.entity(w).insert(Detained { ticks: BIND_TICKS });
+                    suffering += 2.0;
+                }
+            }
+            Effect::Free { who } => {
+                // Strike off another's chains — the defiant/heavenly deed.
+                if let Some(w) = role_entity(*who) {
+                    commands.entity(w).remove::<Detained>();
+                    brightness += 0.4;
+                }
+            }
         }
     }
 
@@ -1236,7 +1316,7 @@ pub(crate) fn director_step(
     director.next_event += 1;
     let gossip_other =
         slots.iter().enumerate().find(|(i, s)| *i != Role::Protagonist.slot() && s.is_some()).and_then(|(_, s)| *s);
-    if let Some(g) = gossip.as_deref_mut() {
+    if let Some(g) = sinks.gossip.as_deref_mut() {
         let r = crate::gossip::Rumor {
             event_id,
             register: beat.register,
