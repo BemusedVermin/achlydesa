@@ -302,6 +302,13 @@ pub struct Setup {
     /// the grief weights of the moral arithmetic). Its `enabled` is OR'd with
     /// [`Setup::director`].
     pub director_cfg: DirectorConfig,
+    /// Wake the **sift layer**: a deterministic, bounded [`Chronicle`] of recent world episodes
+    /// (a grudge formed, a death, a war, a beat staged) — the substrate the story sifter and the
+    /// eval harness read. Off by default, so a sift-free world is byte-identical (the resource is
+    /// absent and every Chronicle tap is a no-op). Its `enabled` is OR'd with [`Setup::sift_cfg`].
+    pub sift: bool,
+    /// Knobs for the sift layer (the Chronicle ring size; later, the sifter/graft tunables).
+    pub sift_cfg: config::SiftConfig,
     /// Wake the **emergent dialogue** layer (`docs/dialogue.md`): co-located NPCs speak
     /// when they have something worth saying, the words composed from their state. Off by
     /// default, so a dialogue-free world is byte-identical. Knobs live in
@@ -385,6 +392,8 @@ impl Default for Setup {
             markets_on_settlements: false,
             director: false,
             director_cfg: config::tunables::director(),
+            sift: false,
+            sift_cfg: config::tunables::sift(),
             dialogue: false,
             dialogue_cfg: config::tunables::dialogue(),
             rpg: false,
@@ -593,6 +602,15 @@ impl Simulation {
         // deterministic yet not the same every beat.
         world.insert_resource(director::Director::seeded(setup.seed ^ 0xD1EC_7012_0F00_0001));
 
+        // Wake the sift layer, if asked: insert the bounded Chronicle ring (the sifter + eval
+        // read it; the director and other systems tap it). Off by default -> the resource is
+        // absent and every Chronicle tap is a no-op, so a sift-free world is byte-identical.
+        let mut sift_cfg = setup.sift_cfg;
+        sift_cfg.enabled = setup.sift || sift_cfg.enabled;
+        if sift_cfg.enabled {
+            world.insert_resource(agent_core::chronicle::Chronicle::new(sift_cfg.ring_cap));
+        }
+
         // Wake the dialogue layer, if asked. Like the director, its `enabled` is the OR of
         // the convenience switch and the config's own flag; its state lives in one resource
         // (no NPC component), so a dialogue-free world is byte-identical. Its variety draws
@@ -741,6 +759,12 @@ impl Simulation {
     /// How many beats the director has told so far.
     pub fn director_beats_fired(&self) -> usize {
         self.director().log.len()
+    }
+
+    /// How many episodes the [`Chronicle`] ring holds (0 if the sift layer is off) — for the
+    /// story sifter, the eval harness, and tests.
+    pub fn chronicle_len(&self) -> usize {
+        self.world.get_resource::<Chronicle>().map_or(0, Chronicle::len)
     }
 
     /// The story the director has told: `(tick, beat id)` in order — the beats it
@@ -2612,6 +2636,36 @@ mod tests {
         let agg = aggressors(&mut peaceful);
         let (inherited, _) = play_out(peaceful, &agg);
         assert!(!inherited, "the taboo alone keeps the peace -- no lord falls, no quarrel passes");
+    }
+
+    #[test]
+    fn the_chronicle_fills_when_woken_and_is_inert_when_off() {
+        // The sift layer's Chronicle records episodes when woken, and is a pure observer: a
+        // director-on world runs identically whether or not the Chronicle is present.
+        let build = |sift: bool| {
+            let mut s = Simulation::new(Setup {
+                seed: 42,
+                npcs: 40,
+                markets: 4,
+                feuds: 4,
+                director: true,
+                director_cfg: DirectorConfig { beat_interval: 9, ..Default::default() },
+                sift,
+                ..Default::default()
+            });
+            s.run(150);
+            s
+        };
+        let on = build(true);
+        assert!(on.chronicle_len() > 0, "a woken sift layer should record episodes from the director");
+
+        let off = build(false);
+        assert_eq!(off.chronicle_len(), 0, "no Chronicle resource when the sift layer is off");
+        assert_eq!(
+            on.director_beats_fired(),
+            off.director_beats_fired(),
+            "the Chronicle is a pure observer: the sim runs identically with it on or off",
+        );
     }
 
     #[test]
