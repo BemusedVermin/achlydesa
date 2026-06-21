@@ -19,13 +19,14 @@
 //! component), variety comes from a dedicated seeded [`SplitMix64`].
 
 use crate::ai::{self, Consideration, Curve, Input};
+use crate::chronicle::EpisodeKind;
 use crate::data::Registry;
 use crate::factions::Opinion;
 use crate::people::{Grievance, Mood, Needs, Npc, Personality};
 use crate::{Position, Substrate};
 use bevy_ecs::prelude::*;
 use config::{Asset, Bundled};
-use game_sim::SplitMix64;
+use game_sim::{Coord, SplitMix64};
 use serde::Deserialize;
 use sim::Rng;
 use smallvec::SmallVec;
@@ -429,6 +430,7 @@ fn name_of(grammar: &Grammar, e: Entity) -> String {
 struct Cand {
     e: Entity,
     tile: usize,
+    pos: Coord,
     traits: Vec<f32>,
     moods: Vec<f32>,
     op: HashMap<Entity, f32>,
@@ -447,6 +449,8 @@ pub(crate) fn converse(
     director: Option<Res<crate::director::Director>>,
     mut dlg: ResMut<Dialogue>,
     mut people: Query<(Entity, &Position, &mut Personality, &mut Mood, &mut Opinion, &Needs, Option<&Grievance>), With<Npc>>,
+    // Off-by-default Chronicle: a conversation that breeds a grudge is a story seed; recorded here.
+    mut chronicle: Option<ResMut<crate::chronicle::Chronicle>>,
 ) {
     if !cfg.enabled {
         return;
@@ -462,6 +466,7 @@ pub(crate) fn converse(
             cands.push(Cand {
                 e,
                 tile: topo.index_of(pos.0),
+                pos: pos.0,
                 traits: pers.0.clone(),
                 moods: mood.0.clone(),
                 op: op.0.clone(),
@@ -586,6 +591,9 @@ pub(crate) fn converse(
                     if w != a {
                         commands.entity(w).insert(Grievance(a));
                         made_grudge = true;
+                        if let Some(c) = chronicle.as_deref_mut() {
+                            c.record(tick, EpisodeKind::GrievanceFormed, [Some(w), Some(a), None], cands[si].pos, None, 0);
+                        }
                     }
                 }
             }

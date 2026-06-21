@@ -2222,7 +2222,7 @@ mod tests {
 
     #[test]
     fn no_exploration_keeps_flat_costless_travel() {
-        let mut sim = economy(20);
+        let sim = economy(20);
         assert!(!sim.exploration_enabled());
         assert!(sim.road_tiles().is_empty(), "no roads without the layer");
         let c = sim.substrate().topology().coord(0);
