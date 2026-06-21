@@ -74,6 +74,10 @@ pub enum Register {
     Sacrifice,
     Redemption,
     Relief,
+    /// The heavenly apex — mercy, healing, union, deliverance, the homecoming. Bright, and
+    /// a thread **spine** in its own right (a redemption/mercy arc): the bright counterweight
+    /// to the betrayal trunk, the top of the "deplorable → heavenly" spectrum.
+    Grace,
 }
 
 impl Register {
@@ -96,6 +100,7 @@ impl Register {
                 | Register::Reunion
                 | Register::Redemption
                 | Register::Relief
+                | Register::Grace
         )
     }
 }
@@ -194,6 +199,19 @@ pub enum Effect {
     /// [`intent`](crate::dialogue) at the protagonist (the manufactured betrayal *heard*,
     /// not merely tallied). A no-op unless the [`dialogue`](crate::dialogue) layer is awake.
     Voice { who: Role, intent: String },
+    /// Restore a need of `who` — the bright twin of [`Afflict`]: heal a struck body, feed
+    /// the starving. Mirrors the affordance [`Relieve`](crate::features::EffectDef::Relieve)
+    /// write to [`Needs`](crate::people::Needs). Material grace.
+    Relieve { who: Role, need: crate::features::NeedKind, amount: i32 },
+    /// Slay `who` (by `by`). **Interim**: a mortal wound the metabolism finishes next tick (a
+    /// plausible in-world death preserving the deniability rule); true Slay routes through
+    /// combat later. The apex of a vengeance or atrocity beat; `by` is the slayer (recorded
+    /// as a `Killed` episode once the Chronicle is wired).
+    Slay { who: Role, by: Role },
+    /// Exalt `who` — raise their standing in awe and pride (the heavenly apex). **Interim**:
+    /// narrative prominence + a soaring high; the true power-tier raise awaits the rpg
+    /// ascendant tier.
+    Exalt { who: Role },
 }
 
 /// One dramatic situation, as data: a storylet the director can tell.
@@ -265,9 +283,16 @@ impl Beat {
                     push(*who);
                     push(*toward);
                 }
-                Effect::Sway { who, .. } | Effect::Stir { who, .. } | Effect::Afflict { who, .. } | Effect::Voice { who, .. } => {
-                    push(*who)
+                Effect::Slay { who, by } => {
+                    push(*who);
+                    push(*by);
                 }
+                Effect::Sway { who, .. }
+                | Effect::Stir { who, .. }
+                | Effect::Afflict { who, .. }
+                | Effect::Voice { who, .. }
+                | Effect::Relieve { who, .. }
+                | Effect::Exalt { who, .. } => push(*who),
                 Effect::Decree | Effect::War | Effect::Disaster { .. } | Effect::Reveal => {}
             }
         }
@@ -345,6 +370,7 @@ mod tests {
             Register::Triumph,
             Register::Wonder,
             Register::Sacrifice,
+            Register::Grace,
         ] {
             assert!(book.0.iter().any(|b| b.register == reg), "no beat plays the {reg:?} register");
         }

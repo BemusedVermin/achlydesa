@@ -1579,4 +1579,326 @@
             Stir(who: Protagonist, mood: "longing", delta: -0.2),
         ],
     ),
+
+    // ======================================================================
+    // === THE FULL SPECTRUM: deplorable -> heavenly (Phase 1) ===
+    // Filling the extremes the library was thin on. Deplorable beats are heavily gated
+    // (cruelty/zeal + faction + a victim) so a freed world starves them; heavenly beats are
+    // low-stakes so a freed world finds them beneath the impact floor. Per decision #8, the
+    // heavenly end is the Demiurge's best bait - the higher the gift, the further the fall -
+    // though tributaries may also resolve genuinely. Uses the new Slay/Relieve/Exalt effects
+    // and the new Grace register.
+    // ======================================================================
+
+    // --- The deplorable extreme ---
+    (
+        id: "made_to_do_the_deed", // Persecution Climax — the protagonist coerced into the atrocity
+        register: Persecution,
+        tags: ["persecution", "cruelty", "violence", "myth"],
+        phases: [Climax],
+        tension: 2.5,
+        stakes: 2.3,
+        cast: [Protagonist, Ally, Foe],
+        // The deepest horror: instrumentalization. A cruel Foe with the faction's whip-hand
+        // forces the protagonist's own hand against a friend. Gated on a faction (the coercer
+        // needs leverage) and the Foe's cruelty.
+        pre: [
+            Exists(who: Ally),
+            Exists(who: Foe),
+            InFaction(yes: true),
+            TraitAtLeast(who: Foe, trait_name: "cruelty", v: 0.3),
+        ],
+        effects: [
+            Afflict(who: Ally, severity: 45.0),
+            Sway(who: Protagonist, trait_name: "cruelty", delta: 0.12),
+            Stir(who: Protagonist, mood: "guilt", delta: 0.5),
+            Stir(who: Protagonist, mood: "sorrow", delta: 0.3),
+            Voice(who: Foe, intent: "a_warning_of_retribution"),
+        ],
+    ),
+    (
+        id: "the_innocent_condemned", // Persecution Climax — a blameless soul scapegoated by the zealous
+        register: Persecution,
+        tags: ["persecution", "cruelty", "myth", "political"],
+        phases: [Climax],
+        tension: 2.3,
+        stakes: 2.0,
+        cast: [Protagonist, Bystander, Rival],
+        // A zeal-drunk Rival names a guiltless soul heretic; the Law's enforcers do the rest.
+        pre: [
+            Exists(who: Bystander),
+            Exists(who: Rival),
+            InFaction(yes: true),
+            TraitAtLeast(who: Rival, trait_name: "zeal", v: 0.35),
+        ],
+        effects: [
+            Decree,
+            Afflict(who: Bystander, severity: 40.0),
+            Voice(who: Rival, intent: "an_accusation_of_heresy"),
+            Stir(who: Bystander, mood: "despair", delta: 0.4),
+            Stir(who: Protagonist, mood: "sorrow", delta: 0.3),
+        ],
+    ),
+    (
+        id: "virtue_punished_vice_rewarded", // Betrayal Fall — the betrayer prospers; injustice stands
+        register: Betrayal,
+        tags: ["betrayal", "myth", "despair"],
+        phases: [Fall],
+        tension: 1.4,
+        stakes: 1.5,
+        cast: [Protagonist, Foe, Bystander],
+        // The bleakest aftermath: the one who wronged the protagonist is feted, the crowd's
+        // warmth flowing to the villain. The counterfeit world rewards the wheel's servants.
+        pre: [
+            Exists(who: Foe),
+            Exists(who: Bystander),
+        ],
+        effects: [
+            Turn(who: Bystander, toward: Foe, delta: 0.6),
+            Turn(who: Bystander, toward: Protagonist, delta: -0.3),
+            Stir(who: Protagonist, mood: "despair", delta: 0.5),
+            Sway(who: Protagonist, trait_name: "oblivion", delta: 0.12),
+        ],
+    ),
+    (
+        id: "the_vengeance_consummated", // Vengeance Climax — the oath cashes out in blood (Slay)
+        register: Vengeance,
+        tags: ["vengeance", "violence"],
+        phases: [Climax],
+        tension: 2.5,
+        stakes: 2.3,
+        cast: [Protagonist, Foe],
+        // Chains after `the_oath_over_a_grave` / `the_blood_price_demanded`: the protagonist,
+        // ripe with vengeance and bearing a grudge, strikes the foe down — the trunk's grim
+        // payoff (and the apex narratable beat: a grudge consummated).
+        pre: [
+            Exists(who: Foe),
+            TraitAtLeast(who: Protagonist, trait_name: "vengeance", v: 0.5),
+            HasGrudge(who: Protagonist, yes: true),
+        ],
+        effects: [
+            Slay(who: Foe, by: Protagonist),
+            Stir(who: Protagonist, mood: "anger", delta: 0.3),
+            Stir(who: Protagonist, mood: "sorrow", delta: 0.2), // the hollow after
+            Voice(who: Protagonist, intent: "a_vengeful_threat"),
+        ],
+    ),
+
+    // --- The heavenly extreme (Grace) ---
+    (
+        id: "mercy_at_the_sword", // Grace Climax — power to kill, chosen mercy (the cycle's exit)
+        register: Grace,
+        tags: ["grace", "relief", "personal"],
+        phases: [Climax],
+        tension: -1.2,
+        stakes: 1.0,
+        cast: [Protagonist, Foe],
+        // Holding a foe's life in hand, the protagonist stays the blow — mercy at the moment
+        // of power, the one vengeance that breaks the cycle instead of feeding it. Negative
+        // tension: it lands hardest when the protagonist is low (vengeful, grieving).
+        pre: [
+            Exists(who: Foe),
+            HasGrudge(who: Protagonist, yes: true),
+            TraitAtLeast(who: Protagonist, trait_name: "forgiveness", v: 0.25),
+        ],
+        effects: [
+            Sway(who: Protagonist, trait_name: "forgiveness", delta: 0.2),
+            Sway(who: Protagonist, trait_name: "vengeance", delta: -0.25),
+            Turn(who: Foe, toward: Protagonist, delta: 0.6),
+            Stir(who: Foe, mood: "hope", delta: 0.4),
+            Stir(who: Protagonist, mood: "awe", delta: 0.3),
+            Voice(who: Protagonist, intent: "an_overture_of_peace"),
+        ],
+    ),
+    (
+        id: "the_many_wake_together", // Grace Climax — collective gnosis; a congregation freed at once
+        register: Grace,
+        tags: ["grace", "myth", "gnosis", "relief"],
+        phases: [Climax, Fall],
+        tension: -1.5,
+        stakes: 1.0,
+        weight: 0.8,
+        cast: [Protagonist, Bystander, Mentor],
+        // The bright twin of `the_contagion_of_forgetting`: waking spreads soul to soul. The
+        // protagonist, far enough awake, carries others past the veil.
+        pre: [
+            Exists(who: Bystander),
+            Exists(who: Mentor),
+            TraitAtLeast(who: Protagonist, trait_name: "gnosis", v: 0.25),
+        ],
+        effects: [
+            Reveal,
+            Sway(who: Protagonist, trait_name: "gnosis", delta: 0.15),
+            Sway(who: Protagonist, trait_name: "oblivion", delta: -0.2),
+            Sway(who: Bystander, trait_name: "gnosis", delta: 0.15),
+            Sway(who: Bystander, trait_name: "oblivion", delta: -0.2),
+            Stir(who: Protagonist, mood: "awe", delta: 0.4),
+            Stir(who: Bystander, mood: "longing", delta: 0.3),
+        ],
+    ),
+    (
+        id: "the_homecoming_to_the_pleroma", // Grace Fall — THE apex: arrival in the fullness
+        register: Grace,
+        tags: ["grace", "myth", "gnosis", "ascent"],
+        phases: [Fall],
+        tension: -2.0,
+        stakes: 0.8,
+        weight: 0.7,
+        cast: [Protagonist, Mentor],
+        // Beyond `the_soul_ascends_past_the_seven` (the act of rising): this is the *arrival* —
+        // the soul reunited with the home it fell from, the longing answered. The true
+        // terminal of a full waking arc. Low stakes keep it below the floor in a sleeping world.
+        pre: [
+            Exists(who: Mentor),
+            TraitAtLeast(who: Protagonist, trait_name: "gnosis", v: 0.4),
+        ],
+        effects: [
+            Stir(who: Protagonist, mood: "elation", delta: 0.5),
+            Stir(who: Protagonist, mood: "awe", delta: 0.4),
+            Stir(who: Protagonist, mood: "love", delta: 0.3),
+            Stir(who: Protagonist, mood: "longing", delta: -0.5),
+            Sway(who: Protagonist, trait_name: "gnosis", delta: 0.2),
+            Sway(who: Protagonist, trait_name: "oblivion", delta: -0.3),
+            Voice(who: Protagonist, intent: "a_contented_blessing"),
+        ],
+    ),
+    (
+        id: "the_teacher_outdone_and_glad", // Grace Fall — a mentor rejoices to be surpassed (Exalt)
+        register: Grace,
+        tags: ["grace", "relief", "personal"],
+        phases: [Fall],
+        tension: -1.5,
+        stakes: 0.8,
+        cast: [Protagonist, Mentor],
+        // The bright twin of `the_archons_arm_falls`: a mentor who is *truly* good lifts the
+        // student above themselves and is glad of it — love without a knife in it.
+        pre: [
+            Exists(who: Mentor),
+            TraitAtLeast(who: Mentor, trait_name: "compassion", v: 0.3),
+        ],
+        effects: [
+            Exalt(who: Protagonist),
+            Turn(who: Mentor, toward: Protagonist, delta: 0.6),
+            Stir(who: Mentor, mood: "joy", delta: 0.4),
+            Stir(who: Protagonist, mood: "gratitude", delta: 0.3),
+            Stir(who: Protagonist, mood: "hope", delta: 0.3),
+        ],
+    ),
+    (
+        id: "the_wound_mended", // Grace Fall — a struck body healed (Relieve; bright twin of Afflict)
+        register: Grace,
+        tags: ["grace", "relief", "personal"],
+        phases: [Fall],
+        tension: -1.3,
+        stakes: 0.7,
+        cast: [Protagonist, Ally],
+        pre: [Exists(who: Ally)],
+        effects: [
+            Relieve(who: Ally, need: Sustenance, amount: 55),
+            Stir(who: Ally, mood: "hope", delta: 0.3),
+            Stir(who: Protagonist, mood: "calm", delta: 0.2),
+            Sway(who: Protagonist, trait_name: "compassion", delta: 0.1),
+        ],
+    ),
+    (
+        id: "the_larder_opened", // Grace Setup — charity freely given (Relieve; bright twin of famine)
+        register: Grace,
+        tags: ["grace", "relief", "survival"],
+        phases: [Setup, Fall],
+        tension: -1.0,
+        stakes: 0.6,
+        cast: [Protagonist, Bystander],
+        // A soul opens its stores to the hungry, asking nothing — compassion enacted in bread.
+        pre: [Exists(who: Bystander)],
+        effects: [
+            Relieve(who: Bystander, need: Sustenance, amount: 40),
+            Stir(who: Bystander, mood: "gratitude", delta: 0.4),
+            Turn(who: Bystander, toward: Protagonist, delta: 0.4),
+            Sway(who: Protagonist, trait_name: "compassion", delta: 0.1),
+        ],
+    ),
+
+    // --- Mid-spectrum texture + levity (low stakes; the quotidian weather) ---
+    (
+        id: "a_debt_forgiven", // Grace Fall — a small mercy, quietly given
+        register: Grace,
+        tags: ["grace", "relief", "personal"],
+        phases: [Fall],
+        tension: -0.8,
+        stakes: 0.4,
+        cast: [Protagonist, Bystander],
+        pre: [Exists(who: Bystander)],
+        effects: [
+            Turn(who: Bystander, toward: Protagonist, delta: 0.4),
+            Stir(who: Bystander, mood: "gratitude", delta: 0.4),
+            Stir(who: Protagonist, mood: "calm", delta: 0.2),
+        ],
+    ),
+    (
+        id: "the_quarrel_patched", // Relief Fall — an everyday reconciliation between rivals
+        register: Relief,
+        tags: ["relief", "personal"],
+        phases: [Fall],
+        tension: -1.0,
+        stakes: 0.5,
+        cast: [Protagonist, Rival],
+        pre: [Exists(who: Rival)],
+        effects: [
+            Turn(who: Rival, toward: Protagonist, delta: 0.5),
+            Turn(who: Protagonist, toward: Rival, delta: 0.4),
+            Stir(who: Rival, mood: "calm", delta: 0.3),
+            Stir(who: Protagonist, mood: "calm", delta: 0.2),
+        ],
+    ),
+    (
+        id: "a_shared_table", // Relief Setup — friendship over bread (Relieve)
+        register: Relief,
+        tags: ["relief", "personal", "survival"],
+        phases: [Setup],
+        tension: -0.6,
+        stakes: 0.4,
+        cast: [Protagonist, Bystander],
+        pre: [Exists(who: Bystander)],
+        effects: [
+            Relieve(who: Bystander, need: Sustenance, amount: 20),
+            Stir(who: Protagonist, mood: "gratitude", delta: 0.3),
+            Stir(who: Protagonist, mood: "joy", delta: 0.2),
+            Turn(who: Bystander, toward: Protagonist, delta: 0.4),
+        ],
+    ),
+    (
+        id: "the_festival_that_was_real", // Relief Setup — a genuine joy (twin of the false light)
+        register: Relief,
+        tags: ["relief", "personal"],
+        phases: [Setup],
+        tension: -0.7,
+        stakes: 0.5,
+        cast: [Protagonist, Bystander],
+        // The bright twin of `the_festival_of_false_light`: a celebration with no jailer's
+        // hand in it — warmth that is simply warmth.
+        pre: [Exists(who: Bystander)],
+        effects: [
+            Stir(who: Protagonist, mood: "joy", delta: 0.3),
+            Stir(who: Bystander, mood: "joy", delta: 0.3),
+            Turn(who: Bystander, toward: Protagonist, delta: 0.3),
+        ],
+    ),
+    (
+        id: "a_jest_among_friends", // Relief Setup — levity; a shared laugh in the grey
+        register: Relief,
+        tags: ["relief", "personal"],
+        phases: [Setup],
+        tension: -0.5,
+        stakes: 0.3,
+        weight: 0.8,
+        cast: [Protagonist, Bystander],
+        // The library runs uniformly grave; a little real lightness widens the range and
+        // makes the dark land harder by contrast.
+        pre: [Exists(who: Bystander)],
+        effects: [
+            Stir(who: Protagonist, mood: "joy", delta: 0.3),
+            Stir(who: Bystander, mood: "joy", delta: 0.2),
+            Turn(who: Bystander, toward: Protagonist, delta: 0.3),
+        ],
+    ),
 ]
