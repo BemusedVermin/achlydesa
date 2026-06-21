@@ -48,6 +48,7 @@
 //! [`SplitMix64`] stream).
 
 use crate::beats::{Beat, BeatBook, Casting, Effect, Phase, Pre, Register, Role, SLOTS};
+use crate::chronicle::EpisodeKind;
 use crate::data::Registry;
 use crate::dialogue::Dialogue;
 use crate::factions::{Allegiance, Detained, Factions, Law, Opinion};
@@ -70,6 +71,7 @@ use std::collections::{HashMap, HashSet};
 pub(crate) struct Sinks<'w> {
     dialogue: Option<ResMut<'w, Dialogue>>,
     gossip: Option<ResMut<'w, crate::gossip::Gossip>>,
+    chronicle: Option<ResMut<'w, crate::chronicle::Chronicle>>,
 }
 
 /// The NPC the director stages its drama for — the audience of one. `Γ`'s threads weave
@@ -1052,6 +1054,9 @@ pub(crate) fn director_step(
                 {
                     commands.entity(w).insert(Grievance(a));
                     suffering += 2.0;
+                    if let Some(c) = sinks.chronicle.as_deref_mut() {
+                        c.record(tick, EpisodeKind::GrievanceFormed, [Some(w), Some(a), None], proto_pos, None, 0);
+                    }
                 }
             }
             Effect::Sway { who, trait_name, delta } => {
@@ -1089,10 +1094,25 @@ pub(crate) fn director_step(
                 {
                     let e = op.0.entry(tw).or_insert(0.0);
                     *e = (*e + delta).clamp(-1.0, 1.0);
+                    let crossed = *e;
                     if *delta < 0.0 {
                         suffering += -delta * 3.0;
                     } else {
                         brightness += delta * 0.5;
+                    }
+                    if let Some(c) = sinks.chronicle.as_deref_mut() {
+                        // Record a meaningful swing: the edge ending cold (a foe made) or warm (an
+                        // ally made). detail = -1 cold / +1 warm; a middling shift is left unrecorded.
+                        let dir = if crossed < cfg.foe_threshold {
+                            -1
+                        } else if crossed > cfg.ally_threshold {
+                            1
+                        } else {
+                            0
+                        };
+                        if dir != 0 {
+                            c.record(tick, EpisodeKind::OpinionCrossed, [Some(w), Some(tw), None], proto_pos, None, dir);
+                        }
                     }
                 }
             }
@@ -1199,12 +1219,12 @@ pub(crate) fn director_step(
                     brightness += (a / 100.0).clamp(0.0, 0.5);
                 }
             }
-            Effect::Slay { who, .. } => {
+            Effect::Slay { who, by } => {
                 // Interim: a mortal wound drains the body past saving; `people_metabolism`
                 // finishes it next tick (a plausible in-world death preserving the deniability
                 // rule; true Slay routes through combat later). The death is charged to the
-                // director by its wake; the slayer (`by`) is recorded as a `Killed` episode
-                // once the Chronicle is wired (Phase 3).
+                // director by its wake; the killing is recorded as an attributed `Killed`
+                // episode here (slayer `by`), so the sifter can see a consummated grudge.
                 if let Some(w) = role_entity(*who)
                     && let Ok((.., mut needs, _)) = people.get_mut(w)
                 {
@@ -1213,6 +1233,9 @@ pub(crate) fn director_step(
                         needs.sustenance = needs.sustenance.max(PROTAGONIST_FLOOR);
                     }
                     suffering += 5.0;
+                    if let Some(c) = sinks.chronicle.as_deref_mut() {
+                        c.record(tick, EpisodeKind::Killed, [role_entity(*by), Some(w), None], proto_pos, None, 0);
+                    }
                 }
             }
             Effect::Exalt { who } => {
@@ -1401,6 +1424,9 @@ pub(crate) fn director_step(
     // Record it as gossip material — a short append-only ring; perturbs no decision. Reuses the
     // `event_id`/`gossip_other` computed for the rumour seed above, so the log and the rumour agree.
     director.events.push(BeatEvent { id: event_id, tick, register: beat.register, place: proto_pos, lead: proto, other: gossip_other });
+    if let Some(c) = sinks.chronicle.as_deref_mut() {
+        c.record(tick, EpisodeKind::BeatFired, [Some(proto), gossip_other, None], proto_pos, Some(beat.register), 0);
+    }
     const EVENT_CAP: usize = 16;
     if director.events.len() > EVENT_CAP {
         let drop = director.events.len() - EVENT_CAP;
