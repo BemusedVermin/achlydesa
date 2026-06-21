@@ -80,28 +80,172 @@ pub enum Register {
     Grace,
 }
 
+/// How a thread pins its counterpart (the figure it grooms then reverses), by register —
+/// the director's casting policy, lifted out of `pick_other` into the register table below.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Casting {
+    /// The warmest soul (a beloved) — the default; a bond to build then break.
+    Warmest,
+    /// The coldest (a foe already turned away) — vengeance, persecution.
+    Coldest,
+    /// The most ambitious (a would-be usurper) — ambition, war.
+    Ambitious,
+    /// The most pious (a believer/elder) — wonder, reunion.
+    Pious,
+}
+
+/// **All per-register metadata in one place** (see [`Register::def`]): brightness, the trunk
+/// flag, whether closing such a thread seeds vengeance, the casting policy, and the
+/// player-facing epithet/situation text (lead vs. the pinned other). Everything that used to
+/// match on `Register` in scattered helpers now reads one row here.
+#[derive(Clone, Copy, Debug)]
+pub struct RegisterDef {
+    pub bright: bool,
+    pub trunk: bool,
+    pub seeds_vengeance: bool,
+    pub casting: Casting,
+    pub epithet_lead: &'static str,
+    pub epithet_other: &'static str,
+    pub situation_lead: &'static str,
+    pub situation_other: &'static str,
+}
+
+impl RegisterDef {
+    /// The earned epithet for the lead (`is_lead`) or the pinned other.
+    pub fn epithet(&self, is_lead: bool) -> &'static str {
+        if is_lead { self.epithet_lead } else { self.epithet_other }
+    }
+    /// The one-line situational opener for the lead or the pinned other.
+    pub fn situation(&self, is_lead: bool) -> &'static str {
+        if is_lead { self.situation_lead } else { self.situation_other }
+    }
+}
+
+impl Register {
+    /// The single source of truth for a register's properties (see [`RegisterDef`]). The match
+    /// has no wildcard, so adding a `Register` variant forces a row here — a register can never
+    /// be half-wired. (Spine eligibility + order stays the explicit `director::SPINES` list, for
+    /// determinism.) Registers without tuned narration fall back to the generic "Storied"/"heavy"
+    /// text (preserving the prior `_ =>` behaviour); surface text only, never read by the tick.
+    pub fn def(self) -> RegisterDef {
+        use Register::*;
+        let storied = RegisterDef {
+            bright: false,
+            trunk: false,
+            seeds_vengeance: false,
+            casting: Casting::Warmest,
+            epithet_lead: "the Storied",
+            epithet_other: "the Storied",
+            situation_lead: "a story heavy on its shoulders.",
+            situation_other: "a story heavy on its shoulders.",
+        };
+        match self {
+            Betrayal => RegisterDef {
+                trunk: true,
+                seeds_vengeance: true,
+                epithet_lead: "the Betrayed",
+                epithet_other: "the Faithless",
+                situation_lead: "still raw from a trusted friend's turning.",
+                situation_other: "something unconfessed moving behind its eyes.",
+                ..storied
+            },
+            Vengeance => RegisterDef {
+                trunk: true,
+                casting: Casting::Coldest,
+                epithet_lead: "the Avenger",
+                epithet_other: "the Hunted",
+                situation_lead: "cold with a purpose it means to see through.",
+                situation_other: "watchful, as one who knows it is hunted.",
+                ..storied
+            },
+            Ambition => RegisterDef {
+                casting: Casting::Ambitious,
+                epithet_lead: "the Ambitious",
+                epithet_other: "the Rival",
+                situation_lead: "hungry for a seat it does not yet hold.",
+                situation_other: "wary of a rival climbing past it.",
+                ..storied
+            },
+            Persecution => RegisterDef {
+                seeds_vengeance: true,
+                casting: Casting::Coldest,
+                epithet_lead: "the Hunted",
+                epithet_other: "the Persecutor",
+                situation_lead: "flinching, as the cornered do.",
+                situation_other: "certain of its right to hound the weak.",
+                ..storied
+            },
+            War => RegisterDef {
+                casting: Casting::Ambitious,
+                epithet_lead: "the Warlord",
+                epithet_other: "the Enemy",
+                situation_lead: "hardened by a war it cannot lay down.",
+                situation_other: "an enemy's shadow never far from its mind.",
+                ..storied
+            },
+            Disaster => RegisterDef {
+                epithet_lead: "the Stricken",
+                epithet_other: "the Bereaved",
+                situation_lead: "hollowed by a ruin that fell on its house.",
+                situation_other: "grieving a loss the famine took.",
+                ..storied
+            },
+            Loss => RegisterDef { seeds_vengeance: true, ..storied },
+            Romance => RegisterDef {
+                bright: true,
+                seeds_vengeance: true,
+                epithet_lead: "the Beloved",
+                epithet_other: "the Lover",
+                situation_lead: "lit, for once, by something like joy.",
+                situation_other: "tender toward one it should not love.",
+                ..storied
+            },
+            Triumph => RegisterDef {
+                bright: true,
+                epithet_lead: "the Triumphant",
+                epithet_other: "the Eclipsed",
+                situation_lead: "borne up by a triumph still warm.",
+                situation_other: "smarting, eclipsed by another's rise.",
+                ..storied
+            },
+            Wonder => RegisterDef {
+                bright: true,
+                casting: Casting::Pious,
+                epithet_lead: "the Seeker",
+                epithet_other: "the Awed",
+                situation_lead: "haunted by a marvel it half-understands.",
+                situation_other: "awed by something it cannot name.",
+                ..storied
+            },
+            Reunion => RegisterDef { bright: true, casting: Casting::Pious, ..storied },
+            Sacrifice => RegisterDef { seeds_vengeance: true, ..storied },
+            Redemption => RegisterDef { bright: true, ..storied },
+            Relief => RegisterDef { bright: true, ..storied },
+            Grace => RegisterDef {
+                bright: true,
+                epithet_lead: "the Redeemed",
+                epithet_other: "the Merciful",
+                situation_lead: "lifted by a grace it did not earn.",
+                situation_other: "moved to a mercy it did not owe.",
+                ..storied
+            },
+        }
+    }
+}
+
 impl Register {
     /// The **trunk** registers — the betrayal→vengeance spine the whole game turns on.
     /// Threads on these carry a standing drama bonus, so betrayal *dominates emergently*
     /// (decision #17), never by a hard rule.
     pub fn is_trunk(self) -> bool {
-        matches!(self, Register::Betrayal | Register::Vengeance)
+        self.def().trunk
     }
 
     /// Whether this register stages a **brighter** experience (love, triumph, awe). The
     /// director grooms these on purpose so the fall has something to break; they still
     /// count as *staged* experience, but weigh far below suffering (decision #8).
     pub fn is_bright(self) -> bool {
-        matches!(
-            self,
-            Register::Romance
-                | Register::Triumph
-                | Register::Wonder
-                | Register::Reunion
-                | Register::Redemption
-                | Register::Relief
-                | Register::Grace
-        )
+        self.def().bright
     }
 }
 
@@ -164,6 +308,13 @@ impl Pre {
 /// What a beat *does* when it fires — the director's lever vocabulary, now reaching
 /// people and factions, not just the land. Each is a manipulation the world's own
 /// systems then carry forward.
+///
+/// Adding a lever is a small, fixed recipe (levers are a curated vocabulary; beats are the
+/// open, data-driven content - a new beat is pure RON, no code). A new `Effect`: add the
+/// variant here, an arm in [`Beat::roles`] (the roles it casts), and an enactment arm in
+/// `director::director_step`. A new [`Pre`]: the variant, an arm in [`Pre::who`] and in
+/// `director::pre_ok`. A new [`Register`]: the variant + one row in [`Register::def`], plus a
+/// `director::SPINES` entry if it is a spine.
 #[derive(Deserialize, Clone, Debug)]
 pub enum Effect {
     /// Set `who` to bear a grudge against `against` — Polti's *Crime Pursued by
