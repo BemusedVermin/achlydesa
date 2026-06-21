@@ -20,6 +20,7 @@
 //! continuous. Production scales a recipe's whole-unit output by skill and the
 //! natural-resource level, then rounds.
 
+use crate::chronicle::EpisodeKind;
 use crate::data::{GoodId, PredicateId, ROLE_COUNT, Registry, ResourceKind, fact_slot};
 use crate::events::{AgentEvent, EventQueue};
 use crate::factions::{Allegiance, Detained, Factions, Law, Opinion};
@@ -607,7 +608,11 @@ pub(crate) fn people_execute(
     mut world_affordances: ResMut<WorldAffordances>,
     mut throne: Option<ResMut<Throne>>,
     mut events: ResMut<EventQueue>,
+    // The Chronicle (present only when the sift layer is woken) hears the emergent deeds done here —
+    // a killing, a crowning, a deposing, a transgression, an inherited grudge. Off => `None` => no-op.
+    mut chronicle: Option<ResMut<crate::chronicle::Chronicle>>,
 ) {
+    let tick = substrate.0.tick();
     // Market index (as referenced by `Step::Buy/Sell`) -> entity and tile. Same
     // query filter and order as `people_plan`'s snapshot, so the indices align.
     let market_entities: Vec<(Entity, Coord)> = markets.iter().map(|(e, p, _)| (e, p.0)).collect();
@@ -738,9 +743,15 @@ pub(crate) fn people_execute(
                         && prev != entity
                     {
                         events.0.push((prev, AgentEvent::Deposed));
+                        if let Some(c) = chronicle.as_deref_mut() {
+                            c.record(tick, EpisodeKind::Deposed, [Some(prev), Some(entity), None], pos.0, None, 0);
+                        }
                     }
                     t.holder = Some(entity);
                     events.0.push((entity, AgentEvent::Crowned));
+                    if let Some(c) = chronicle.as_deref_mut() {
+                        c.record(tick, EpisodeKind::Crowned, [Some(entity), None, None], pos.0, None, 0);
+                    }
                     true
                 } else if let Some(foe) = grievance.map(|g| g.0)
                     && people_pos.get(&foe) == Some(&pos.0)
@@ -750,11 +761,19 @@ pub(crate) fn people_execute(
                     {
                         t.holder = None;
                     }
+                    // The apex narratable deed — recorded with its true cast (slayer, victim)
+                    // before the body leaves the world.
+                    if let Some(c) = chronicle.as_deref_mut() {
+                        c.record(tick, EpisodeKind::Killed, [Some(entity), Some(foe), None], pos.0, None, 0);
+                    }
                     commands.entity(foe).despawn();
                     // A killing done in the teeth of a taboo is a transgression — it
                     // marks the killer (appraised into a lasting change of character).
                     if plan_c.illicit {
                         events.0.push((entity, AgentEvent::Transgressed));
+                        if let Some(c) = chronicle.as_deref_mut() {
+                            c.record(tick, EpisodeKind::Transgressed, [Some(entity), None, None], pos.0, None, 0);
+                        }
                     }
                     // The slain lord's vassals inherit his quarrel: each takes up a
                     // grudge against the killer, to be driven home by a duty to avenge.
@@ -762,6 +781,9 @@ pub(crate) fn people_execute(
                         for &v in vassals {
                             if v != entity {
                                 commands.entity(v).insert(Grievance(entity));
+                                if let Some(c) = chronicle.as_deref_mut() {
+                                    c.record(tick, EpisodeKind::GrievanceFormed, [Some(v), Some(entity), None], pos.0, None, 0);
+                                }
                             }
                         }
                     }
@@ -861,13 +883,20 @@ pub(crate) fn mood_decay(mut people: Query<&mut Mood, With<Npc>>, reg: Res<Regis
 /// throne if the one who starved was holding it).
 pub fn people_metabolism(
     mut commands: Commands,
+    // `&Position` is read-only and present on every NPC, so adding it changes neither which entities
+    // match nor the iteration order — the run stays byte-identical; it only gives a starvation a place.
     // A distant (LOD) NPC is `Dormant` on its idle ticks and skipped here, so it only drains on the
     // coarse-clock ticks it actually runs — it ages slower, but never starves while you're away.
-    mut npcs: Query<(Entity, &mut Needs), (With<Npc>, Without<crate::Dormant>)>,
+    mut npcs: Query<(Entity, &mut Needs, &Position), (With<Npc>, Without<crate::Dormant>)>,
     cfg: Res<NeedsRes>,
     mut throne: Option<ResMut<Throne>>,
+    // The tick (for stamping a death) and the off-by-default Chronicle that records it. `Res<Substrate>`
+    // is read-only here; `None` chronicle => the tap is a no-op and the world is unchanged.
+    substrate: Res<Substrate>,
+    mut chronicle: Option<ResMut<crate::chronicle::Chronicle>>,
 ) {
-    for (entity, mut needs) in &mut npcs {
+    let tick = substrate.0.tick();
+    for (entity, mut needs, pos) in &mut npcs {
         needs.sustenance -= cfg.hunger_rate;
         needs.rest -= cfg.fatigue_rate;
         if needs.sustenance <= 0.0 {
@@ -875,6 +904,10 @@ pub fn people_metabolism(
                 && t.holder == Some(entity)
             {
                 t.holder = None;
+            }
+            // An unattributed death (starvation) — `parties[0]` the dead, before despawn.
+            if let Some(c) = chronicle.as_deref_mut() {
+                c.record(tick, EpisodeKind::Death, [Some(entity), None, None], pos.0, None, 0);
             }
             commands.entity(entity).despawn();
         }

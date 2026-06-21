@@ -12,6 +12,7 @@
 //! and the pull of a near court). Deterministic — no RNG. The only economy effect is
 //! tribute flowing member→leader (conserved); war and enforcement remove people.
 
+use crate::chronicle::EpisodeKind;
 use crate::data::{PredicateId, Registry};
 use crate::features::{Category, FeatureCatalog, Features};
 use crate::people::{Grievance, Inventory, Npc, Personality};
@@ -274,12 +275,18 @@ pub(crate) fn faction_turn(
         ),
         With<Npc>,
     >,
+    // Off-by-default Chronicle: hears the bloc-scale deeds — a war declared, a champion's new grudge,
+    // a casualty of war or the headsman. `None` (layer off) => every tap below is a no-op.
+    mut chronicle: Option<ResMut<crate::chronicle::Chronicle>>,
 ) {
     if config.period == 0 || !substrate.0.tick().is_multiple_of(config.period) {
         return;
     }
+    let tick = substrate.0.tick();
     let topo = substrate.0.topology();
     let (Some(catalog), Some(features)) = (catalog, features) else { return };
+    // Where everyone stands, so a war-death / execution / inherited grudge gets a place. Read-only.
+    let pos_of: std::collections::HashMap<Entity, Coord> = npcs.iter().map(|q| (q.0, q.1.0)).collect();
 
     // Court seats and what each court kind implies.
     let mut seats: Vec<Coord> = Vec::new();
@@ -434,6 +441,13 @@ pub(crate) fn faction_turn(
             if !(rivals || built[a].at_war.contains(&sb)) {
                 continue;
             }
+            // The tick this rivalry becomes a war (a's roll doesn't yet list b's seat) — recorded
+            // once for the pair, cast as the two seats' heads, placed at a's seat.
+            if !built[a].at_war.contains(&sb)
+                && let Some(c) = chronicle.as_deref_mut()
+            {
+                c.record(tick, EpisodeKind::WarDeclared, [built[a].head(), built[b].head(), None], sa, None, 0);
+            }
             for (x, y) in [(a, b), (b, a)] {
                 let yseat = built[y].seat;
                 if !built[x].at_war.contains(&yseat) {
@@ -540,11 +554,22 @@ pub(crate) fn faction_turn(
     }
     for (champ, enemy) in champions {
         commands.entity(champ).insert(Grievance(enemy));
+        if let Some(c) = chronicle.as_deref_mut()
+            && let Some(&at) = pos_of.get(&champ)
+        {
+            c.record(tick, EpisodeKind::GrievanceFormed, [Some(champ), Some(enemy), None], at, None, 0);
+        }
     }
     for e in detain {
         commands.entity(e).insert(Detained { ticks: config.detain_ticks });
     }
     for e in casualties.into_iter().chain(executed) {
+        // A death by war or the headsman — `parties[0]` the dead, placed where they stood.
+        if let Some(c) = chronicle.as_deref_mut()
+            && let Some(&at) = pos_of.get(&e)
+        {
+            c.record(tick, EpisodeKind::Death, [Some(e), None, None], at, None, 0);
+        }
         commands.entity(e).despawn();
     }
     factions.0 = built;
