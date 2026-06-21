@@ -14,10 +14,14 @@
 //! feature affordances are being worked.
 
 use crate::Substrate;
+use crate::beats::Register;
+use crate::chronicle::{Chronicle, Episode};
 use crate::data::Registry;
 use crate::features::Features;
 use crate::people::{EconRes, Inventory, Market, Npc, Skills, WorldAffordances, price};
+use crate::sift::{self, SiftStatus};
 use bevy_ecs::prelude::*;
+use std::collections::BTreeMap;
 
 /// A read-only macro snapshot of the simulation at one tick.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -152,6 +156,97 @@ pub enum Violation {
     AffordanceUsesFell { prev: u64, now: u64 },
     /// A market priced a good outside its authored `[floor, ceil]` band.
     PriceOutOfBand { count: usize },
+}
+
+// --- The narrative eval harness (docs/narrative_sifter.md S7) ---
+//
+// The field evaluates emergent-narrative systems by their *retellings*, not by moment-to-moment
+// text (Kreminski et al., FDG 2019). These read-outs are **dev-only** — never shown to the player
+// (a visible interest score converts Narrative into Submission and kills the apex aesthetic). They
+// read the [`Sift`](crate::sift::Sift) layer and change no sim state.
+
+/// One story the sifter perceived, assembled for *reading*: its tension label, the spine it leans
+/// to, how far it formed, the cast, and the very [`Episode`]s that constitute it. A human seeing
+/// only this should be able to say "that's a story" — if not, the interest heuristic is wrong (fix
+/// the weights, not the prose).
+#[derive(Clone, Debug)]
+pub struct RetoldThread {
+    pub tension: String,
+    pub register: Register,
+    pub status: SiftStatus,
+    pub cast: Vec<Entity>,
+    pub support: Vec<Episode>,
+    pub interest: f32,
+}
+
+/// The ranked stories a run produced — the retelling dump. Print it and *read* it.
+#[derive(Clone, Debug, Default)]
+pub struct Retelling {
+    pub threads: Vec<RetoldThread>,
+}
+
+impl Retelling {
+    /// Run the retrospective sifter over the world's Chronicle and assemble the ranked threads with
+    /// interest ≥ `min_interest`. Empty (not an error) when the sift layer is off. Dev/eval only —
+    /// it reads the world and perturbs nothing.
+    pub fn dump(world: &mut World, min_interest: f32) -> Retelling {
+        let Some(sift) = sift::run_retrospective(world) else { return Retelling::default() };
+        let ring: Vec<Episode> =
+            world.get_resource::<Chronicle>().map(|c| c.recent().copied().collect()).unwrap_or_default();
+        let by_id: BTreeMap<u64, Episode> = ring.iter().map(|e| (e.id, *e)).collect();
+        let threads = sift
+            .ranked(min_interest)
+            .into_iter()
+            .map(|c| RetoldThread {
+                tension: c.tension.clone(),
+                register: c.register,
+                status: c.status,
+                cast: c.cast.to_vec(),
+                support: c.support.iter().filter_map(|id| by_id.get(id).copied()).collect(),
+                interest: c.interest,
+            })
+            .collect();
+        Retelling { threads }
+    }
+
+    /// How many stories of each tension were surfaced — the expressive-range read-out (run across
+    /// many seeds to flag **monotony** (the same story every time) and **incoherence** (none fire)).
+    pub fn tension_histogram(&self) -> BTreeMap<String, usize> {
+        let mut h = BTreeMap::new();
+        for t in &self.threads {
+            *h.entry(t.tension.clone()).or_insert(0) += 1;
+        }
+        h
+    }
+
+    /// A readable, ASCII-only transcript of the run's stories — what you actually *read* to judge
+    /// whether the patterns and weights are any good.
+    pub fn render(&self) -> String {
+        use std::fmt::Write;
+        let mut s = String::new();
+        if self.threads.is_empty() {
+            return "(no stories surfaced)\n".to_string();
+        }
+        for (i, t) in self.threads.iter().enumerate() {
+            let cast: Vec<String> = t.cast.iter().map(|e| format!("#{}", e.index())).collect();
+            let _ = writeln!(
+                s,
+                "{}. [{:?}] {} ({:?}) interest={:.2} cast=[{}]",
+                i + 1,
+                t.register,
+                t.tension,
+                t.status,
+                t.interest,
+                cast.join(", "),
+            );
+            for ep in &t.support {
+                let who: Vec<String> =
+                    ep.parties.iter().flatten().map(|e| format!("#{}", e.index())).collect();
+                let _ = writeln!(s, "     t{:<5} {:?} [{}]", ep.tick, ep.kind, who.join(", "));
+            }
+        }
+        s
+    }
 }
 
 /// Check the laws that must hold between two consecutive censuses (and within the

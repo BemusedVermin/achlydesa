@@ -352,7 +352,7 @@ struct Cand {
 
 /// Resolved mood ids the objective reads, looked up once.
 #[derive(Clone, Copy)]
-struct MoodIds {
+pub(crate) struct MoodIds {
     joy: Option<usize>,
     hope: Option<usize>,
     love: Option<usize>,
@@ -377,7 +377,7 @@ struct MoodIds {
 }
 
 impl MoodIds {
-    fn resolve(reg: &Registry) -> Self {
+    pub(crate) fn resolve(reg: &Registry) -> Self {
         Self {
             joy: reg.mood_id("joy"),
             hope: reg.mood_id("hope"),
@@ -397,12 +397,12 @@ impl MoodIds {
     /// How *up* the protagonist currently feels — the height a dark beat reverses. Counts
     /// the manufactured highs `rapture` and `elation` (the bliss/soaring the cult stages, the
     /// ones it most loves to break).
-    fn high(&self, m: &[f32]) -> f32 {
+    pub(crate) fn high(&self, m: &[f32]) -> f32 {
         let g = |i: Option<usize>| i.and_then(|i| m.get(i)).copied().unwrap_or(0.0);
         g(self.joy) + g(self.hope) + g(self.love) + g(self.awe) + g(self.rapture) + g(self.elation) + 0.5 * g(self.calm)
     }
     /// How *down* the protagonist currently feels — the depth a relief beat reverses.
-    fn low(&self, m: &[f32]) -> f32 {
+    pub(crate) fn low(&self, m: &[f32]) -> f32 {
         let g = |i: Option<usize>| i.and_then(|i| m.get(i)).copied().unwrap_or(0.0);
         g(self.anger) + g(self.sorrow) + g(self.fear) + g(self.despair) + g(self.dread) + g(self.foreboding)
     }
