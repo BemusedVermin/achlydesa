@@ -37,11 +37,13 @@ pub mod observe;
 pub mod people;
 pub mod plan;
 pub mod player;
+pub mod sift;
 
 pub use ai::{Consideration, Curve, Input};
 pub use data::{GoodDef, GoodId, MoodDef, MoodId, Recipe, Registry, ResourceKind, SkillId, TraitDef, TraitId};
 pub use beats::{Beat, BeatBook, Effect, Phase, Pre, Register, Role};
 pub use chronicle::{Chronicle, Episode, EpisodeKind};
+pub use sift::{Axis, InterestAxis, Sift, SiftBook, SiftPattern, SiftPatternId, SiftStatus, ThreadCandidate};
 pub use dialogue::{Dialogue, DialogueConfig, IntentBook, SlmRealizer, SpeechAct, TextGen, Utterance};
 pub use player::{Player, PlayerKnowledge, PlayerState, PlayerView, Rumor, SearchOutcome, Terrain, TileInfo};
 pub use game_sim::{Coord, Topology};
@@ -58,7 +60,7 @@ pub use goals::{Goal, Goals};
 // (a different concept — a place heard-of, not a beat overheard), so reach it via the module.
 pub use gossip::Gossip;
 pub use norms::{Modality, Norm, Norms};
-pub use observe::{Census, Violation, check};
+pub use observe::{Census, Retelling, RetoldThread, Violation, check};
 pub use people::{
     AffordanceSite, EconConfig, Grievance, Inventory, Known, Liege, Market, Mood, Needs, NeedsConfig, Npc, Patron,
     Personality, Plan, Skills, Throne, WorldAffordances, price,

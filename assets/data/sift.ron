@@ -1,0 +1,115 @@
+// The Story Sifter's pattern book (docs/narrative_sifter.md S3). Each pattern is an ordered window
+// of episode-kind predicates over the Chronicle ring that BINDS A CAST: the first time a variable
+// (e.g. "A") appears it binds to that party slot (Actor/Target/Third) of the episode; a later
+// mention REQUIRES the same soul (the "where" reuse). A match scores its interest by summing the
+// axes' curves (each shaped to 0..1) -- surprise (Rarity) + dissonance (the social-state axes).
+//
+// Status from how many steps matched: >= emerging_at -> Emerging, >= active_at -> Active (the
+// director-graft threshold), == window length -> Resolved (the arc already played out), a stalled
+// partial -> Abandoned. Add a story by adding a pattern here -- no engine code (the beats.ron idiom).
+//
+// Authoring is data only: kinds are EpisodeKind variants, registers are Register variants, curves
+// are ai::Curve variants (Power(exp:), Linear(m:, b:), Logistic(mid:, k:), Inverse, Constant()).
+[
+    // A feud the world is telling itself: a grudge forms, the opinion sours to cold, and it ends in
+    // blood. The canonical sifter target -- by step 2 it is Active (the director can amplify a feud
+    // that is genuinely forming); a third step that reaches a killing Resolves it (the most
+    // retellable thing the world can produce: vengeance paid).
+    (
+        id: "feud_escalating",
+        tension: "feud_escalating",
+        register: Vengeance,
+        window: [
+            (kind: GrievanceFormed, binds: [("A", Actor), ("B", Target)]),
+            (kind: OpinionCrossed,  binds: [("A", Actor), ("B", Target)], dir: Some(Cold)),
+            (kind: Killed,          binds: [("A", Actor), ("B", Target)]),
+        ],
+        interest: [
+            (axis: Rarity,           curve: Power(exp: 1.0)),
+            (axis: GrievancePressure, curve: Linear(m: 1.0, b: 0.0)),
+            (axis: OpinionReversal,  curve: Linear(m: 0.8, b: 0.0)),
+            (axis: Bloodshed,        curve: Linear(m: 1.0, b: 0.0)),
+        ],
+        emerging_at: 1,
+        active_at: 2,
+        window_ticks: 80,
+    ),
+    // Vengeance consummated: a standing grudge driven home to a killing. A short, apex-stakes arc --
+    // it mostly Resolves (the deed is done), and it is the most retellable beat in the ring.
+    (
+        id: "vengeance_consummated",
+        tension: "vengeance_consummated",
+        register: Vengeance,
+        window: [
+            (kind: GrievanceFormed, binds: [("A", Actor), ("B", Target)]),
+            (kind: Killed,          binds: [("A", Actor), ("B", Target)]),
+        ],
+        interest: [
+            (axis: Rarity,           curve: Power(exp: 1.0)),
+            (axis: GrievancePressure, curve: Linear(m: 1.0, b: 0.0)),
+            (axis: Bloodshed,        curve: Linear(m: 1.0, b: 0.0)),
+        ],
+        emerging_at: 1,
+        active_at: 2,
+        window_ticks: 120,
+    ),
+    // A tyrant rising: a soul takes the throne, breaks a taboo, then sheds blood. The persecution
+    // spine -- by the transgression it is Active (a hand the world is raising on its own), and the
+    // NormTension axis fires hard when a vengeful court lies under a no-kill taboo.
+    (
+        id: "tyrant_rising",
+        tension: "tyrant_rising",
+        register: Persecution,
+        window: [
+            (kind: Crowned,      binds: [("T", Actor)]),
+            (kind: Transgressed, binds: [("T", Actor)]),
+            (kind: Killed,       binds: [("T", Actor)]),
+        ],
+        interest: [
+            (axis: Rarity,      curve: Power(exp: 1.0)),
+            (axis: NormTension, curve: Linear(m: 1.0, b: 0.0)),
+            (axis: Bloodshed,   curve: Linear(m: 1.0, b: 0.0)),
+        ],
+        emerging_at: 1,
+        active_at: 2,
+        window_ticks: 100,
+    ),
+    // A war and its dead: a war is declared between two seats and the bodies follow. The deaths are
+    // unbound (any death in the window, by war or the headsman) -- the sifter reads the toll, not a
+    // single cast. Active once the first body falls.
+    (
+        id: "a_war_and_its_dead",
+        tension: "a_war_and_its_dead",
+        register: War,
+        window: [
+            (kind: WarDeclared, binds: [("A", Actor), ("B", Target)]),
+            (kind: Death),
+            (kind: Death),
+        ],
+        interest: [
+            (axis: Rarity,    curve: Power(exp: 1.0)),
+            (axis: Bloodshed, curve: Linear(m: 1.0, b: 0.0)),
+        ],
+        emerging_at: 1,
+        active_at: 2,
+        window_ticks: 60,
+    ),
+    // The heavenly counter-weight: a grudge that thaws. A soul that bore another ill warms toward
+    // them across the window -- a reconciliation the world reached on its own. Bright; the Grace
+    // spine. Its interest is mostly surprise (such turns are rare).
+    (
+        id: "a_grudge_forgiven",
+        tension: "a_grudge_forgiven",
+        register: Grace,
+        window: [
+            (kind: GrievanceFormed, binds: [("A", Actor), ("B", Target)]),
+            (kind: OpinionCrossed,  binds: [("A", Actor), ("B", Target)], dir: Some(Warm)),
+        ],
+        interest: [
+            (axis: Rarity, curve: Power(exp: 1.0)),
+        ],
+        emerging_at: 1,
+        active_at: 2,
+        window_ticks: 120,
+    ),
+]

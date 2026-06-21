@@ -81,6 +81,7 @@ pub enum Asset {
     Predicates,
     Recipes,
     RpgSkills,
+    Sift,
     Skills,
     Traits,
     Verbs,
@@ -89,7 +90,7 @@ pub enum Asset {
 impl Asset {
     /// Every asset, in declaration order — handy for "load them all" sweeps and
     /// for tests that assert the bundled set is complete.
-    pub const ALL: [Asset; 19] = [
+    pub const ALL: [Asset; 20] = [
         Asset::Appraisals,
         Asset::Attributes,
         Asset::Beats,
@@ -106,6 +107,7 @@ impl Asset {
         Asset::Predicates,
         Asset::Recipes,
         Asset::RpgSkills,
+        Asset::Sift,
         Asset::Skills,
         Asset::Traits,
         Asset::Verbs,
@@ -131,6 +133,7 @@ impl Asset {
             Asset::Predicates => "predicates.ron",
             Asset::Recipes => "recipes.ron",
             Asset::RpgSkills => "rpg_skills.ron",
+            Asset::Sift => "sift.ron",
             Asset::Skills => "skills.ron",
             Asset::Traits => "traits.ron",
             Asset::Verbs => "verbs.ron",
@@ -186,6 +189,7 @@ impl Bundled {
             Asset::Predicates => bundled!("predicates.ron"),
             Asset::Recipes => bundled!("recipes.ron"),
             Asset::RpgSkills => bundled!("rpg_skills.ron"),
+            Asset::Sift => bundled!("sift.ron"),
             Asset::Skills => bundled!("skills.ron"),
             Asset::Traits => bundled!("traits.ron"),
             Asset::Verbs => bundled!("verbs.ron"),

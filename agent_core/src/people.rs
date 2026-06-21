@@ -881,6 +881,7 @@ pub(crate) fn mood_decay(mut people: Query<&mut Mood, With<Npc>>, reg: Res<Regis
 
 /// Drain needs each step; remove anyone who runs out of sustenance (vacating the
 /// throne if the one who starved was holding it).
+#[allow(clippy::type_complexity)]
 pub fn people_metabolism(
     mut commands: Commands,
     // `&Position` is read-only and present on every NPC, so adding it changes neither which entities

@@ -609,6 +609,11 @@ impl Simulation {
         sift_cfg.enabled = setup.sift || sift_cfg.enabled;
         if sift_cfg.enabled {
             world.insert_resource(agent_core::chronicle::Chronicle::new(sift_cfg.ring_cap));
+            // The pattern book (authored RON) and the sifter's output/base-rate memory. The
+            // retrospective matcher + eval harness read these; the director graft (a later phase)
+            // will consult `Sift`. Inserting them only when woken keeps a sift-off world identical.
+            world.insert_resource(agent_core::SiftBook::bundled());
+            world.insert_resource(agent_core::Sift::default());
         }
 
         // Wake the dialogue layer, if asked. Like the director, its `enabled` is the OR of
@@ -765,6 +770,21 @@ impl Simulation {
     /// story sifter, the eval harness, and tests.
     pub fn chronicle_len(&self) -> usize {
         self.world.get_resource::<Chronicle>().map_or(0, Chronicle::len)
+    }
+
+    /// The ranked stories the run has produced — the dev/eval **retelling dump**
+    /// (`docs/narrative_sifter.md` S7). Runs the retrospective sifter over the Chronicle and
+    /// returns the threads with interest ≥ `min_interest`, highest first. Empty when the sift layer
+    /// is off. Reads the world and perturbs no sim state (never shown to the player). `&mut` only
+    /// because ECS queries build their state, as every accessor does.
+    pub fn retelling(&mut self, min_interest: f32) -> agent_core::Retelling {
+        agent_core::Retelling::dump(&mut self.world, min_interest)
+    }
+
+    /// How many story candidates the sifter currently perceives over the Chronicle (0 if the sift
+    /// layer is off) — for the eval harness and tests.
+    pub fn sift_candidate_count(&mut self) -> usize {
+        agent_core::sift::run_retrospective(&mut self.world).map_or(0, |s| s.candidates().len())
     }
 
     /// The story the director has told: `(tick, beat id)` in order — the beats it
@@ -2665,6 +2685,71 @@ mod tests {
             on.director_beats_fired(),
             off.director_beats_fired(),
             "the Chronicle is a pure observer: the sim runs identically with it on or off",
+        );
+    }
+
+    #[test]
+    fn the_sifter_retells_the_stories_a_run_produced() {
+        use agent_core::SiftStatus;
+        // A seeded run with the director stirring feuds: the sifter should perceive the forming
+        // stories bottom-up over the Chronicle, rank them by interest, and the dump should read as
+        // stories (a cast + the episodes that constitute them).
+        let build = |sift: bool| {
+            let mut s = Simulation::new(Setup {
+                seed: 42,
+                npcs: 60,
+                markets: 4,
+                feuds: 6,
+                director: true,
+                dialogue: true,
+                director_cfg: DirectorConfig { beat_interval: 7, ..Default::default() },
+                sift,
+                ..Default::default()
+            });
+            s.run(400);
+            s
+        };
+
+        let mut on = build(true);
+        assert!(on.chronicle_len() > 0, "the Chronicle recorded episodes");
+        assert!(on.sift_candidate_count() > 0, "the sifter perceived forming stories");
+
+        // The interest threshold surfaces the real stories above the single-episode noise.
+        let top = on.retelling(0.5);
+        assert!(!top.threads.is_empty(), "high-interest stories were surfaced");
+        // Ranked highest-interest first.
+        assert!(
+            top.threads.windows(2).all(|w| w[0].interest >= w[1].interest),
+            "the retelling is ranked by interest, descending",
+        );
+        // The leading thread reads as a story: a labelled tension, a bound cast, and the very
+        // episodes that make it up.
+        let lead = &top.threads[0];
+        assert!(!lead.tension.is_empty() && !lead.cast.is_empty() && !lead.support.is_empty());
+        assert!(lead.interest > 0.0);
+
+        // The matcher binds a cast ACROSS episodes (not just single-episode seeds): at least one
+        // multi-step arc formed (Active = forming, Resolved = the whole window played out).
+        let full = on.retelling(0.0);
+        assert!(
+            full.threads.iter().any(|t| matches!(t.status, SiftStatus::Active | SiftStatus::Resolved)),
+            "at least one multi-step story formed over the run",
+        );
+
+        // The sifter is a pure observer + deterministic: a sift-off run tells the same beats, and
+        // re-running the dump yields the same candidate count (reading it perturbs nothing).
+        let count_a = on.sift_candidate_count();
+        let count_b = on.sift_candidate_count();
+        assert_eq!(count_a, count_b, "the retrospective sifter is deterministic");
+
+        let mut off = build(false);
+        assert_eq!(off.chronicle_len(), 0, "no Chronicle when the sift layer is off");
+        assert_eq!(off.sift_candidate_count(), 0, "and so nothing to sift");
+        assert!(off.retelling(0.0).threads.is_empty(), "no stories without the layer");
+        assert_eq!(
+            on.director_beats_fired(),
+            off.director_beats_fired(),
+            "the whole sift layer is a pure observer: the director runs identically with it on or off",
         );
     }
 

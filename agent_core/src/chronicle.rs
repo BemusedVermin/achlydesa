@@ -21,7 +21,7 @@ use std::collections::VecDeque;
 /// the surface layer renders it. The violent core (`Killed`/`Death`) is first-class: a killing is
 /// the apex narratable event. (Combat is a planned subsystem; until then a `Slay` beat records
 /// `Killed` at enact while the body is finished by metabolism, and a starvation records `Death`.)
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Deserialize)]
 pub enum EpisodeKind {
     /// A soul slain by another — `parties[0]` the slayer, `parties[1]` the victim.
     Killed,
