@@ -129,6 +129,13 @@ pub struct Grievance(pub Entity);
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Liege(pub Entity);
 
+/// A durable, positive bond to a specific soul — the structural inverse of [`Grievance`]:
+/// the one this agent holds dear (a vow kept, oath-kin, a love). Set by a `Bond` beat and
+/// read by the `Bonded` precondition, so a love the director built can later be the thing it
+/// breaks. Directed and single-target like `Grievance`; a reciprocal tie is two components.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Bond(pub Entity);
+
 /// The throne: a single, *shared* world fact — who, if anyone, rules. Unlike a
 /// larder or purse this is one global thing many agents contend over, so seizing
 /// it changes the world for everyone (the coherence test for shared facts). When

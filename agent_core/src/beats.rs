@@ -289,6 +289,15 @@ pub enum Pre {
     /// disaster only bites where there are bellies to empty, so a provisioned world
     /// (deep larders, surplus) makes the survival register **uncastable**.
     VictimNearby { need_below: f32 },
+    /// `who` holds (or pointedly lacks) a durable [`Bond`](crate::people::Bond) — the positive
+    /// twin of `HasGrudge`. Gates beats that key off a love built earlier.
+    Bonded { who: Role, yes: bool },
+    /// `who` is held captive ([`Detained`](crate::factions::Detained)) — or pointedly free.
+    /// Gates "free the bound" beats. (Also true for souls a faction's enforcers have jailed.)
+    Bound { who: Role, yes: bool },
+    /// A discovered, unspoilt marvel lies within the protagonist's reach (or pointedly does
+    /// not) — gates [`Defile`](Effect::Defile): you can only ruin a wonder already found.
+    DiscoveredMarvelNearby { yes: bool },
 }
 
 impl Pre {
@@ -299,8 +308,14 @@ impl Pre {
             | Pre::TraitAtLeast { who, .. }
             | Pre::TraitAtMost { who, .. }
             | Pre::MoodAtLeast { who, .. }
-            | Pre::HasGrudge { who, .. } => Some(*who),
-            Pre::HoldsThrone { .. } | Pre::InFaction { .. } | Pre::AtWar { .. } | Pre::VictimNearby { .. } => None,
+            | Pre::HasGrudge { who, .. }
+            | Pre::Bonded { who, .. }
+            | Pre::Bound { who, .. } => Some(*who),
+            Pre::HoldsThrone { .. }
+            | Pre::InFaction { .. }
+            | Pre::AtWar { .. }
+            | Pre::VictimNearby { .. }
+            | Pre::DiscoveredMarvelNearby { .. } => None,
         }
     }
 }
@@ -363,6 +378,19 @@ pub enum Effect {
     /// narrative prominence + a soaring high; the true power-tier raise awaits the rpg
     /// ascendant tier.
     Exalt { who: Role },
+    /// Defile the nearest discovered, unspoilt marvel in the protagonist's reach — the dark
+    /// twin of [`Reveal`]: a wonder ruined (`features.defile_at_index`). Stirs despair/sorrow
+    /// in the cast. Gate it with [`Pre::DiscoveredMarvelNearby`].
+    Defile,
+    /// Forge a durable [`Bond`](crate::people::Bond) from `who` to `to` (a vow, oath-kin, a
+    /// love) — the bright setup the director can later reverse so the break *means* something.
+    Bond { who: Role, to: Role },
+    /// Bind `who` in captivity (the Archons' `bind`, `norms.ron`): reuses the faction-enforcer
+    /// [`Detained`](crate::factions::Detained) machinery — `who` cannot act until freed.
+    Bind { who: Role },
+    /// Free `who` from captivity (the defiant `free`, `norms.ron`) — strike off another's
+    /// chains. The signature heavenly/defiant deed.
+    Free { who: Role },
 }
 
 /// One dramatic situation, as data: a storylet the director can tell.
@@ -438,13 +466,19 @@ impl Beat {
                     push(*who);
                     push(*by);
                 }
+                Effect::Bond { who, to } => {
+                    push(*who);
+                    push(*to);
+                }
                 Effect::Sway { who, .. }
                 | Effect::Stir { who, .. }
                 | Effect::Afflict { who, .. }
                 | Effect::Voice { who, .. }
                 | Effect::Relieve { who, .. }
-                | Effect::Exalt { who, .. } => push(*who),
-                Effect::Decree | Effect::War | Effect::Disaster { .. } | Effect::Reveal => {}
+                | Effect::Exalt { who, .. }
+                | Effect::Bind { who, .. }
+                | Effect::Free { who, .. } => push(*who),
+                Effect::Decree | Effect::War | Effect::Disaster { .. } | Effect::Reveal | Effect::Defile => {}
             }
         }
         rs
