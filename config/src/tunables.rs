@@ -500,6 +500,28 @@ pub fn feature() -> FeatureConfig {
     loaded("feature.ron")
 }
 
+/// Knobs for the **narrative sifter** (and its Chronicle ring). Off by default, so a sift-free
+/// world is unchanged. Graft knobs (Phase 5) will join here later.
+#[derive(Clone, Debug, Serialize, serde::Deserialize)]
+#[serde(default)]
+pub struct SiftConfig {
+    /// Wake the sift layer — the Chronicle ring plus (later) the sifter and the eval harness.
+    pub enabled: bool,
+    /// Maximum episodes the Chronicle ring holds: the sifter's window onto recent history.
+    pub ring_cap: usize,
+}
+
+impl Default for SiftConfig {
+    fn default() -> Self {
+        Self { enabled: false, ring_cap: 4096 }
+    }
+}
+
+/// Sifter / Chronicle knobs, defaults with optional `assets/config/sift.ron`.
+pub fn sift() -> SiftConfig {
+    loaded("sift.ron")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
