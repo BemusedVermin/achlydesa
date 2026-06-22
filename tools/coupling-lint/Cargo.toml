@@ -1,0 +1,21 @@
+# The **coupling ratchet** — a source lint that flags the "domain instances baked into code"
+# anti-pattern this repo's `registers.ron` refactor paid down (an enum whose variants are content,
+# a per-variant `match self` metadata table, a parallel `const ALL` array, string-literal id
+# lookups). It parses the workspace with `syn` (stable, no nightly) and fails CI when coupling is
+# *added* past a checked-in baseline. Bevy-free, depends on no other crate, scans source from disk.
+[package]
+name = "coupling-lint"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "coupling-lint"
+path = "src/main.rs"
+
+[dependencies]
+syn = { version = "2", features = ["full", "visit", "extra-traits"] }
+walkdir = "2"

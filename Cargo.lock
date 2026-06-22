@@ -2319,6 +2319,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "coupling-lint"
+version = "0.1.0"
+dependencies = [
+ "syn",
+ "walkdir",
+]
+
+[[package]]
 name = "cpal"
 version = "0.15.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
