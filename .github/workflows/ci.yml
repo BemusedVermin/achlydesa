@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+# Newer pushes to a PR cancel older in-flight runs on the same ref.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: short
+
+jobs:
+  # The merge gate: rustfmt + clippy (-D warnings) + tests + doctests, scoped to the
+  # Bevy-free sim crates. Runs the EXACT same script developers run locally
+  # (`scripts/ci-check.ps1`) so "green locally" and "green in CI" mean the same thing.
+  #
+  # `app` (the full Bevy front-end) and `voice` (the candle SLM) are excluded from
+  # clippy/test — they need extra system deps / heavy build time and are not gated here.
+  # `cargo fmt --check` still covers the whole workspace (it parses, doesn't compile).
+  lint-and-test:
+    name: lint-and-test (ubuntu)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust toolchain (stable)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      # `cache-on-failure: true` preserves dep compilation when a downstream gate
+      # (clippy / test) fails — saves a full rebuild on the next push.
+      - name: Cache cargo registry and build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: workspace
+          cache-on-failure: true
+
+      # ubuntu-latest ships PowerShell (pwsh), so the same gate script runs here and
+      # on the Windows dev box. Single source of truth — see scripts/ci-check.ps1.
+      - name: Quality gate (fmt + clippy + tests + doctests)
+        shell: pwsh
+        run: ./scripts/ci-check.ps1
