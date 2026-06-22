@@ -2802,6 +2802,54 @@ mod tests {
     }
 
     #[test]
+    fn the_players_words_feed_the_chronicle_and_the_sifter() {
+        // The player is a part of the world. A grudge the avatar's words breed is recorded into the
+        // Chronicle exactly as an NPC-bred one is, so the sifter perceives the player's own deeds.
+        let mut sim = Simulation::new(Setup {
+            seed: 11,
+            npcs: 30,
+            markets: 2,
+            dialogue: true,
+            director: true,
+            sift: true,
+            ..Default::default()
+        });
+        let avatar = sim.spawn_player(None);
+        sim.run(20);
+        let listener = sim.any_npc().expect("an NPC to speak to");
+        let before = sim.chronicle_len();
+
+        // The avatar accuses the listener of heresy -> the listener forms a grudge against the
+        // avatar (the intent's `Grudge(who: Listener, against: Speaker)` move).
+        assert!(sim.apply_conversational_intent(listener, "an_accusation_of_heresy"), "the avatar spoke");
+
+        assert!(sim.chronicle_len() > before, "the player's accusation was recorded as an episode");
+        // And the sifter perceives the forming story the player just seeded — the avatar is in the
+        // cast of a candidate, alongside the soul it turned against the player.
+        let r = sim.retelling(0.0);
+        assert!(
+            r.threads.iter().any(|t| t.cast.contains(&avatar) && t.cast.contains(&listener)),
+            "the sifter perceives the grudge the player's words bred (avatar + listener in the cast)",
+        );
+
+        // Off-by-default: with the sift layer off, the same player action runs and changes the social
+        // state, but records nothing (no Chronicle resource) — byte-identical to before the layer.
+        let mut off = Simulation::new(Setup {
+            seed: 11,
+            npcs: 30,
+            markets: 2,
+            dialogue: true,
+            director: true,
+            ..Default::default()
+        });
+        let _ = off.spawn_player(None);
+        off.run(20);
+        let l = off.any_npc().unwrap();
+        assert!(off.apply_conversational_intent(l, "an_accusation_of_heresy"));
+        assert_eq!(off.chronicle_len(), 0, "no Chronicle when the sift layer is off");
+    }
+
+    #[test]
     fn the_incremental_sifter_agrees_with_the_oracle_over_a_real_run() {
         // The S8.2 acceptance criterion against a real seeded run (not a hand-built ring): the
         // incremental matcher and the retrospective oracle must perceive the same stories.

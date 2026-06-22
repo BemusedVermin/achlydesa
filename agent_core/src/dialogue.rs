@@ -19,7 +19,7 @@
 //! component), variety comes from a dedicated seeded [`SplitMix64`].
 
 use crate::ai::{self, Consideration, Curve, Input};
-use crate::chronicle::EpisodeKind;
+use crate::chronicle::{Chronicle, EpisodeKind};
 use crate::data::Registry;
 use crate::factions::Opinion;
 use crate::people::{Grievance, Mood, Needs, Npc, Personality};
@@ -960,6 +960,20 @@ pub fn apply_moves_scaled(world: &mut World, speaker: Entity, listener: Entity, 
                 if scale > 0.0 && w != a {
                     world.entity_mut(w).insert(Grievance(a));
                     made_grudge = true;
+                    // The player is a part of the world: a grudge the avatar's words breed is
+                    // recorded into the Chronicle, exactly as the emergent `converse` path records an
+                    // NPC-bred one — so the sifter (and the director graft) perceive the *player's*
+                    // own deeds too, not just the NPCs'. (This `apply_moves_scaled` is the immediate
+                    // path, taken by the player's talk action and any direct caller; the schedule's
+                    // `converse` system has its own tap, so there is no double-counting.) A no-op
+                    // when the sift layer is off — no Chronicle resource — so it stays byte-identical.
+                    let at = world.get::<Position>(speaker).map(|p| p.0);
+                    let tick = world.resource::<Substrate>().0.tick();
+                    if let Some(at) = at
+                        && let Some(mut chron) = world.get_resource_mut::<Chronicle>()
+                    {
+                        chron.record(tick, EpisodeKind::GrievanceFormed, [Some(w), Some(a), None], at, None, 0);
+                    }
                 }
             }
         }
