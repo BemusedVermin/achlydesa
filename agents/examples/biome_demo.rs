@@ -14,7 +14,7 @@ const H: i32 = 72;
 
 fn main() {
     // Two years of warm-up so the annual climate averages are fully settled.
-    let mut sim = Simulation::new(Setup {
+    let sim = Simulation::new(Setup {
         width: W,
         height: H,
         seed: 2026,
@@ -61,7 +61,7 @@ fn main() {
 
     println!("\nby formation (share of all tiles):");
     let mut fs: Vec<_> = by_formation.into_iter().collect();
-    fs.sort_by(|a, b| b.1.cmp(&a.1));
+    fs.sort_by_key(|x| std::cmp::Reverse(x.1));
     for (f, n) in fs {
         println!(
             "  {f:>11?}  {n:>5}  {:>5.1}%",
@@ -71,7 +71,7 @@ fn main() {
 
     println!("\nlife zones realised (of 39 possible):");
     let mut bs: Vec<_> = by_biome.into_iter().collect();
-    bs.sort_by(|a, b| b.1.cmp(&a.1));
+    bs.sort_by_key(|x| std::cmp::Reverse(x.1));
     for (b, n) in &bs {
         println!(
             "  {:>28}  {n:>5}  {:>5.1}%",
