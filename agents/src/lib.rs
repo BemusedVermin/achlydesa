@@ -4518,19 +4518,17 @@ mod tests {
             "a peopled, dramatic world should speak (said {})",
             sim.dialogue_count()
         );
-        let acts: std::collections::HashSet<SpeechAct> =
-            sim.dialogue_log().iter().map(|u| u.act).collect();
+        let acts: std::collections::HashSet<String> =
+            sim.dialogue_log().iter().map(|u| u.act.clone()).collect();
         assert!(acts.len() >= 4, "the talk should be varied, saw {acts:?}");
         let grievance = sim
             .dialogue_log()
             .iter()
-            .any(|u| matches!(u.act, SpeechAct::Accuse | SpeechAct::Threaten));
-        let warmth = sim.dialogue_log().iter().any(|u| {
-            matches!(
-                u.act,
-                SpeechAct::Greet | SpeechAct::Confide | SpeechAct::Console | SpeechAct::Praise
-            )
-        });
+            .any(|u| matches!(u.act.as_str(), "accuse" | "threaten"));
+        let warmth = sim
+            .dialogue_log()
+            .iter()
+            .any(|u| matches!(u.act.as_str(), "greet" | "confide" | "console" | "praise"));
         assert!(
             grievance && warmth,
             "grievance and warmth should both emerge (grievance {grievance}, warmth {warmth})"
@@ -4575,8 +4573,7 @@ mod tests {
             .expect("the avatar speaks the chosen line");
         assert_eq!(line.speaker, avatar, "the player spoke as themselves");
         assert_eq!(
-            line.act,
-            SpeechAct::Accuse,
+            line.act, "accuse",
             "the player's *choice* set the act, not the avatar's mood"
         );
         assert!(
