@@ -41,6 +41,8 @@ impl Lithology {
 /// life-zone system, set by a tile's mean annual *biotemperature* — colder tiles
 /// (high latitude or high elevation) fall in the earlier belts. The boundary
 /// temperatures (1.5, 3, 6, 12, 18, 24 °C) are tunable in `Params`.
+// coupling-lint:allow self_match Belt: Holdridge latitudinal belts — part of the Biome
+// classification scheduled for its own data-drive PR (see memory data-drive-domains-and-coupling-lint).
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Belt {
     Polar,
@@ -80,6 +82,8 @@ impl Belt {
 /// A Holdridge **humidity province**: how wet a tile is, read off the ratio of
 /// potential evapotranspiration to precipitation (a high ratio is dry). Ordered
 /// driest → wettest, the index into a belt's life-zone row.
+// coupling-lint:allow self_match HumidityProvince: Holdridge humidity provinces — part of the Biome
+// classification scheduled for its own data-drive PR (see memory data-drive-domains-and-coupling-lint).
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum HumidityProvince {
     Superarid,
@@ -159,6 +163,9 @@ pub struct BiomeProfile {
 /// Reclassified each tick from the tile's mean annual biotemperature and the
 /// PET/precipitation ratio (see `World::classify_biome`). Replaces the old coarse
 /// Whittaker `Pft`; the structural look is recovered with [`Biome::formation`].
+// coupling-lint:allow self_match Biome: the 39-zone Holdridge life-zone classification — a genuine
+// content table, but determinism-critical (world ecology, with a V&V rebaseline) and scheduled for
+// its own data-drive PR (see memory data-drive-domains-and-coupling-lint). Isolated on purpose.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Biome {
     /// Open sea or lake — any tile below the sea-level datum.

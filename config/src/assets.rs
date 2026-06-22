@@ -63,6 +63,9 @@ pub fn parse<T: DeserializeOwned>(ron: &str) -> Result<T, ConfigError> {
 /// This enum is the canonical list of authored content: adding a new data file
 /// means adding a variant here (and the file), rather than scattering another
 /// `include_str!`/`read_to_string` somewhere. [`Asset::ALL`] then picks it up.
+// coupling-lint:allow self_match Asset: the asset file registry — the bootstrap that *loads* all
+// data. Adding a content row never touches it; only adding a whole new RON file does. It cannot
+// itself be data (it's how data is found at compile time).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Asset {
     Appraisals,

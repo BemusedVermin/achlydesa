@@ -65,11 +65,6 @@ pub fn workspace_root() -> PathBuf {
         .to_path_buf()
 }
 
-/// The checked-in baseline file path.
-pub fn baseline_path() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("baseline.txt")
-}
-
 /// Whether a path is crate source we should scan: a `.rs` file under some crate's `src/`, never
 /// under `target/` and never this linter's own source (it deliberately contains the patterns).
 fn is_scannable(path: &Path, root: &Path) -> bool {
@@ -102,10 +97,31 @@ fn rel_path(path: &Path, root: &Path) -> String {
         .replace('\\', "/")
 }
 
-/// Scan every crate-source file in the workspace and return the coupling findings (sorted).
+/// The **unresolved** coupling findings — every detected site that lacks a matching inline
+/// `// coupling-lint:allow` directive. This is what the gate fails on; it should be empty.
 pub fn scan_workspace() -> Vec<Finding> {
+    let (findings, allows) = collect();
+    let mut out: Vec<Finding> = findings
+        .into_iter()
+        .filter(|f| !is_allowed(&allows, f))
+        .collect();
+    out.sort_by(|a, b| a.detector.cmp(b.detector).then_with(|| a.key.cmp(&b.key)));
+    out
+}
+
+/// Every finding the detectors produce, *before* inline allows are applied — for the sanity tests
+/// (a parse regression that zeroed the findings would otherwise pass vacuously).
+pub fn scan_workspace_raw() -> Vec<Finding> {
+    let (mut findings, _) = collect();
+    findings.sort_by(|a, b| a.detector.cmp(b.detector).then_with(|| a.key.cmp(&b.key)));
+    findings
+}
+
+/// Walk the workspace once: collect the raw findings and the per-file inline allow directives.
+fn collect() -> (Vec<Finding>, HashMap<String, Vec<Allow>>) {
     let root = workspace_root();
     let mut findings = Vec::new();
+    let mut allows: HashMap<String, Vec<Allow>> = HashMap::new();
     for entry in walkdir::WalkDir::new(&root)
         .into_iter()
         .filter_map(Result::ok)
@@ -117,15 +133,19 @@ pub fn scan_workspace() -> Vec<Finding> {
         let Ok(text) = std::fs::read_to_string(path) else {
             continue;
         };
+        let rel = rel_path(path, &root);
+        let file_allows = parse_allows(&text);
+        if !file_allows.is_empty() {
+            allows.insert(rel.clone(), file_allows);
+        }
         // A file syn can't parse is skipped rather than fatal — the sanity test guards that the
         // load-bearing files (e.g. game_sim's Biome table) still parse and surface.
         let Ok(file) = syn::parse_file(&text) else {
             continue;
         };
-        scan_file(&file, &rel_path(path, &root), &mut findings);
+        scan_file(&file, &rel, &mut findings);
     }
-    findings.sort_by(|a, b| a.detector.cmp(b.detector).then_with(|| a.key.cmp(&b.key)));
-    findings
+    (findings, allows)
 }
 
 fn scan_file(file: &syn::File, rel: &str, out: &mut Vec<Finding>) {
@@ -314,77 +334,70 @@ fn array_len(len: &syn::Expr) -> Option<usize> {
     None
 }
 
-/// The checked-in allow-list of known coupling, `(detector, key) -> max allowed score`.
-#[derive(Default)]
-pub struct Baseline {
-    entries: HashMap<(String, String), usize>,
+/// An inline `// coupling-lint:allow <detector> [symbol]: <reason>` directive — the justified
+/// escape hatch (clippy-style). The `reason` must be non-empty, so every exception is documented at
+/// the site. `symbol` is the enum/const name for item findings; omitted for the file-level
+/// `string_ids` detector.
+#[derive(Debug, Clone)]
+struct Allow {
+    detector: String,
+    symbol: Option<String>,
 }
 
-impl Baseline {
-    fn get(&self, detector: &str, key: &str) -> Option<usize> {
-        self.entries
-            .get(&(detector.to_string(), key.to_string()))
-            .copied()
-    }
-}
+/// The directive marker. (This crate is excluded from scanning, so the literal here is inert.)
+const MARKER: &str = "coupling-lint:allow";
 
-/// Parse the baseline file: `detector  key  score` per line, `#` comments and blanks ignored.
-pub fn load_baseline(path: &Path) -> std::io::Result<Baseline> {
-    let text = std::fs::read_to_string(path)?;
-    let mut entries = HashMap::new();
+/// Extract every well-formed allow directive from a file's text.
+fn parse_allows(text: &str) -> Vec<Allow> {
+    let mut out = Vec::new();
     for line in text.lines() {
-        let line = line.trim();
-        if line.is_empty() || line.starts_with('#') {
+        let Some(idx) = line.find(MARKER) else {
+            continue;
+        };
+        // `<detector> [symbol]: <reason>` — a non-empty reason is required, so a bare suppression
+        // without justification does NOT count (the finding still fails, prompting a reason).
+        let rest = &line[idx + MARKER.len()..];
+        let Some((spec, reason)) = rest.split_once(':') else {
+            continue;
+        };
+        if reason.trim().is_empty() {
             continue;
         }
-        let mut it = line.split_whitespace();
-        if let (Some(d), Some(k), Some(s)) = (it.next(), it.next(), it.next())
-            && let Ok(score) = s.parse::<usize>()
-        {
-            entries.insert((d.to_string(), k.to_string()), score);
+        let mut toks = spec.split_whitespace();
+        let Some(det) = toks.next() else {
+            continue;
+        };
+        if !["self_match", "const_all", "string_ids"].contains(&det) {
+            continue;
         }
+        out.push(Allow {
+            detector: det.to_string(),
+            symbol: toks.next().map(str::to_string),
+        });
     }
-    Ok(Baseline { entries })
+    out
 }
 
-/// Write the baseline file from the current findings (the `--bless` path).
-pub fn write_baseline(path: &Path, findings: &[Finding]) -> std::io::Result<()> {
-    let mut s = String::new();
-    s.push_str("# coupling-lint baseline — the known coupling this repo still carries.\n");
-    s.push_str(
-        "# Format: <detector> <key> <max-score>. The ratchet fails on anything NEW or any\n",
-    );
-    s.push_str("# finding above its score here. Regenerate with `cargo run -p coupling-lint -- --bless`.\n");
-    s.push_str("# Lower a number when you pay coupling down; never raise one without review.\n");
-    for f in findings {
-        s.push_str(&format!("{}\t{}\t{}\n", f.detector, f.key, f.score));
-    }
-    std::fs::write(path, s)
-}
-
-/// Compare findings to the baseline; returns a human-readable line per violation (empty == clean).
-pub fn check_against_baseline(findings: &[Finding], baseline: &Baseline) -> Vec<String> {
-    let mut violations = Vec::new();
-    for f in findings {
-        match baseline.get(f.detector, &f.key) {
-            Some(allowed) if f.score <= allowed => {}
-            Some(allowed) => violations.push(format!(
-                "GREW   [{}] {} — score {} > baseline {} ({})",
-                f.detector, f.key, f.score, allowed, f.note
-            )),
-            None => violations.push(format!(
-                "NEW    [{}] {} — score {} ({})",
-                f.detector, f.key, f.score, f.note
-            )),
-        }
-    }
-    violations.sort();
-    violations
+/// Whether a finding is suppressed by a directive in its own file (matching detector, and symbol for
+/// item findings).
+fn is_allowed(allows: &HashMap<String, Vec<Allow>>, finding: &Finding) -> bool {
+    let (file, symbol) = match finding.key.rsplit_once("::") {
+        Some((f, s)) => (f, Some(s)),
+        None => (finding.key.as_str(), None),
+    };
+    allows.get(file).is_some_and(|list| {
+        list.iter()
+            .any(|a| a.detector == finding.detector && a.symbol.as_deref() == symbol)
+    })
 }
 
 /// Print the findings as a grouped report.
 pub fn print_report(findings: &[Finding]) {
-    println!("coupling-lint: {} findings\n", findings.len());
+    if findings.is_empty() {
+        println!("coupling-lint: no unannotated findings");
+        return;
+    }
+    println!("coupling-lint: {} unannotated finding(s)\n", findings.len());
     let mut detector = "";
     for f in findings {
         if f.detector != detector {

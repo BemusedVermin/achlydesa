@@ -376,6 +376,9 @@ struct Cand {
     detained: bool,
 }
 
+// coupling-lint:allow string_ids: the drama director's affect/casting model refers to specific
+// named moods/traits/predicates (joy, hope, ambition, alive, …) — necessary *semantic references*,
+// resolved once into MoodIds (not in a loop), not an enum-of-instances table.
 /// Resolved mood ids the objective reads, looked up once.
 #[derive(Clone, Copy)]
 pub(crate) struct MoodIds {

@@ -20,6 +20,8 @@
 //! continuous. Production scales a recipe's whole-unit output by skill and the
 //! natural-resource level, then rounds.
 
+// coupling-lint:allow string_ids: the throne/feud machinery refers to named traits/predicates
+// (ambition, vengeance, enthroned, alive) — necessary semantic references, not an instance table.
 use crate::chronicle::EpisodeKind;
 use crate::data::{GoodId, PredicateId, ROLE_COUNT, Registry, ResourceKind, fact_slot};
 use crate::events::{AgentEvent, EventQueue};

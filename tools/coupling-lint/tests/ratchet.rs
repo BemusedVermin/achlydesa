@@ -1,55 +1,60 @@
-//! The ratchet gate (runs under `cargo test`, so the CI quality gate enforces it) plus a sanity
-//! test that the lint still *sees* the codebase (a silent parse-failure must not pass vacuously).
+//! The gate (runs under `cargo test`, so the CI quality gate enforces it): zero coupling findings
+//! may go unannotated. Plus sanity tests that the lint still *sees* the codebase, and that the
+//! data-driven domains stay data-driven.
 
 #[test]
-fn no_coupling_added_beyond_baseline() {
+fn no_unannotated_coupling() {
     let findings = coupling_lint::scan_workspace();
-    let baseline = coupling_lint::load_baseline(&coupling_lint::baseline_path())
-        .expect("baseline.txt is present and readable");
-    let violations = coupling_lint::check_against_baseline(&findings, &baseline);
+    let report: String = findings
+        .iter()
+        .map(|f| {
+            format!(
+                "  [{}] {} (score {}) — {}",
+                f.detector, f.key, f.score, f.note
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
     assert!(
-        violations.is_empty(),
-        "coupling ratchet violated — new or grown data/logic coupling:\n{}\n\n\
-         Move the per-instance content into data (see assets/data/registers.ron), or re-bless with\n\
-         `cargo run -p coupling-lint -- --bless` if it is genuinely intentional.",
-        violations.join("\n"),
+        findings.is_empty(),
+        "unannotated data/logic coupling — data-drive it (see assets/data/registers.ron), or add a\n\
+         justified `// coupling-lint:allow <detector> <Symbol>: <reason>` at the site:\n{report}",
     );
 }
 
 #[test]
 fn the_lint_still_sees_the_codebase() {
-    let findings = coupling_lint::scan_workspace();
-    // It must find *something* — otherwise a parse regression would let everything pass vacuously.
+    // Use the *raw* findings (pre-allow): a parse regression that zeroed them must not pass
+    // vacuously. The Biome life-zone table (game_sim) is the canonical surviving offender.
+    let raw = coupling_lint::scan_workspace_raw();
     assert!(
-        findings.len() >= 5,
-        "expected the lint to flag the known backlog offenders, got {} findings",
-        findings.len()
+        raw.len() >= 5,
+        "expected the detectors to flag the known offenders, got {} raw findings",
+        raw.len()
     );
-    // The Biome life-zone table (game_sim) is the canonical surviving offender — its presence proves
-    // the self_match/const_all detectors still resolve a real, load-bearing file.
     assert!(
-        findings.iter().any(|f| f.key.contains("Biome")),
+        raw.iter().any(|f| f.key.contains("Biome")),
         "the Biome table should still be flagged (did game_sim/src/fields.rs stop parsing?)",
     );
 }
 
 #[test]
-fn the_register_domain_is_no_longer_flagged() {
-    // The whole point of the refactor: `Register`/`RegisterDef::def`/`SPINES` are data now, so they
-    // must NOT appear as coupling. This locks the win in — a regression that re-hardcodes registers
-    // would resurrect these findings and fail here.
-    let findings = coupling_lint::scan_workspace();
-    let resurrected: Vec<&str> = findings
+fn the_data_driven_domains_stay_data_driven() {
+    // Register and SpeechAct became data; a regression that re-hardcoded them would resurrect these
+    // findings (and they'd be unannotated, failing the gate above too). Lock the win in.
+    let raw = coupling_lint::scan_workspace_raw();
+    let resurrected: Vec<&str> = raw
         .iter()
         .filter(|f| {
             f.key.ends_with("::Register")
                 || f.key.ends_with("::RegisterDef")
                 || f.key.ends_with("::SPINES")
+                || f.key.ends_with("::SpeechAct")
         })
         .map(|f| f.key.as_str())
         .collect();
     assert!(
         resurrected.is_empty(),
-        "the register domain is supposed to be data-driven, but the lint flagged: {resurrected:?}",
+        "these domains are supposed to be data-driven, but the lint flagged: {resurrected:?}",
     );
 }

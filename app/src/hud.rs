@@ -98,6 +98,8 @@ impl Vital {
 
 /// The context-sensitive tile actions, in tray order. Each mirrors a keyboard verb and is enabled
 /// only when valid for the current tile / nearby soul (see [`enabled`]).
+// coupling-lint:allow self_match ActionKind: the player's action verbs — each is a coded behaviour
+// (Inspect/Travel/Search/…); a new action needs a handler, an `enabled` rule, and a key, not a data row.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ActionKind {
     Inspect,
@@ -108,6 +110,7 @@ pub enum ActionKind {
     Talk,
     Recruit,
 }
+// coupling-lint:allow const_all ACTIONS: the tray order for the closed ActionKind verb set (see its allow).
 const ACTIONS: [ActionKind; 7] = [
     ActionKind::Inspect,
     ActionKind::Travel,
