@@ -43,6 +43,9 @@ Invoke-Gate 'rustfmt (--check)' @('fmt', '--all', '--', '--check')
 Invoke-Gate 'clippy (-D warnings)' (@('clippy', '--workspace') + $excludes + @('--all-targets', '--', '-D', 'warnings'))
 Invoke-Gate 'tests' (@('test', '--workspace') + $excludes + @('--all-targets', '--locked'))
 Invoke-Gate 'doctests' (@('test', '--workspace') + $excludes + @('--doc', '--locked'))
+# Structural coupling ratchet (data/logic-intertwining lint). The `tests` gate already runs its
+# #[test]; this prints the readable report and fails on any coupling added beyond the baseline.
+Invoke-Gate 'coupling ratchet' @('run', '--quiet', '-p', 'coupling-lint')
 
 Write-Host ""
 if ($failures.Count -gt 0) {
