@@ -12,7 +12,7 @@
 //! byte-identical to one before the Chronicle existed. The ring's contents are a pure function of
 //! the seeded, fixed-order tick.
 
-use crate::beats::Register;
+use crate::data::RegisterId;
 use bevy_ecs::prelude::*;
 use game_sim::Coord;
 use std::collections::VecDeque;
@@ -52,8 +52,8 @@ pub struct Episode {
     /// actor, target, third — the cast a pattern binds (any may be absent).
     pub parties: [Option<Entity>; 3],
     pub place: Coord,
-    /// Set for [`EpisodeKind::BeatFired`] (the beat's register), else `None`.
-    pub register: Option<Register>,
+    /// Set for [`EpisodeKind::BeatFired`] (the beat's register id), else `None`.
+    pub register: Option<RegisterId>,
     /// Kind-specific scalar: e.g. `OpinionCrossed` direction (`-1` cold / `+1` warm).
     pub detail: i32,
 }
@@ -85,7 +85,7 @@ impl Chronicle {
         kind: EpisodeKind,
         parties: [Option<Entity>; 3],
         place: Coord,
-        register: Option<Register>,
+        register: Option<RegisterId>,
         detail: i32,
     ) {
         let id = self.next_id;

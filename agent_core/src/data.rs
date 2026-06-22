@@ -74,6 +74,10 @@ pub type MoodId = usize;
 /// Index of a relational predicate (`enthroned`, `alive`, …). Goals are
 /// conditions on predicates over entities; the planner grounds them to flat facts.
 pub type PredicateId = usize;
+/// Index of a dramatic **register** (and the key of the director's `reg_heat`). The director's
+/// emotional-key vocabulary, authored in `registers.ron` and interned here like every other content
+/// id — so a new register is pure data (see [`RegisterDef`]).
+pub type RegisterId = usize;
 
 /// How many entity *roles* a relational goal can bind — `self` (0) and one target
 /// (1, e.g. the foe). A relation `pred(role)` grounds to the flat fact slot
@@ -140,6 +144,127 @@ pub struct VerbDef {
     pub value: i64,
 }
 
+/// How a thread pins its counterpart (the figure it grooms then reverses), by register — the
+/// director's casting policy. A small **closed generic vocabulary** (unlike the open register set):
+/// each variant names a distinct selection algorithm in `director::pick_other`, so adding one is a
+/// real behavioural change, not content. Registers *name* their policy in data (`casting: Coldest`).
+#[derive(Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum Casting {
+    /// The warmest soul (a beloved) — the default; a bond to build then break.
+    #[default]
+    Warmest,
+    /// The coldest (a foe already turned away) — vengeance, persecution.
+    Coldest,
+    /// The most ambitious (a would-be usurper) — ambition, war.
+    Ambitious,
+    /// The most pious (a believer/elder) — wonder, reunion.
+    Pious,
+}
+
+/// A register as authored in `registers.ron` (its `seeds` cross-reference not yet resolved).
+#[derive(Deserialize, Clone, Debug)]
+struct RegisterDto {
+    name: String,
+    #[serde(default)]
+    spine: bool,
+    #[serde(default)]
+    trunk: bool,
+    #[serde(default)]
+    bright: bool,
+    #[serde(default)]
+    seeds: Option<String>,
+    #[serde(default)]
+    casting: Casting,
+    #[serde(default = "storied_epithet")]
+    epithet_lead: String,
+    #[serde(default = "storied_epithet")]
+    epithet_other: String,
+    #[serde(default = "storied_situation")]
+    situation_lead: String,
+    #[serde(default = "storied_situation")]
+    situation_other: String,
+    #[serde(default = "default_noun")]
+    noun: String,
+    #[serde(default = "default_told")]
+    told: String,
+    #[serde(default = "default_quest_plea")]
+    quest_plea: String,
+    #[serde(default = "default_quest_objective")]
+    quest_objective: String,
+}
+
+// The generic fall-throughs a register left untuned inherits — the old `storied`/`_ =>` arms, now
+// serde defaults, so a *new* register added with only its structural fields still reads sensibly.
+fn storied_epithet() -> String {
+    "the Storied".into()
+}
+fn storied_situation() -> String {
+    "a story heavy on its shoulders.".into()
+}
+fn default_noun() -> String {
+    "strange turn".into()
+}
+fn default_told() -> String {
+    "They say {lead} is caught up in a {noun}.".into()
+}
+fn default_quest_plea() -> String {
+    "\"Find {other} for me — there is a matter between us.\"".into()
+}
+fn default_quest_objective() -> String {
+    "Find {other} for {giver}.".into()
+}
+
+/// A dramatic **register** resolved into the registry — the director's emotional-key *domain
+/// object*, separated from its instances (the `registers.ron` rows). Every field that the director
+/// once read off a hardcoded `match` on a `Register` enum now lives here as data: the structural
+/// levers (`spine`/`trunk`/`bright`/`seeds`/`casting`) the deterministic tick reads, and the surface
+/// vocabulary (epithet/situation/`noun`/`told`/quest prose) the view renders.
+#[derive(Clone, Debug)]
+pub struct RegisterDef {
+    pub name: String,
+    /// Spine-eligible — a thread can take this register as its key. The *order* of the spine
+    /// registers in the file is the director's rotation order (see [`Registry::spines`]).
+    pub spine: bool,
+    /// The betrayal→vengeance trunk the world turns on — a standing drama bonus.
+    pub trunk: bool,
+    /// A brighter staged experience (love/triumph/awe), groomed so the fall has something to break.
+    pub bright: bool,
+    /// The register a *closing* thread of this one seeds next (grief → vengeance), if any.
+    pub seeds: Option<RegisterId>,
+    /// How a thread of this register pins its counterpart.
+    pub casting: Casting,
+    pub epithet_lead: String,
+    pub epithet_other: String,
+    pub situation_lead: String,
+    pub situation_other: String,
+    /// The plain noun the world gives this drama when it lacks the particulars.
+    pub noun: String,
+    /// The high-fidelity gossip sentence — `{lead}`/`{other}`/`{noun}` placeholders.
+    pub told: String,
+    /// The giver's spoken charge / the HUD objective — `{giver}`/`{other}` placeholders.
+    pub quest_plea: String,
+    pub quest_objective: String,
+}
+
+impl RegisterDef {
+    /// The earned epithet for the lead (`is_lead`) or the pinned other.
+    pub fn epithet(&self, is_lead: bool) -> &str {
+        if is_lead {
+            &self.epithet_lead
+        } else {
+            &self.epithet_other
+        }
+    }
+    /// The one-line situational opener for the lead or the pinned other.
+    pub fn situation(&self, is_lead: bool) -> &str {
+        if is_lead {
+            &self.situation_lead
+        } else {
+            &self.situation_other
+        }
+    }
+}
+
 /// The raw RON documents the game data is built from. Construct with the fields you
 /// have and `..Default::default()` for the rest (each defaults to an empty list).
 pub struct DataFiles<'a> {
@@ -150,6 +275,7 @@ pub struct DataFiles<'a> {
     pub moods: &'a str,
     pub predicates: &'a str,
     pub verbs: &'a str,
+    pub registers: &'a str,
 }
 
 impl Default for DataFiles<'_> {
@@ -162,6 +288,7 @@ impl Default for DataFiles<'_> {
             moods: "[]",
             predicates: "[]",
             verbs: "[]",
+            registers: "[]",
         }
     }
 }
@@ -218,6 +345,11 @@ pub struct Registry {
     predicate_ids: HashMap<String, PredicateId>,
     /// Surface-grammar verbs: name → the (predicate, value) it makes of its target.
     verbs: HashMap<String, (PredicateId, i64)>,
+    /// The director's dramatic registers, resolved (the domain split from its instances).
+    registers: Vec<RegisterDef>,
+    register_ids: HashMap<String, RegisterId>,
+    /// The spine-eligible registers, in file (= director rotation) order — the old `SPINES`.
+    spine_order: Vec<RegisterId>,
 }
 
 impl Registry {
@@ -239,6 +371,7 @@ impl Registry {
             cfg.load(Asset::Moods)?,
             cfg.load(Asset::Predicates)?,
             cfg.load(Asset::Verbs)?,
+            cfg.load(Asset::Registers)?,
         )
     }
 
@@ -252,12 +385,14 @@ impl Registry {
             config::parse(files.moods)?,
             config::parse(files.predicates)?,
             config::parse(files.verbs)?,
+            config::parse(files.registers)?,
         )
     }
 
     /// Resolve already-parsed definitions into the registry: intern each name to
     /// a dense id and validate every cross-reference (a recipe naming an unknown
     /// good/skill, a mood opposing an unknown mood) up front.
+    #[allow(clippy::too_many_arguments)]
     fn resolve(
         goods: Vec<GoodDef>,
         skills: Vec<SkillDef>,
@@ -266,6 +401,7 @@ impl Registry {
         moods: Vec<MoodDef>,
         predicates: Vec<String>,
         verb_defs: Vec<VerbDef>,
+        register_defs: Vec<RegisterDto>,
     ) -> Result<Self, LoadError> {
         let good_ids = index(goods.iter().map(|g| &g.name));
         let skill_ids = index(skills.iter().map(|s| &s.name));
@@ -315,6 +451,46 @@ impl Registry {
                     .ok_or_else(|| LoadError::UnknownTrait(n.clone())),
             })
             .collect::<Result<Vec<_>, _>>()?;
+        // The registers: intern each name, then a second pass resolves the self-referential `seeds`
+        // cross-reference (grief → which register) to an id — exactly like `mood_opposes` above.
+        let register_ids = index(register_defs.iter().map(|r| &r.name));
+        let registers = register_defs
+            .iter()
+            .map(|r| {
+                let seeds = match &r.seeds {
+                    None => None,
+                    Some(n) => Some(
+                        register_ids
+                            .get(n)
+                            .copied()
+                            .ok_or_else(|| LoadError::UnknownRegister(n.clone()))?,
+                    ),
+                };
+                Ok(RegisterDef {
+                    name: r.name.clone(),
+                    spine: r.spine,
+                    trunk: r.trunk,
+                    bright: r.bright,
+                    seeds,
+                    casting: r.casting,
+                    epithet_lead: r.epithet_lead.clone(),
+                    epithet_other: r.epithet_other.clone(),
+                    situation_lead: r.situation_lead.clone(),
+                    situation_other: r.situation_other.clone(),
+                    noun: r.noun.clone(),
+                    told: r.told.clone(),
+                    quest_plea: r.quest_plea.clone(),
+                    quest_objective: r.quest_objective.clone(),
+                })
+            })
+            .collect::<Result<Vec<_>, LoadError>>()?;
+        // Spine registers in file order — the director's register-rotation order (the old `SPINES`).
+        let spine_order: Vec<RegisterId> = registers
+            .iter()
+            .enumerate()
+            .filter(|(_, r)| r.spine)
+            .map(|(i, _)| i)
+            .collect();
         let good = |name: &str| {
             good_ids
                 .get(name)
@@ -364,6 +540,9 @@ impl Registry {
             predicates,
             predicate_ids,
             verbs,
+            registers,
+            register_ids,
+            spine_order,
         })
     }
 
@@ -429,6 +608,28 @@ impl Registry {
     pub fn recipes(&self) -> &[Recipe] {
         &self.recipes
     }
+    pub fn register_count(&self) -> usize {
+        self.registers.len()
+    }
+    /// The resolved domain object for register `id` — its whole shape (levers + surface text).
+    pub fn register_def(&self, id: RegisterId) -> &RegisterDef {
+        &self.registers[id]
+    }
+    pub fn register_id(&self, name: &str) -> Option<RegisterId> {
+        self.register_ids.get(name).copied()
+    }
+    /// The register's authored name (`"betrayal"`) — for inspection / human-readable logs.
+    pub fn register_name(&self, id: RegisterId) -> &str {
+        &self.registers[id].name
+    }
+    /// The spine-eligible registers, in the director's rotation order (the old `SPINES`).
+    pub fn spines(&self) -> &[RegisterId] {
+        &self.spine_order
+    }
+    /// The register a *closing* thread of `id` seeds next (grief → vengeance), if any.
+    pub fn register_seeds(&self, id: RegisterId) -> Option<RegisterId> {
+        self.registers[id].seeds
+    }
 }
 
 impl Default for Registry {
@@ -451,6 +652,7 @@ pub enum LoadError {
     UnknownTrait(String),
     UnknownMood(String),
     UnknownPredicate(String),
+    UnknownRegister(String),
 }
 
 impl std::fmt::Display for LoadError {
@@ -462,6 +664,7 @@ impl std::fmt::Display for LoadError {
             LoadError::UnknownTrait(n) => write!(f, "trait/mood refers to unknown trait '{n}'"),
             LoadError::UnknownMood(n) => write!(f, "mood opposes unknown mood '{n}'"),
             LoadError::UnknownPredicate(n) => write!(f, "verb refers to unknown predicate '{n}'"),
+            LoadError::UnknownRegister(n) => write!(f, "register seeds unknown register '{n}'"),
         }
     }
 }

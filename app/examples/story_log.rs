@@ -201,7 +201,7 @@ fn main() {
             out,
             "  day {:>4}  [{:<11} {:<7}]  {}{}",
             c.tick,
-            format!("{:?}", c.register),
+            sim.register_name(c.register),
             format!("{:?}", c.phase),
             c.beat.replace('_', " "),
             mark,

@@ -40,10 +40,11 @@ pub mod player;
 pub mod sift;
 
 pub use ai::{Consideration, Curve, Input};
-pub use beats::{Beat, BeatBook, Effect, Phase, Pre, Register, Role};
+pub use beats::{Beat, BeatBook, Effect, Phase, Pre, Role};
 pub use chronicle::{Chronicle, Episode, EpisodeKind};
 pub use data::{
-    GoodDef, GoodId, MoodDef, MoodId, Recipe, Registry, ResourceKind, SkillId, TraitDef, TraitId,
+    Casting, GoodDef, GoodId, MoodDef, MoodId, Recipe, RegisterDef, RegisterId, Registry,
+    ResourceKind, SkillId, TraitDef, TraitId,
 };
 pub use dialogue::{
     Dialogue, DialogueConfig, IntentBook, SlmRealizer, SpeechAct, TextGen, Utterance,

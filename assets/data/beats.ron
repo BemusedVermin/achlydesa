@@ -29,7 +29,7 @@
     // ======================================================================
     (
         id: "a_kindred_spirit", // Romance, Setup — a warmth kindled
-        register: Romance,
+        register: "romance",
         tags: ["romance", "relief", "personal"],
         phases: [Setup],
         tension: -0.5,
@@ -44,7 +44,7 @@
     ),
     (
         id: "a_courtship_blooms", // Romance, deepening — the bond the trunk will break
-        register: Romance,
+        register: "romance",
         tags: ["romance", "personal"],
         phases: [Setup, Rising],
         tension: -0.4,
@@ -60,7 +60,7 @@
     ),
     (
         id: "a_triumph_acclaimed", // Triumph, Setup — the height the betrayal will topple
-        register: Triumph,
+        register: "triumph",
         tags: ["triumph", "relief"],
         phases: [Setup, Rising],
         tension: -0.5,
@@ -75,7 +75,7 @@
     ),
     (
         id: "a_marvel_revealed", // Wonder, Setup — a marvel found in the land
-        register: Wonder,
+        register: "wonder",
         tags: ["wonder", "relief"],
         phases: [Setup],
         tension: -0.3,
@@ -91,7 +91,7 @@
     ),
     (
         id: "the_demiurges_hand", // Wonder/myth — a pious elder names the shaping of fortune
-        register: Wonder,
+        register: "wonder",
         tags: ["wonder", "myth"],
         phases: [Setup, Fall],
         tension: 0.2,
@@ -109,7 +109,7 @@
     ),
     (
         id: "the_long_lost_returns", // Reunion — a figure restored (a gift, or a setup)
-        register: Reunion,
+        register: "reunion",
         tags: ["reunion", "relief", "personal"],
         phases: [Setup, Fall],
         tension: -1.0,
@@ -127,7 +127,7 @@
     // --- Interpersonal betrayal & loyalty (Polti: Enmity of Kin; Crime Pursued by Vengeance) ---
     (
         id: "a_friend_turns",
-        register: Betrayal,
+        register: "betrayal",
         tags: ["betrayal", "personal"],
         phases: [Climax],
         tension: 2.0,
@@ -146,7 +146,7 @@
     ),
     (
         id: "betrayed_at_the_summit", // Betrayal Climax — the reversal timed onto a manufactured high
-        register: Betrayal,
+        register: "betrayal",
         tags: ["betrayal", "violence"],
         phases: [Climax],
         tension: 2.6,
@@ -166,7 +166,7 @@
     ),
     (
         id: "the_knife_in_the_dark",
-        register: Betrayal,
+        register: "betrayal",
         tags: ["betrayal", "violence"],
         phases: [Climax],
         tension: 2.5,
@@ -184,7 +184,7 @@
     ),
     (
         id: "an_old_enmity_softens", // RELIEF — Polti: An Enemy Loved
-        register: Redemption,
+        register: "redemption",
         tags: ["relief", "personal"],
         phases: [Fall],
         tension: -2.0,
@@ -201,7 +201,7 @@
     // --- Ambition & rise-and-fall (Polti: Ambition; Rivalry of Superior vs. Inferior) ---
     (
         id: "a_rival_rises",
-        register: Ambition,
+        register: "ambition",
         tags: ["ambition", "political"],
         phases: [Rising],
         tension: 1.8,
@@ -216,7 +216,7 @@
     ),
     (
         id: "the_pretender_against_the_patron", // Polti: Revolt — a coup within the bloc
-        register: Ambition,
+        register: "ambition",
         tags: ["ambition", "political"],
         phases: [Rising],
         tension: 2.2,
@@ -231,7 +231,7 @@
     ),
     (
         id: "the_crown_corrupts", // power sours the one who holds it
-        register: Ambition,
+        register: "ambition",
         tags: ["ambition", "personal"],
         phases: [Setup, Rising],
         tension: 1.0,
@@ -247,7 +247,7 @@
     // --- Political & faction intrigue (Polti: Supplication; Revolt) ---
     (
         id: "the_faction_turns_persecutor",
-        register: Persecution,
+        register: "persecution",
         tags: ["political", "persecution"],
         phases: [Rising],
         tension: 1.5,
@@ -258,7 +258,7 @@
     ),
     (
         id: "the_drums_of_war",
-        register: War,
+        register: "war",
         tags: ["political", "war"],
         phases: [Climax],
         tension: 2.5,
@@ -269,7 +269,7 @@
     ),
     (
         id: "a_defection_sown",
-        register: Betrayal,
+        register: "betrayal",
         tags: ["political", "betrayal"],
         phases: [Rising],
         tension: 1.5,
@@ -283,7 +283,7 @@
     ),
     (
         id: "the_mob_demands_blood", // Polti: Pursuit — persecution sharpened
-        register: Persecution,
+        register: "persecution",
         tags: ["political", "persecution", "violence"],
         phases: [Climax],
         tension: 2.5,
@@ -298,7 +298,7 @@
     ),
     (
         id: "an_alliance_forged", // RELIEF
-        register: Relief,
+        register: "relief",
         tags: ["relief", "political"],
         phases: [Setup, Fall],
         tension: -1.5,
@@ -314,7 +314,7 @@
     // --- Survival & disaster (Polti: Disaster; Falling Prey to Cruelty / Misfortune) ---
     (
         id: "the_famine",
-        register: Disaster,
+        register: "disaster",
         tags: ["disaster", "survival"],
         phases: [Climax],
         tension: 2.0,
@@ -330,7 +330,7 @@
     ),
     (
         id: "the_long_winter",
-        register: Disaster,
+        register: "disaster",
         tags: ["disaster", "survival"],
         phases: [Rising, Climax],
         tension: 1.5,
@@ -343,7 +343,7 @@
     ),
     (
         id: "a_loved_one_falls", // Polti: Loss of a Loved One
-        register: Loss,
+        register: "loss",
         tags: ["loss", "personal", "violence"],
         phases: [Climax],
         tension: 2.2,
@@ -360,7 +360,7 @@
     ),
     (
         id: "the_beloved_falls", // Loss aimed at the groomed Lover — the romance reversed
-        register: Loss,
+        register: "loss",
         tags: ["loss", "romance", "violence"],
         phases: [Climax],
         tension: 2.6,
@@ -374,7 +374,7 @@
     ),
     (
         id: "a_noble_sacrifice", // Sacrifice — bittersweet: an ally gives their life
-        register: Sacrifice,
+        register: "sacrifice",
         tags: ["sacrifice", "loss"],
         phases: [Climax],
         tension: 1.6,
@@ -390,7 +390,7 @@
     ),
     (
         id: "a_good_harvest", // RELIEF
-        register: Relief,
+        register: "relief",
         tags: ["relief", "survival"],
         phases: [Setup, Fall],
         tension: -1.5,
@@ -403,7 +403,7 @@
     ),
     (
         id: "remorse_and_penance", // RELIEF — Polti: Remorse
-        register: Redemption,
+        register: "redemption",
         tags: ["relief", "personal"],
         phases: [Fall],
         tension: -1.0,
@@ -418,7 +418,7 @@
     ),
     (
         id: "redemption_of_a_foe", // Redemption — a foe turns; the cycle's other exit
-        register: Redemption,
+        register: "redemption",
         tags: ["relief", "personal"],
         phases: [Fall],
         tension: -1.5,
@@ -437,7 +437,7 @@
 
     (
         id: "the_tyrants_reign", // chains after `the_crown_corrupts` (greed risen on the throne)
-        register: Persecution,
+        register: "persecution",
         tags: ["political", "ambition", "persecution"],
         phases: [Rising],
         tension: 1.8,
@@ -452,7 +452,7 @@
     ),
     (
         id: "the_revolt", // Polti: Revolt — chains after `the_tyrants_reign`
-        register: War,
+        register: "war",
         tags: ["political", "war", "revolt"],
         phases: [Climax],
         tension: 2.6,
@@ -472,7 +472,7 @@
     ),
     (
         id: "grief_hardens_into_vengeance", // chains after a loss (sorrow stirred) — the trunk turns
-        register: Vengeance,
+        register: "vengeance",
         tags: ["loss", "vengeance", "personal"],
         phases: [Fall, Rising],
         tension: 1.6,
@@ -487,7 +487,7 @@
     ),
     (
         id: "the_vendetta", // chains after `grief_hardens_into_vengeance` (the lead now vengeful)
-        register: Vengeance,
+        register: "vengeance",
         tags: ["vengeance", "violence"],
         phases: [Climax],
         tension: 2.2,
@@ -501,7 +501,7 @@
     ),
     (
         id: "the_succession_crisis", // a power vacuum: no one on the throne, a rival and a patron
-        register: Ambition,
+        register: "ambition",
         tags: ["political", "ambition"],
         phases: [Rising],
         tension: 2.0,
@@ -516,7 +516,7 @@
     ),
     (
         id: "war_weariness", // RELIEF — chains after any war: the fighting ebbs toward peace
-        register: Relief,
+        register: "relief",
         tags: ["relief", "political"],
         phases: [Fall],
         tension: -2.0,
@@ -545,7 +545,7 @@
     // --- GROOMING beats: the cult manufactures devotion and rapture so the reversal breaks more ---
     (
         id: "the_temples_rapture", // Romance/grooming — a soul is sweetened in the cult's manufactured bliss
-        register: Romance,
+        register: "romance",
         tags: ["myth", "rapture", "cult"],
         phases: [Setup],
         tension: -0.6,
@@ -565,7 +565,7 @@
     ),
     (
         id: "acclaimed_in_the_temple", // Triumph grooming — the crowd lifts the protagonist in the cult's light
-        register: Triumph,
+        register: "triumph",
         tags: ["myth", "cult", "triumph"],
         phases: [Setup],
         tension: -0.5,
@@ -585,7 +585,7 @@
     // --- WONDER/MYTH beats: glimpses of the true light and the hidden cosmology ---
     (
         id: "the_mentor_names_the_seven", // Wonder/myth — the Archon-jailers given their names and faces
-        register: Wonder,
+        register: "wonder",
         tags: ["myth", "wonder", "archon"],
         phases: [Setup, Rising],
         tension: 0.3,
@@ -607,7 +607,7 @@
     ),
     (
         id: "the_cup_cracks", // Wonder — the cup of forgetfulness fails; a memory returns
-        register: Wonder,
+        register: "wonder",
         tags: ["myth", "wonder", "gnosis", "longing"],
         phases: [Setup, Fall],
         tension: -0.2,
@@ -630,7 +630,7 @@
     ),
     (
         id: "a_crack_in_the_false_sky", // Wonder — a soul sees beyond the Demiurge's vault
-        register: Wonder,
+        register: "wonder",
         tags: ["myth", "wonder", "gnosis"],
         phases: [Setup, Fall],
         tension: 0.2,
@@ -649,7 +649,7 @@
     ),
     (
         id: "the_hidden_seal_found", // Wonder — a password-sigil surfaces; the ascent becomes thinkable
-        register: Wonder,
+        register: "wonder",
         tags: ["myth", "wonder", "gnosis", "ascent"],
         phases: [Rising, Fall],
         tension: 0.1,
@@ -674,7 +674,7 @@
     // --- BETRAYAL/PERSECUTION: the heretic hunted ---
     (
         id: "the_cult_names_a_heretic", // Persecution — a waking soul is denounced by the faithful
-        register: Persecution,
+        register: "persecution",
         tags: ["myth", "persecution", "cult", "gnosis"],
         // Climax-only: a denunciation is a *reversal*, fired when the thread has ripened,
         // never told early in the Rising (which would skip the climax the collision needs).
@@ -703,7 +703,7 @@
     ),
     (
         id: "the_archons_arm_falls", // Betrayal Climax — the Mentor revealed as an Archon's instrument
-        register: Betrayal,
+        register: "betrayal",
         tags: ["myth", "betrayal", "archon", "cult"],
         phases: [Climax],
         tension: 2.4,
@@ -729,7 +729,7 @@
     ),
     (
         id: "rapture_curdles_to_despair", // Betrayal/Loss — the cult's gift turns poison
-        register: Betrayal,
+        register: "betrayal",
         tags: ["myth", "cult", "betrayal", "loss"],
         phases: [Climax],
         tension: 2.0,
@@ -758,7 +758,7 @@
     // --- LOSS/DISASTER: the wheel of fate (heimarmene) ---
     (
         id: "the_wheel_of_fate_turns", // Disaster — an Archon's heimarmene falls like weather
-        register: Disaster,
+        register: "disaster",
         tags: ["myth", "disaster", "archon", "fate"],
         phases: [Climax],
         tension: 2.0,
@@ -780,7 +780,7 @@
     ),
     (
         id: "the_beloved_drinks_and_forgets", // Loss — a dear soul swallows the cup of oblivion
-        register: Loss,
+        register: "loss",
         tags: ["myth", "loss", "oblivion", "longing"],
         phases: [Climax],
         tension: 2.3,
@@ -808,7 +808,7 @@
     // --- VENGEANCE/AMBITION: an Archon-cult wars; grief over the forgotten hardens ---
     (
         id: "grief_for_the_forgotten", // Vengeance — sorrow over a soul lost to oblivion hardens
-        register: Vengeance,
+        register: "vengeance",
         tags: ["myth", "vengeance", "longing", "loss"],
         phases: [Fall, Rising],
         tension: 1.5,
@@ -830,7 +830,7 @@
     ),
     (
         id: "the_archon_cult_goes_to_war", // War — a faction that worships one of the seven turns on a rival cult
-        register: War,
+        register: "war",
         tags: ["myth", "war", "archon", "cult", "political"],
         phases: [Climax],
         tension: 2.5,
@@ -854,7 +854,7 @@
     ),
     (
         id: "the_pretender_to_the_false_throne", // Ambition — a soul seeks the Demiurge's seat for itself
-        register: Ambition,
+        register: "ambition",
         tags: ["myth", "ambition", "archon", "political"],
         phases: [Rising],
         tension: 2.1,
@@ -879,7 +879,7 @@
     // --- REDEMPTION/RELIEF: Sabaoth repents; the ascent; enmity dissolves in shared remembrance ---
     (
         id: "sabaoths_repentance", // Redemption — one of the seven turns against the Demiurge; chains a Fall
-        register: Redemption,
+        register: "redemption",
         tags: ["myth", "redemption", "archon", "defiance"],
         phases: [Fall],
         tension: -1.8,
@@ -901,7 +901,7 @@
     ),
     (
         id: "two_souls_remember_they_are_dead", // Redemption/Relief — old enmity dissolves in shared gnosis
-        register: Redemption,
+        register: "redemption",
         tags: ["myth", "relief", "gnosis", "reunion"],
         phases: [Fall],
         tension: -2.0,
@@ -927,7 +927,7 @@
     ),
     (
         id: "the_soul_ascends_past_the_seven", // Triumph/Wonder — a soul speaks the passwords and rises
-        register: Triumph,
+        register: "triumph",
         tags: ["myth", "wonder", "gnosis", "ascent", "triumph"],
         phases: [Fall],
         tension: -2.0,
@@ -963,7 +963,7 @@
 
     (
         id: "the_confidant_sells_a_secret", // Betrayal Climax — a trusted ear sells what it heard
-        register: Betrayal,
+        register: "betrayal",
         tags: ["betrayal", "personal", "political"],
         phases: [Climax],
         tension: 2.3,
@@ -988,7 +988,7 @@
     ),
     (
         id: "the_sworn_brother_defects", // Betrayal Climax — a blood-oath brother crosses to the enemy
-        register: Betrayal,
+        register: "betrayal",
         tags: ["betrayal", "political", "violence"],
         phases: [Climax],
         tension: 2.5,
@@ -1013,7 +1013,7 @@
     ),
     (
         id: "the_wanderer_betrayed", // Betrayal Climax — a wanderer's open trust turned against them
-        register: Betrayal,
+        register: "betrayal",
         tags: ["betrayal", "personal", "wanderlust"],
         phases: [Climax],
         tension: 2.1,
@@ -1036,7 +1036,7 @@
     ),
     (
         id: "the_avenger_becomes_the_betrayed", // Betrayal Climax — chains after the_vendetta; the hunter hunted
-        register: Betrayal,
+        register: "betrayal",
         tags: ["betrayal", "vengeance", "irony"],
         phases: [Climax],
         tension: 2.4,
@@ -1060,7 +1060,7 @@
     ),
     (
         id: "the_envious_rival_poisons_a_name", // Betrayal Rising — a rival's envy erodes the protagonist's standing
-        register: Betrayal,
+        register: "betrayal",
         tags: ["betrayal", "political", "envy"],
         phases: [Rising],
         tension: 1.6,
@@ -1088,7 +1088,7 @@
 
     (
         id: "the_oath_over_a_grave", // Vengeance Setup/Rising — grief crystallises into sworn vengeance
-        register: Vengeance,
+        register: "vengeance",
         tags: ["vengeance", "loss", "personal"],
         phases: [Setup, Rising],
         tension: 1.4,
@@ -1110,7 +1110,7 @@
     ),
     (
         id: "the_blood_price_demanded", // Vengeance Climax — the oath cashes out in a confrontation
-        register: Vengeance,
+        register: "vengeance",
         tags: ["vengeance", "violence", "political"],
         phases: [Climax],
         tension: 2.3,
@@ -1136,7 +1136,7 @@
 
     (
         id: "the_usurpers_whisper", // Ambition Rising — a rival courts the throne from the shadows
-        register: Ambition,
+        register: "ambition",
         tags: ["ambition", "political", "cult"],
         phases: [Rising],
         tension: 1.9,
@@ -1160,7 +1160,7 @@
     ),
     (
         id: "the_gnosis_hunters_purge", // Persecution Climax — the curious are rounded up by the zealous
-        register: Persecution,
+        register: "persecution",
         tags: ["myth", "persecution", "gnosis", "cult"],
         phases: [Climax],
         tension: 2.2,
@@ -1186,7 +1186,7 @@
     ),
     (
         id: "the_cult_schism", // Ambition/Persecution Rising — a doctrine dispute splits the faithful
-        register: Ambition,
+        register: "ambition",
         tags: ["myth", "cult", "political", "schism"],
         phases: [Rising],
         tension: 1.7,
@@ -1211,7 +1211,7 @@
     ),
     (
         id: "the_tyrant_brands_dissenters", // Persecution Climax — the throne-holder marks the disobedient
-        register: Persecution,
+        register: "persecution",
         tags: ["political", "persecution", "cruelty"],
         phases: [Climax],
         tension: 2.3,
@@ -1239,7 +1239,7 @@
 
     (
         id: "the_border_raid", // War Rising — a faction tests the line before open war is declared
-        register: War,
+        register: "war",
         tags: ["war", "political", "violence"],
         phases: [Rising],
         tension: 1.8,
@@ -1265,7 +1265,7 @@
 
     (
         id: "the_contagion_of_forgetting", // Disaster Climax — mass oblivion spreads like sickness
-        register: Disaster,
+        register: "disaster",
         tags: ["myth", "disaster", "oblivion", "archon"],
         phases: [Climax],
         tension: 2.1,
@@ -1287,7 +1287,7 @@
     ),
     (
         id: "the_flood_drowns_a_quarter", // Disaster Climax — waters rise and a neighbourhood is lost
-        register: Disaster,
+        register: "disaster",
         tags: ["disaster", "survival", "violence"],
         phases: [Climax],
         tension: 2.2,
@@ -1307,7 +1307,7 @@
     ),
     (
         id: "the_spirit_famine", // Disaster Rising — the land yields nothing; hope dries with the earth
-        register: Disaster,
+        register: "disaster",
         tags: ["disaster", "survival", "myth"],
         phases: [Rising],
         tension: 1.6,
@@ -1324,7 +1324,7 @@
     ),
     (
         id: "a_child_of_the_dead_is_taken", // Loss Climax — the most vulnerable soul is claimed
-        register: Loss,
+        register: "loss",
         tags: ["loss", "personal", "myth"],
         phases: [Climax],
         tension: 2.4,
@@ -1351,7 +1351,7 @@
 
     (
         id: "the_guide_leads_souls_out", // Sacrifice Climax — a guide gives their life at the threshold
-        register: Sacrifice,
+        register: "sacrifice",
         tags: ["myth", "sacrifice", "gnosis", "ascent"],
         phases: [Climax],
         tension: 1.8,
@@ -1375,7 +1375,7 @@
     ),
     (
         id: "a_shield_of_flesh", // Sacrifice Climax — an ally steps in front of the killing blow
-        register: Sacrifice,
+        register: "sacrifice",
         tags: ["sacrifice", "personal", "violence"],
         phases: [Climax],
         tension: 1.7,
@@ -1401,7 +1401,7 @@
 
     (
         id: "a_kindness_between_strangers", // Romance Setup — an unexpected warmth in the grey waste
-        register: Romance,
+        register: "romance",
         tags: ["romance", "relief", "wanderlust"],
         phases: [Setup],
         tension: -0.6,
@@ -1416,7 +1416,7 @@
     ),
     (
         id: "the_wanderer_finds_a_kindred", // Reunion Setup — two rootless souls recognise one another
-        register: Reunion,
+        register: "reunion",
         tags: ["reunion", "wanderlust", "relief"],
         phases: [Setup, Fall],
         tension: -0.8,
@@ -1435,7 +1435,7 @@
     ),
     (
         id: "a_marvel_in_the_waste", // Wonder Setup — a hidden feature surfaces in the ashen plain
-        register: Wonder,
+        register: "wonder",
         tags: ["wonder", "myth", "gnosis"],
         phases: [Setup, Fall],
         tension: -0.3,
@@ -1454,7 +1454,7 @@
     ),
     (
         id: "a_name_remembered", // Wonder/Relief Fall — a soul remembers its own name against the forgetting
-        register: Wonder,
+        register: "wonder",
         tags: ["myth", "wonder", "gnosis", "relief"],
         phases: [Fall],
         tension: -0.5,
@@ -1473,7 +1473,7 @@
     ),
     (
         id: "two_enemies_at_the_threshold", // Reunion Fall — enemies recognise each other as dead
-        register: Reunion,
+        register: "reunion",
         tags: ["reunion", "myth", "relief", "gnosis"],
         phases: [Fall],
         tension: -1.2,
@@ -1496,7 +1496,7 @@
     ),
     (
         id: "the_festival_of_false_light", // Triumph/Relief Setup — the Demiurge's cult stages a celebration
-        register: Triumph,
+        register: "triumph",
         tags: ["myth", "cult", "relief", "triumph"],
         phases: [Setup],
         tension: -0.4,
@@ -1514,7 +1514,7 @@
     ),
     (
         id: "a_feud_cooled_by_shared_loss", // Redemption Fall — grief creates an unexpected bridge
-        register: Redemption,
+        register: "redemption",
         tags: ["relief", "personal", "loss"],
         phases: [Fall],
         tension: -1.3,
@@ -1536,7 +1536,7 @@
     ),
     (
         id: "the_mentors_quiet_wisdom", // Wonder Setup — a curious mind is gently opened
-        register: Wonder,
+        register: "wonder",
         tags: ["wonder", "personal", "curiosity"],
         phases: [Setup],
         tension: -0.3,
@@ -1558,7 +1558,7 @@
     ),
     (
         id: "a_soul_forgives_the_unseen_hand", // Redemption Fall — a soul accepts the purgatory's cruelty without collapsing
-        register: Redemption,
+        register: "redemption",
         tags: ["myth", "relief", "redemption", "gnosis"],
         phases: [Fall],
         tension: -1.5,
@@ -1593,7 +1593,7 @@
     // --- The deplorable extreme ---
     (
         id: "made_to_do_the_deed", // Persecution Climax — the protagonist coerced into the atrocity
-        register: Persecution,
+        register: "persecution",
         tags: ["persecution", "cruelty", "violence", "myth"],
         phases: [Climax],
         tension: 2.5,
@@ -1618,7 +1618,7 @@
     ),
     (
         id: "the_innocent_condemned", // Persecution Climax — a blameless soul scapegoated by the zealous
-        register: Persecution,
+        register: "persecution",
         tags: ["persecution", "cruelty", "myth", "political"],
         phases: [Climax],
         tension: 2.3,
@@ -1641,7 +1641,7 @@
     ),
     (
         id: "virtue_punished_vice_rewarded", // Betrayal Fall — the betrayer prospers; injustice stands
-        register: Betrayal,
+        register: "betrayal",
         tags: ["betrayal", "myth", "despair"],
         phases: [Fall],
         tension: 1.4,
@@ -1662,7 +1662,7 @@
     ),
     (
         id: "the_vengeance_consummated", // Vengeance Climax — the oath cashes out in blood (Slay)
-        register: Vengeance,
+        register: "vengeance",
         tags: ["vengeance", "violence"],
         phases: [Climax],
         tension: 2.5,
@@ -1687,7 +1687,7 @@
     // --- The heavenly extreme (Grace) ---
     (
         id: "mercy_at_the_sword", // Grace Climax — power to kill, chosen mercy (the cycle's exit)
-        register: Grace,
+        register: "grace",
         tags: ["grace", "relief", "personal"],
         phases: [Climax],
         tension: -1.2,
@@ -1712,7 +1712,7 @@
     ),
     (
         id: "the_many_wake_together", // Grace Climax — collective gnosis; a congregation freed at once
-        register: Grace,
+        register: "grace",
         tags: ["grace", "myth", "gnosis", "relief"],
         phases: [Climax, Fall],
         tension: -1.5,
@@ -1738,7 +1738,7 @@
     ),
     (
         id: "the_homecoming_to_the_pleroma", // Grace Fall — THE apex: arrival in the fullness
-        register: Grace,
+        register: "grace",
         tags: ["grace", "myth", "gnosis", "ascent"],
         phases: [Fall],
         tension: -2.0,
@@ -1764,7 +1764,7 @@
     ),
     (
         id: "the_teacher_outdone_and_glad", // Grace Fall — a mentor rejoices to be surpassed (Exalt)
-        register: Grace,
+        register: "grace",
         tags: ["grace", "relief", "personal"],
         phases: [Fall],
         tension: -1.5,
@@ -1786,7 +1786,7 @@
     ),
     (
         id: "the_wound_mended", // Grace Fall — a struck body healed (Relieve; bright twin of Afflict)
-        register: Grace,
+        register: "grace",
         tags: ["grace", "relief", "personal"],
         phases: [Fall],
         tension: -1.3,
@@ -1802,7 +1802,7 @@
     ),
     (
         id: "the_larder_opened", // Grace Setup — charity freely given (Relieve; bright twin of famine)
-        register: Grace,
+        register: "grace",
         tags: ["grace", "relief", "survival"],
         phases: [Setup, Fall],
         tension: -1.0,
@@ -1821,7 +1821,7 @@
     // --- Mid-spectrum texture + levity (low stakes; the quotidian weather) ---
     (
         id: "a_debt_forgiven", // Grace Fall — a small mercy, quietly given
-        register: Grace,
+        register: "grace",
         tags: ["grace", "relief", "personal"],
         phases: [Fall],
         tension: -0.8,
@@ -1836,7 +1836,7 @@
     ),
     (
         id: "the_quarrel_patched", // Relief Fall — an everyday reconciliation between rivals
-        register: Relief,
+        register: "relief",
         tags: ["relief", "personal"],
         phases: [Fall],
         tension: -1.0,
@@ -1852,7 +1852,7 @@
     ),
     (
         id: "a_shared_table", // Relief Setup — friendship over bread (Relieve)
-        register: Relief,
+        register: "relief",
         tags: ["relief", "personal", "survival"],
         phases: [Setup],
         tension: -0.6,
@@ -1868,7 +1868,7 @@
     ),
     (
         id: "the_festival_that_was_real", // Relief Setup — a genuine joy (twin of the false light)
-        register: Relief,
+        register: "relief",
         tags: ["relief", "personal"],
         phases: [Setup],
         tension: -0.7,
@@ -1885,7 +1885,7 @@
     ),
     (
         id: "a_jest_among_friends", // Relief Setup — levity; a shared laugh in the grey
-        register: Relief,
+        register: "relief",
         tags: ["relief", "personal"],
         phases: [Setup],
         tension: -0.5,
@@ -1911,7 +1911,7 @@
 
     (
         id: "the_shrine_defiled", // Persecution Climax — a discovered marvel razed (Defile)
-        register: Persecution,
+        register: "persecution",
         tags: ["persecution", "cruelty", "myth"],
         phases: [Climax],
         tension: 2.0,
@@ -1932,7 +1932,7 @@
     ),
     (
         id: "the_bound_in_chains", // Persecution Climax — a loved one taken in chains (Bind)
-        register: Persecution,
+        register: "persecution",
         tags: ["persecution", "cruelty", "myth"],
         phases: [Climax],
         tension: 2.2,
@@ -1956,7 +1956,7 @@
     ),
     (
         id: "the_bound_set_free", // Grace Climax — striking off another's chains (Free; the defiant deed)
-        register: Grace,
+        register: "grace",
         tags: ["grace", "myth", "defiance"],
         phases: [Climax],
         tension: -1.5,
@@ -1978,7 +1978,7 @@
     ),
     (
         id: "the_vow_that_holds", // Romance Climax — love consummated and KEPT (Bond; the missing bright climax)
-        register: Romance,
+        register: "romance",
         tags: ["romance", "relief", "personal"],
         phases: [Climax],
         tension: -1.0,
@@ -2002,7 +2002,7 @@
     ),
     (
         id: "the_kinslayer", // Loss Climax — a bonded soul slain in fury (Slay; Polti: Murder of a Kinsman)
-        register: Loss,
+        register: "loss",
         tags: ["loss", "violence", "betrayal"],
         phases: [Climax],
         tension: 2.6,
@@ -2026,7 +2026,7 @@
     ),
     (
         id: "the_execution", // Persecution Climax — a captive put to death (Slay + Bound)
-        register: Persecution,
+        register: "persecution",
         tags: ["persecution", "cruelty", "violence", "myth"],
         phases: [Climax],
         tension: 2.5,
