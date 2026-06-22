@@ -787,6 +787,13 @@ impl Simulation {
         agent_core::sift::run_retrospective(&mut self.world).map_or(0, |s| s.candidates().len())
     }
 
+    /// Whether the **incremental** sifter (fed the ring episode-by-episode) and the **retrospective**
+    /// oracle agree candidate-for-candidate over this run's Chronicle — the S8.2 acceptance check.
+    /// `true` vacuously when the sift layer is off. Dev/test only; changes no sim state.
+    pub fn sift_paths_agree(&mut self) -> bool {
+        agent_core::sift::paths_agree(&mut self.world).unwrap_or(true)
+    }
+
     /// The story the director has told: `(tick, beat id)` in order — the beats it
     /// identified and staged for this player.
     pub fn director_log(&self) -> &[(u64, String)] {
@@ -2751,6 +2758,26 @@ mod tests {
             off.director_beats_fired(),
             "the whole sift layer is a pure observer: the director runs identically with it on or off",
         );
+    }
+
+    #[test]
+    fn the_incremental_sifter_agrees_with_the_oracle_over_a_real_run() {
+        // The S8.2 acceptance criterion against a real seeded run (not a hand-built ring): the
+        // incremental matcher and the retrospective oracle must perceive the same stories.
+        let mut s = Simulation::new(Setup {
+            seed: 7,
+            npcs: 60,
+            markets: 4,
+            feuds: 6,
+            director: true,
+            dialogue: true,
+            director_cfg: DirectorConfig { beat_interval: 7, ..Default::default() },
+            sift: true,
+            ..Default::default()
+        });
+        s.run(300);
+        assert!(s.sift_candidate_count() > 0, "the run produced stories to compare");
+        assert!(s.sift_paths_agree(), "incremental sifter must agree with the retrospective oracle");
     }
 
     #[test]
