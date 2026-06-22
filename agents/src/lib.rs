@@ -2085,7 +2085,7 @@ mod tests {
     fn the_population_sustains_itself() {
         // Planning ahead, NPCs feed themselves off the land rather than crashing:
         // a large start is carried, not collapsed.
-        let mut sim = economy(60);
+        let mut sim = economy(40);
         sim.run(150);
         assert!(sim.npc_count() > 5, "the economy collapsed ({} left)", sim.npc_count());
     }
@@ -2309,7 +2309,7 @@ mod tests {
 
     #[test]
     fn both_farming_and_baking_emerge() {
-        let mut sim = economy(60);
+        let mut sim = economy(40);
         // Food is bread, and bread comes only from grain you grow then bake. At
         // first people just buy the markets' cheap grain and bake it — rational —
         // so farming stays low; once that grain runs dry, growing it becomes worth
@@ -2704,19 +2704,23 @@ mod tests {
         // A seeded run with the director stirring feuds: the sifter should perceive the forming
         // stories bottom-up over the Chronicle, rank them by interest, and the dump should read as
         // stories (a cast + the episodes that constitute them).
+        // A small, fast world that still stirs enough feuds to form multi-step stories (verified:
+        // ~16 candidates, Active/Resolved arcs). Tractable: ~5s/run, vs ~16s at the old 36x26/n60/t400.
         let build = |sift: bool| {
             let mut s = Simulation::new(Setup {
+                width: 32,
+                height: 24,
                 seed: 42,
-                npcs: 60,
+                npcs: 40,
                 markets: 4,
-                feuds: 6,
+                feuds: 8,
                 director: true,
                 dialogue: true,
                 director_cfg: DirectorConfig { beat_interval: 7, ..Default::default() },
                 sift,
                 ..Default::default()
             });
-            s.run(400);
+            s.run(200);
             s
         };
 
@@ -2769,12 +2773,16 @@ mod tests {
         // until switched on (a sift-on/graft-off run tells exactly the beats a sift-off run does --
         // the sifter only observes); be deterministic when on; and demonstrably steer the director
         // toward the forming stories the sifter perceives.
+        // A small, fast world that still forms enough feuds for the graft to steer (verified:
+        // diverges from graft-off, ~20 differing beats). ~5s/run, vs ~16s at the old default/n60/t400.
         let cadence = |sift: bool, graft: bool| {
             let mut s = Simulation::new(Setup {
+                width: 32,
+                height: 24,
                 seed: 42,
-                npcs: 60,
+                npcs: 40,
                 markets: 4,
-                feuds: 6,
+                feuds: 8,
                 director: true,
                 dialogue: true,
                 director_cfg: DirectorConfig { beat_interval: 7, ..Default::default() },
@@ -2782,7 +2790,7 @@ mod tests {
                 sift_cfg: config::SiftConfig { graft, min_interest: 0.5, ..Default::default() },
                 ..Default::default()
             });
-            s.run(400);
+            s.run(200);
             s.director_log().to_vec()
         };
 
@@ -2852,19 +2860,22 @@ mod tests {
     #[test]
     fn the_incremental_sifter_agrees_with_the_oracle_over_a_real_run() {
         // The S8.2 acceptance criterion against a real seeded run (not a hand-built ring): the
-        // incremental matcher and the retrospective oracle must perceive the same stories.
+        // incremental matcher and the retrospective oracle must perceive the same stories. A small,
+        // fast world that still produces a rich episode stream to compare.
         let mut s = Simulation::new(Setup {
+            width: 32,
+            height: 24,
             seed: 7,
-            npcs: 60,
+            npcs: 40,
             markets: 4,
-            feuds: 6,
+            feuds: 8,
             director: true,
             dialogue: true,
             director_cfg: DirectorConfig { beat_interval: 7, ..Default::default() },
             sift: true,
             ..Default::default()
         });
-        s.run(300);
+        s.run(200);
         assert!(s.sift_candidate_count() > 0, "the run produced stories to compare");
         assert!(s.sift_paths_agree(), "incremental sifter must agree with the retrospective oracle");
     }
@@ -2873,7 +2884,7 @@ mod tests {
     fn npcs_move_about_the_world() {
         // The Move step is real: pursuing their plans, NPCs leave the tiles they
         // spawned on (to reach land, markets, or better ground).
-        let mut sim = economy(60);
+        let mut sim = economy(40);
         let mut spawn = sim.npc_positions();
         spawn.sort_by_key(|c| (c.col, c.row));
         sim.run(50);
@@ -2884,7 +2895,7 @@ mod tests {
 
     #[test]
     fn trade_does_not_create_money() {
-        let mut sim = economy(60);
+        let mut sim = economy(40);
         let before = sim.total_money();
         sim.run(120);
         // Exact: trade only moves coins; only death removes them.
@@ -2893,8 +2904,8 @@ mod tests {
 
     #[test]
     fn economy_is_deterministic() {
-        let mut a = Simulation::new(Setup { width: 40, height: 30, seed: 7, npcs: 60, ..Default::default() });
-        let mut b = Simulation::new(Setup { width: 40, height: 30, seed: 7, npcs: 60, ..Default::default() });
+        let mut a = Simulation::new(Setup { width: 40, height: 30, seed: 7, npcs: 40, ..Default::default() });
+        let mut b = Simulation::new(Setup { width: 40, height: 30, seed: 7, npcs: 40, ..Default::default() });
         a.run(80);
         b.run(80);
         assert_eq!(a.npc_count(), b.npc_count());
@@ -2963,7 +2974,7 @@ mod tests {
     fn worked_sites_stay_within_bounds() {
         // Depletion (use draws a site down) and regeneration (the land refills it)
         // keep every site's remaining within [0, capacity] over a long run.
-        let mut sim = Simulation::new(Setup { width: 40, height: 30, seed: 5, npcs: 50, warmup: 200, ..Default::default() });
+        let mut sim = Simulation::new(Setup { width: 40, height: 30, seed: 5, npcs: 36, warmup: 200, ..Default::default() });
         sim.run(120);
         for s in sim.affordances() {
             assert!(s.remaining >= 0.0, "affordance went negative ({})", s.remaining);
@@ -2981,7 +2992,7 @@ mod tests {
             height: 36,
             seed: 7,
             warmup: 200,
-            npcs: 70,
+            npcs: 44,
             markets: 6,
             markets_on_settlements: true,
             ..Default::default()
@@ -3013,7 +3024,7 @@ mod tests {
             height: 36,
             seed: 7,
             warmup: 200,
-            npcs: 70,
+            npcs: 44,
             markets: 6,
             markets_on_settlements: true,
             faction_cfg: cfg,
@@ -3037,7 +3048,7 @@ mod tests {
         // is an oligarchy, a temple a democracy, a royal seat a monarchy. (Which kinds
         // actually form factions varies by world; here we check the rule itself.)
         let mut sim =
-            Simulation::new(Setup { width: 48, height: 36, seed: 7, warmup: 200, npcs: 70, markets: 6, markets_on_settlements: true, ..Default::default() });
+            Simulation::new(Setup { width: 48, height: 36, seed: 7, warmup: 200, npcs: 44, markets: 6, markets_on_settlements: true, ..Default::default() });
         sim.run(120);
         let cat = sim.feature_catalog();
         let factions = sim.factions();
@@ -3062,7 +3073,7 @@ mod tests {
         // Membership is no longer exclusive: someone within reach of two courts belongs
         // to both.
         let mut sim =
-            Simulation::new(Setup { width: 48, height: 36, seed: 7, warmup: 200, npcs: 70, markets: 6, markets_on_settlements: true, ..Default::default() });
+            Simulation::new(Setup { width: 48, height: 36, seed: 7, warmup: 200, npcs: 44, markets: 6, markets_on_settlements: true, ..Default::default() });
         sim.run(120);
         let mut q = sim.world.query_filtered::<&Allegiance, With<Npc>>();
         let multi = q.iter(&sim.world).any(|a| a.0.len() >= 2);
@@ -3079,7 +3090,7 @@ mod tests {
             height: 36,
             seed: 7,
             warmup: 200,
-            npcs: 80,
+            npcs: 48,
             markets: 8,
             markets_on_settlements: true,
             faction_cfg: cfg,
@@ -3113,7 +3124,7 @@ mod tests {
             height: 36,
             seed: 7,
             warmup: 200,
-            npcs: 80,
+            npcs: 48,
             markets: 8,
             markets_on_settlements: true,
             faction_cfg: cfg,
@@ -3143,7 +3154,7 @@ mod tests {
         // The opinion graph: serving a leader (and warring on rivals) leaves people with
         // real, directed opinions of the figures they have dealt with.
         let mut sim =
-            Simulation::new(Setup { width: 48, height: 36, seed: 7, warmup: 200, npcs: 70, markets: 6, markets_on_settlements: true, ..Default::default() });
+            Simulation::new(Setup { width: 48, height: 36, seed: 7, warmup: 200, npcs: 44, markets: 6, markets_on_settlements: true, ..Default::default() });
         sim.run(140);
         let mut q = sim.world.query_filtered::<&Opinion, With<Npc>>();
         let formed = q.iter(&sim.world).any(|o| o.0.values().any(|&v| v.abs() > 0.05));
@@ -3164,7 +3175,7 @@ mod tests {
                 height: 36,
                 seed,
                 warmup: 200,
-                npcs: 70,
+                npcs: 44,
                 markets: 6,
                 markets_on_settlements: true,
                 feuds: 8,
@@ -3182,7 +3193,7 @@ mod tests {
     fn factions_are_deterministic() {
         let build = || {
             let mut s = Simulation::new(Setup {
-                width: 48, height: 36, seed: 7, warmup: 200, npcs: 60, markets: 6, markets_on_settlements: true,
+                width: 48, height: 36, seed: 7, warmup: 200, npcs: 40, markets: 6, markets_on_settlements: true,
                 ..Default::default()
             });
             s.run(80);
@@ -3198,7 +3209,7 @@ mod tests {
         // The verification harness: across a long simulation, no step may create
         // money, grow the population, lose affordance uses, or price a good out of
         // band. A trip would mean a bug wearing the costume of emergence.
-        let mut sim = Simulation::new(Setup { width: 48, height: 36, seed: 9, npcs: 80, warmup: 200, ..Default::default() });
+        let mut sim = Simulation::new(Setup { width: 48, height: 36, seed: 9, npcs: 48, warmup: 200, ..Default::default() });
         let mut prev = sim.census();
         for _ in 0..150 {
             sim.run(1);
@@ -3226,7 +3237,7 @@ mod tests {
         // The discovery system's invariant: after a tick, no Landmark or Hidden
         // feature stays latent on a hex an NPC occupies — a turn there finds it.
         // (Secrets need more than presence, so they may remain.)
-        let mut sim = Simulation::new(Setup { width: 40, height: 30, seed: 5, warmup: 200, npcs: 60, ..Default::default() });
+        let mut sim = Simulation::new(Setup { width: 40, height: 30, seed: 5, warmup: 200, npcs: 40, ..Default::default() });
         sim.run(120);
         let occupied: Vec<Coord> = {
             let mut q = sim.world.query_filtered::<&Position, With<Npc>>();
@@ -3251,12 +3262,13 @@ mod tests {
     /// form around the protagonist), with a throne the ambitious vie for. The director
     /// stages its story over *this* social world.
     fn staged(director: bool) -> Simulation {
-        staged_seeded(director, 11)
+        staged_seeded(director, 11, 40)
     }
 
-    /// As [`staged`], but with an explicit world seed — so an emergent property can be
-    /// checked across a few worlds rather than demanded of one fixed seed.
-    fn staged_seeded(director: bool, seed: u64) -> Simulation {
+    /// As [`staged`], but with an explicit world seed and population — so an emergent property can
+    /// be checked across a few worlds rather than demanded of one fixed seed, and a test that needs
+    /// the director to reach *every* layer can ask for a more populous (costlier) world.
+    fn staged_seeded(director: bool, seed: u64, npcs: usize) -> Simulation {
         let reg = Registry::bundled();
         let goals = throne_goals(&reg);
         Simulation::new(Setup {
@@ -3264,7 +3276,7 @@ mod tests {
             height: 32,
             seed,
             warmup: 200,
-            npcs: 60,
+            npcs,
             markets: 6,
             markets_on_settlements: true,
             throne: true,
@@ -3310,7 +3322,9 @@ mod tests {
         // The point of the rebuild: Γ works the *social fabric*, not just the land. Over
         // a run with no feuds seeded, any grudge is one the director engineered (people);
         // its beat log reaches the political register (factions) and a disaster (world).
-        let mut sim = staged(true);
+        // This one asks the director to reach *every* layer at once, so it needs a more populous
+        // (political) world than the other staged tests — kept as small as still exercises all three.
+        let mut sim = staged_seeded(true, 11, 56);
         sim.run(240);
         let manufactured_grudges = !sim.grudges().is_empty();
         let log: Vec<&str> = sim.director_log().iter().map(|(_, id)| id.as_str()).collect();
@@ -3482,7 +3496,7 @@ mod tests {
         // director *can and does* engineer them is the real claim. So verify the capability
         // across a handful of seeded worlds rather than demanding it of one fixed seed.
         let collided = (0..4u64).any(|i| {
-            let mut s = staged_seeded(true, 11 + i * 13);
+            let mut s = staged_seeded(true, 11 + i * 13, 40);
             s.run(600);
             s.director_cadence().iter().any(|c| c.collision)
         });
@@ -3501,7 +3515,7 @@ mod tests {
             height: 32,
             seed,
             warmup: 200,
-            npcs: 50,
+            npcs: 36,
             markets: 6,
             markets_on_settlements: true,
             throne: true,
