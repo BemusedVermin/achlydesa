@@ -74,6 +74,28 @@ pub(crate) struct Sinks<'w> {
     chronicle: Option<ResMut<'w, crate::chronicle::Chronicle>>,
 }
 
+/// The **stage** the director manipulates: the land's features (and their catalog), the factions,
+/// and the throne. Bundled into one `SystemParam` to keep `director_step` well within bevy's
+/// system-param limit and to group the world-state the beats' effects reach. The throne is optional
+/// (a thronesless world has none).
+#[derive(SystemParam)]
+pub(crate) struct Stage<'w> {
+    features: ResMut<'w, Features>,
+    catalog: Res<'w, FeatureCatalog>,
+    factions: ResMut<'w, Factions>,
+    throne: Option<Res<'w, Throne>>,
+}
+
+/// The **avatar and the bodies**: the player (if any) and every body's position, read so the
+/// director can draw its spotlight toward the player. All inert in a headless run — no avatar, no
+/// draw — so a player-less world is byte-identical. Bundled to trim the param list.
+#[derive(SystemParam)]
+pub(crate) struct Cast<'w, 's> {
+    player: Option<Res<'w, crate::player::PlayerState>>,
+    positions: Query<'w, 's, &'static Position>,
+    protagonist: Query<'w, 's, Entity, With<Protagonist>>,
+}
+
 /// The NPC the director stages its drama for — the audience of one. `Γ`'s threads weave
 /// around the *player's* accumulated investments (its [`prominence`](Director::prominence)
 /// map), of which this avatar is the central, but not the only, figure. On its death the
@@ -673,18 +695,13 @@ pub(crate) fn director_step(
     cfg: Res<DirectorRes>,
     book: Res<BeatBook>,
     reg: Res<Registry>,
-    mut features: ResMut<Features>,
-    catalog: Res<FeatureCatalog>,
-    mut factions: ResMut<Factions>,
-    throne: Option<Res<Throne>>,
+    // The world stage the director manipulates (land features + catalog, factions, throne), bundled.
+    mut stage: Stage,
     mut director: ResMut<Director>,
-    // The optional out-of-band sinks (dialogue queue + gossip store), bundled (see `Sinks`).
+    // The optional out-of-band sinks (dialogue queue + gossip store + Chronicle), bundled (see `Sinks`).
     mut sinks: Sinks,
-    // The player avatar (if any) and a read of every body's tile — so the director can draw its
-    // casting toward the avatar. Both inert in a headless run: no avatar → no draw → byte-identical.
-    player: Option<Res<crate::player::PlayerState>>,
-    positions: Query<&Position>,
-    protagonist: Query<Entity, With<Protagonist>>,
+    // The avatar and the bodies — for the player-draw bias; inert (byte-identical) in a headless run.
+    cast: Cast,
     mut people: Query<
         (
             Entity,
@@ -708,7 +725,7 @@ pub(crate) fn director_step(
         return;
     }
     let tick = substrate.0.tick();
-    let proto = protagonist.iter().next();
+    let proto = cast.protagonist.iter().next();
     let moods = MoodIds::resolve(&reg);
 
     // Where the player stands, and the per-tile draw toward it (0 with no avatar). This is the
@@ -717,7 +734,7 @@ pub(crate) fn director_step(
     let width = substrate.0.topology().width();
     let reach = cfg.reach;
     let avatar_pos: Option<Coord> =
-        player.as_ref().and_then(|p| p.avatar()).and_then(|a| positions.get(a).ok()).map(|p| p.0);
+        cast.player.as_ref().and_then(|p| p.avatar()).and_then(|a| cast.positions.get(a).ok()).map(|p| p.0);
     let draw = |c: Coord| match avatar_pos {
         Some(ap) if hex_dist(ap, c, width) <= reach => AVATAR_DRAW,
         _ => 0.0,
@@ -835,13 +852,13 @@ pub(crate) fn director_step(
     };
     let proto_pos = cands[pi].pos;
     let proto_seats: SmallVec<[Coord; 4]> = cands[pi].seats.clone();
-    let proto_in_faction = proto_seats.iter().any(|s| factions.at(*s).is_some());
-    let throne_holder = throne.as_ref().and_then(|t| t.holder);
+    let proto_in_faction = proto_seats.iter().any(|s| stage.factions.at(*s).is_some());
+    let throne_holder = stage.throne.as_ref().and_then(|t| t.holder);
 
     // --- Ambient tension readout (inspection only; the objective is drama, not this).
     let grudges_at_proto = cands.iter().filter(|c| c.grudge_target == Some(proto)).count() as f32;
     let cold = cands.iter().filter(|c| c.op_of_proto < cfg.foe_threshold).count() as f32;
-    let at_war = proto_seats.iter().any(|s| factions.at(*s).is_some_and(|f| !f.at_war.is_empty()));
+    let at_war = proto_seats.iter().any(|s| stage.factions.at(*s).is_some_and(|f| !f.at_war.is_empty()));
     let peril = if cands[pi].need < cfg.peril { 1.0 } else { 0.0 };
     let heat = grudges_at_proto + 0.5 * cold + if at_war { 2.0 } else { 0.0 } + peril + deaths as f32;
     director.tension += cfg.tension_smoothing * (heat - director.tension);
@@ -943,7 +960,7 @@ pub(crate) fn director_step(
         region(topo, proto_pos, cfg.reach)
     };
     let marvel_nearby =
-        region_tiles.iter().any(|&i| features.at_index(i).iter().any(|f| f.discovered && !f.defiled));
+        region_tiles.iter().any(|&i| stage.features.at_index(i).iter().any(|f| f.discovered && !f.defiled));
     let ctx = PreCtx { proto, throne_holder, proto_in_faction, at_war, region: &region_set, marvel_nearby };
 
     // --- Score every *tellable* beat by drama × novelty ÷ resistance, biased toward the
@@ -951,7 +968,7 @@ pub(crate) fn director_step(
     let mut scored: Vec<(f32, usize, [Option<Entity>; SLOTS])> = Vec::new();
     let mut max_impact = 0.0f32;
     for (bi, beat) in book.0.iter().enumerate() {
-        let Some((slots, salience)) = cast_beat(beat, proto, &cands, &factions, &proto_seats, &cfg, active.other) else {
+        let Some((slots, salience)) = cast_beat(beat, proto, &cands, &stage.factions, &proto_seats, &cfg, active.other) else {
             continue;
         };
         if !pre_ok(beat, &slots, &cands, &idx_of, &reg, &ctx) {
@@ -1130,7 +1147,7 @@ pub(crate) fn director_step(
             Effect::Decree => {
                 if let Some(p) = reg.predicate_id("alive") {
                     let law = Law::Taboo(p, 0);
-                    if let Some(f) = factions.0.iter_mut().find(|f| proto_seats.contains(&f.seat))
+                    if let Some(f) = stage.factions.0.iter_mut().find(|f| proto_seats.contains(&f.seat))
                         && !f.forbids((p, 0))
                     {
                         f.laws.push(law);
@@ -1139,11 +1156,11 @@ pub(crate) fn director_step(
                 }
             }
             Effect::War => {
-                let mine = proto_seats.iter().find(|s| factions.at(**s).is_some()).copied();
+                let mine = proto_seats.iter().find(|s| stage.factions.at(**s).is_some()).copied();
                 if let Some(mine) = mine {
-                    let rival = factions.0.iter().map(|f| f.seat).find(|s| *s != mine);
+                    let rival = stage.factions.0.iter().map(|f| f.seat).find(|s| *s != mine);
                     if let Some(rival) = rival {
-                        for f in factions.0.iter_mut() {
+                        for f in stage.factions.0.iter_mut() {
                             if f.seat == mine && !f.at_war.contains(&rival) {
                                 f.at_war.push(rival);
                                 f.laws.push(Law::Exclude(rival));
@@ -1180,8 +1197,8 @@ pub(crate) fn director_step(
                 // A marvel found in the land — discover the nearest still-hidden feature in
                 // reach (a real fact entered into the world), and fill the cast with awe.
                 for &i in &region_tiles {
-                    if features.at_index(i).iter().any(|f| !f.discovered) {
-                        features.discover_at_index(&catalog, i, Discovery::Secret);
+                    if stage.features.at_index(i).iter().any(|f| !f.discovered) {
+                        stage.features.discover_at_index(&stage.catalog, i, Discovery::Secret);
                         break;
                     }
                 }
@@ -1268,7 +1285,7 @@ pub(crate) fn director_step(
                 // Dark twin of Reveal: ruin the nearest discovered marvel in reach, and fill the
                 // cast with despair. (Gated by `DiscoveredMarvelNearby`, so there is one to ruin.)
                 for &i in &region_tiles {
-                    if features.defile_at_index(i).is_some() {
+                    if stage.features.defile_at_index(i).is_some() {
                         break;
                     }
                 }
