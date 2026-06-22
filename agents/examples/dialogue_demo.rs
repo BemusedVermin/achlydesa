@@ -77,7 +77,7 @@ fn line(u: &Utterance) -> String {
         ""
     };
     format!(
-        "  day {:>4}  {:>8} → {:<8}  [{:?}]  {}{}",
+        "  day {:>4}  {:>8} → {:<8}  [{}]  {}{}",
         u.tick, u.speaker_name, u.listener_name, u.act, u.surface, voice
     )
 }
@@ -96,12 +96,11 @@ fn main() {
     }
 
     // Show the words are grounded: the accusations carry real motive and standing.
-    if let Some(u) = log.iter().rev().find(|u| {
-        matches!(
-            u.act,
-            agents::SpeechAct::Accuse | agents::SpeechAct::Threaten
-        )
-    }) {
+    if let Some(u) = log
+        .iter()
+        .rev()
+        .find(|u| matches!(u.act.as_str(), "accuse" | "threaten"))
+    {
         println!(
             "\n  A grounded line — {} ({}) {} {}:\n    \"{}\"",
             u.speaker_name,

@@ -32,45 +32,12 @@ use sim::Rng;
 use smallvec::SmallVec;
 use std::collections::HashMap;
 
-/// A Searle-style illocutionary class — *what kind of thing* is being said. The grammar
-/// and the moral colouring key off it; authored on each [`Intent`].
-#[derive(Deserialize, Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub enum SpeechAct {
-    Greet,
-    Accuse,
-    Threaten,
-    Plead,
-    Confide,
-    Console,
-    Mourn,
-    Boast,
-    Praise,
-    Reconcile,
-    Recruit,
-    Gossip,
-    Deflect,
-}
-
-impl SpeechAct {
-    /// The grammar key (lowercase) the surface generator composes from.
-    pub fn key(self) -> &'static str {
-        match self {
-            SpeechAct::Greet => "greet",
-            SpeechAct::Accuse => "accuse",
-            SpeechAct::Threaten => "threaten",
-            SpeechAct::Plead => "plead",
-            SpeechAct::Confide => "confide",
-            SpeechAct::Console => "console",
-            SpeechAct::Mourn => "mourn",
-            SpeechAct::Boast => "boast",
-            SpeechAct::Praise => "praise",
-            SpeechAct::Reconcile => "reconcile",
-            SpeechAct::Recruit => "recruit",
-            SpeechAct::Gossip => "gossip",
-            SpeechAct::Deflect => "deflect",
-        }
-    }
-}
+// A **speech act** — a Searle-style illocutionary class (`"greet"`, `"accuse"`, …) — is just a
+// data tag now: the lowercase string an [`Intent`] authors *is* the grammar key the surface
+// generator composes from (`grammar.ron` keys off it, with a graceful fallback). The behaviour a
+// line carries lives in its data-driven [`Move`]s, not in the act, so a new act is pure RON (an
+// `intents.ron` entry + a `grammar.ron` production) — no Rust change. The old `SpeechAct` enum +
+// `key()` table is gone.
 
 /// The two roles in a conversational exchange. A [`Move`] names whose state it touches.
 #[derive(Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
@@ -114,7 +81,7 @@ fn one() -> f32 {
 #[derive(Clone, Debug)]
 pub struct Intent {
     pub id: String,
-    pub act: SpeechAct,
+    pub act: String,
     pub tags: Vec<String>,
     /// Scored by [`ai::score`] against the speaker→listener pair — the emergent "what
     /// would this person, feeling this way about you, want to say?"
@@ -128,7 +95,7 @@ pub struct Intent {
 #[derive(Deserialize)]
 struct IntentDef {
     id: String,
-    act: SpeechAct,
+    act: String,
     #[serde(default)]
     tags: Vec<String>,
     appeal: Vec<ConsiderationDef>,
@@ -251,7 +218,7 @@ impl std::ops::Deref for DialogueRes {
 pub struct MemRecord {
     pub tick: u64,
     pub partner: Entity,
-    pub act: SpeechAct,
+    pub act: String,
     pub register: String,
     pub importance: f32,
     /// Spaced-repetition strength: rises on recall, fades otherwise (Ebbinghaus).
@@ -273,7 +240,7 @@ pub struct Utterance {
     pub speaker: Entity,
     pub listener: Entity,
     pub intent: String,
-    pub act: SpeechAct,
+    pub act: String,
     /// Names, motive descriptors, mood word, relationship word, the referent — the
     /// "character card" the SLM prompt is assembled from (numbers already turned to words).
     pub speaker_name: String,
@@ -319,7 +286,7 @@ impl Dialogue {
     /// Compose the grammar surface for an utterance (disjoint field borrow of grammar+rng).
     fn render(
         &mut self,
-        act: SpeechAct,
+        act: &str,
         affect: &str,
         referent: &Option<String>,
         speaker: &str,
@@ -707,7 +674,7 @@ pub(crate) fn converse(
             .tags
             .first()
             .cloned()
-            .unwrap_or_else(|| intent.act.key().to_string());
+            .unwrap_or_else(|| intent.act.clone());
         let referent = pick_referent(
             &dlg,
             speaker,
@@ -721,7 +688,7 @@ pub(crate) fn converse(
 
         // Render the deterministic grammar surface.
         let surface = dlg.render(
-            intent.act,
+            &intent.act,
             affect.bucket,
             &referent,
             &speaker_name,
@@ -734,7 +701,7 @@ pub(crate) fn converse(
             &mut dlg,
             speaker,
             listener,
-            intent.act,
+            &intent.act,
             &register,
             importance,
             cfg.memory_cap,
@@ -743,7 +710,7 @@ pub(crate) fn converse(
             &mut dlg,
             listener,
             speaker,
-            intent.act,
+            &intent.act,
             &register,
             importance * 0.8,
             cfg.memory_cap,
@@ -755,7 +722,7 @@ pub(crate) fn converse(
             speaker,
             listener,
             intent: intent.id.clone(),
-            act: intent.act,
+            act: intent.act.clone(),
             speaker_name,
             listener_name,
             motive,
@@ -804,7 +771,7 @@ fn remember(
     dlg: &mut Dialogue,
     who: Entity,
     partner: Entity,
-    act: SpeechAct,
+    act: &str,
     register: &str,
     importance: f32,
     cap: usize,
@@ -822,7 +789,7 @@ fn remember(
     log.records.push(MemRecord {
         tick: 0,
         partner,
-        act,
+        act: act.to_string(),
         register: register.to_string(),
         importance,
         strength: 1.0,
@@ -864,18 +831,18 @@ impl Grammar {
     /// Tries the `act/affect` symbol, falling back to the bare `act`.
     fn realize(
         &self,
-        act: SpeechAct,
+        act: &str,
         affect: &str,
         referent: &Option<String>,
         speaker: &str,
         listener: &str,
         rng: &mut SplitMix64,
     ) -> String {
-        let keyed = format!("{}/{}", act.key(), affect);
+        let keyed = format!("{act}/{affect}");
         let root = if self.0.contains_key(&keyed) {
             keyed
         } else {
-            act.key().to_string()
+            act.to_string()
         };
         let slots = |s: &str| -> Option<String> {
             match s {
@@ -966,7 +933,7 @@ pub fn build_prompt(u: &Utterance) -> String {
         mood = u.mood_word,
         relation = u.relation_word,
         listener = u.listener_name,
-        act = u.act.key(),
+        act = u.act.as_str(),
         referent = referent,
         draft = u.surface,
     )
@@ -1271,7 +1238,7 @@ pub fn perform_scaled(
             .tags
             .first()
             .cloned()
-            .unwrap_or_else(|| intent.act.key().to_string());
+            .unwrap_or_else(|| intent.act.clone());
         let dlg = world.resource::<Dialogue>();
         let referent = pick_referent(dlg, speaker, listener, &register, has_grudge);
         (
@@ -1293,7 +1260,7 @@ pub fn perform_scaled(
     let cap = world.resource::<DialogueRes>().memory_cap;
     let utt = world.resource_scope::<Dialogue, Utterance>(|_w, mut dlg| {
         let surface = dlg.render(
-            intent.act,
+            &intent.act,
             affect_bucket,
             &referent,
             &speaker_name,
@@ -1301,13 +1268,19 @@ pub fn perform_scaled(
         );
         let importance = (intent.weight + if made_grudge { 0.6 } else { 0.0 }).min(2.0);
         remember(
-            &mut dlg, speaker, listener, intent.act, &register, importance, cap,
+            &mut dlg,
+            speaker,
+            listener,
+            &intent.act,
+            &register,
+            importance,
+            cap,
         );
         remember(
             &mut dlg,
             listener,
             speaker,
-            intent.act,
+            &intent.act,
             &register,
             importance * 0.8,
             cap,
@@ -1318,7 +1291,7 @@ pub fn perform_scaled(
             speaker,
             listener,
             intent: intent.id.clone(),
-            act: intent.act,
+            act: intent.act.clone(),
             speaker_name: speaker_name.clone(),
             listener_name: listener_name.clone(),
             motive: motive.clone(),
@@ -1390,7 +1363,7 @@ mod tests {
 
     #[test]
     fn an_unknown_mood_in_an_intent_is_rejected() {
-        let ron = r#"[( id: "bad", act: Accuse, appeal: [(input: Mood("anger"), curve: Linear(m: 1.0, b: 0.0))],
+        let ron = r#"[( id: "bad", act: "accuse", appeal: [(input: Mood("anger"), curve: Linear(m: 1.0, b: 0.0))],
             moves: [Stir(who: Speaker, mood: "ragemaxxing", delta: 0.1)] )]"#;
         assert!(IntentBook::from_ron(ron, &Registry::bundled()).is_err());
     }
@@ -1401,8 +1374,8 @@ mod tests {
         let mut a = SplitMix64::new(7);
         let mut b = SplitMix64::new(7);
         let r = Some("the broken oath".to_string());
-        let l1 = g.realize(SpeechAct::Accuse, "angry", &r, "Aldric", "Mira", &mut a);
-        let l2 = g.realize(SpeechAct::Accuse, "angry", &r, "Aldric", "Mira", &mut b);
+        let l1 = g.realize("accuse", "angry", &r, "Aldric", "Mira", &mut a);
+        let l2 = g.realize("accuse", "angry", &r, "Aldric", "Mira", &mut b);
         assert_eq!(l1, l2, "same seed → same line");
         assert!(
             !l1.is_empty() && l1.contains("Mira"),
@@ -1430,7 +1403,7 @@ mod tests {
             speaker: Entity::PLACEHOLDER,
             listener: Entity::PLACEHOLDER,
             intent: "wound".into(),
-            act: SpeechAct::Accuse,
+            act: "accuse".into(),
             speaker_name: "Aldric".into(),
             listener_name: "Mira".into(),
             motive: SmallVec::new(),

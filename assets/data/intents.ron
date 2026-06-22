@@ -14,7 +14,7 @@
     // --- Warmth & sociability (the connective tissue) ---
     (
         id: "a_greeting",
-        act: Greet,
+        act: "greet",
         tags: ["warmth"],
         weight: 0.4,
         appeal: [
@@ -25,7 +25,7 @@
     ),
     (
         id: "a_confidence_shared",
-        act: Confide,
+        act: "confide",
         tags: ["warmth", "trust"],
         appeal: [
             (input: OpinionOf,     curve: Power(exp: 1.5)),
@@ -39,7 +39,7 @@
     ),
     (
         id: "an_idle_rumour",
-        act: Gossip,
+        act: "gossip",
         tags: ["rumour"],
         weight: 0.6,
         appeal: [
@@ -52,7 +52,7 @@
     // --- Esteem & ambition ---
     (
         id: "a_word_of_praise",
-        act: Praise,
+        act: "praise",
         tags: ["esteem"],
         appeal: [
             (input: OpinionOf,  curve: Linear(m: 0.7, b: 0.0)),
@@ -62,7 +62,7 @@
     ),
     (
         id: "a_boast",
-        act: Boast,
+        act: "boast",
         tags: ["esteem", "ambition"],
         appeal: [
             (input: Trait("ambition"), curve: Power(exp: 1.3)),
@@ -73,7 +73,7 @@
     ),
     (
         id: "a_call_to_arms",
-        act: Recruit,
+        act: "recruit",
         tags: ["ambition", "faction"],
         appeal: [
             (input: Trait("ambition"), curve: Power(exp: 1.4)),
@@ -86,7 +86,7 @@
     // --- Grievance, anger, the trunk (these surface only when the state warrants) ---
     (
         id: "an_accusation",
-        act: Accuse,
+        act: "accuse",
         tags: ["grievance", "betrayal"],
         weight: 1.3,
         appeal: [
@@ -101,7 +101,7 @@
     ),
     (
         id: "a_threat",
-        act: Threaten,
+        act: "threaten",
         tags: ["grievance", "violence"],
         weight: 1.2,
         appeal: [
@@ -116,7 +116,7 @@
     ),
     (
         id: "a_cold_dismissal",
-        act: Deflect,
+        act: "deflect",
         tags: ["coldness"],
         weight: 0.7,
         appeal: [
@@ -129,7 +129,7 @@
     // --- Grief & need ---
     (
         id: "a_grief_spoken",
-        act: Mourn,
+        act: "mourn",
         tags: ["grief"],
         appeal: [
             (input: Mood("sorrow"), curve: Power(exp: 1.2)),
@@ -138,7 +138,7 @@
     ),
     (
         id: "a_plea",
-        act: Plead,
+        act: "plead",
         tags: ["need"],
         appeal: [
             (input: Mood("fear"), curve: Power(exp: 1.2)),
@@ -148,7 +148,7 @@
     ),
     (
         id: "a_consolation",
-        act: Console,
+        act: "console",
         tags: ["warmth", "grief"],
         appeal: [
             (input: OpinionOf,            curve: Power(exp: 1.2)),
@@ -164,7 +164,7 @@
     // --- The exits from the cycle (relief) ---
     (
         id: "an_overture_of_peace",
-        act: Reconcile,
+        act: "reconcile",
         tags: ["mercy"],
         appeal: [
             (input: Trait("forgiveness"), curve: Power(exp: 1.2)),
@@ -182,7 +182,7 @@
     // The world is a lie — a gnosis-touched soul whispers the secret to one they trust
     (
         id: "a_secret_of_falseness",
-        act: Confide,
+        act: "confide",
         tags: ["gnosis", "warning"],
         weight: 1.2,
         appeal: [
@@ -200,7 +200,7 @@
     // Wake up — an awakened soul pleads with the sleeper to see past the veil
     (
         id: "a_plea_to_wake",
-        act: Plead,
+        act: "plead",
         tags: ["gnosis", "waking"],
         weight: 1.1,
         appeal: [
@@ -218,7 +218,7 @@
     // The seven watch — hushed gossip that fortune is shaped by unseen hands
     (
         id: "a_whisper_of_the_seven",
-        act: Gossip,
+        act: "gossip",
         tags: ["warning", "archon"],
         weight: 0.9,
         appeal: [
@@ -235,7 +235,7 @@
     // Come to the temple — a devout soul draws another into the cult of the Demiurge
     (
         id: "a_call_to_the_temple",
-        act: Recruit,
+        act: "recruit",
         tags: ["cult", "devotion"],
         weight: 1.1,
         appeal: [
@@ -253,7 +253,7 @@
     // Drink and forget — a tender, sinister invitation to sink back into the dream
     (
         id: "a_tender_forgetting",
-        act: Console,
+        act: "console",
         tags: ["false-comfort", "oblivion"],
         weight: 1.0,
         appeal: [
@@ -272,7 +272,7 @@
     // I have seen the light of the false god — a devout visionary boasts of rapturous standing
     (
         id: "a_vision_proclaimed",
-        act: Boast,
+        act: "boast",
         tags: ["wonder", "cult"],
         weight: 0.9,
         appeal: [
@@ -289,7 +289,7 @@
     // Exalting the order — a faithful soul praises one of high standing in the false hierarchy
     (
         id: "a_praise_of_the_order",
-        act: Praise,
+        act: "praise",
         tags: ["cult", "esteem"],
         weight: 0.8,
         appeal: [
@@ -306,7 +306,7 @@
     // You are one of theirs — accusing the listener of being an Archon's hand or a heretic
     (
         id: "an_accusation_of_heresy",
-        act: Accuse,
+        act: "accuse",
         tags: ["heresy", "betrayal"],
         weight: 1.2,
         appeal: [
@@ -324,7 +324,7 @@
     // The faithful will come — a devout enforcer warns the heretic of retribution
     (
         id: "a_warning_of_retribution",
-        act: Threaten,
+        act: "threaten",
         tags: ["warning", "devotion"],
         weight: 1.1,
         appeal: [
@@ -341,7 +341,7 @@
     // Mourning a vanished soul — grieving one who ascended or drank the cup and forgot
     (
         id: "a_grief_for_the_forgotten",
-        act: Mourn,
+        act: "mourn",
         tags: ["grief", "oblivion"],
         weight: 0.9,
         appeal: [
@@ -358,7 +358,7 @@
     // Two souls who both remember — reconciling at the edge of the wheel
     (
         id: "a_recognition_at_the_wheel",
-        act: Reconcile,
+        act: "reconcile",
         tags: ["mercy", "gnosis"],
         weight: 1.1,
         appeal: [
@@ -378,7 +378,7 @@
     // The mist-touched greeting — wary or warm, tinted by the fog of not-quite-remembering
     (
         id: "a_greeting_through_the_mist",
-        act: Greet,
+        act: "greet",
         tags: ["warmth", "gnosis"],
         weight: 0.5,
         appeal: [
@@ -395,7 +395,7 @@
     // The oblivion-blanket — a soul too deep in the dream gives a flat, forgetting dismissal
     (
         id: "a_forgetting_dismissal",
-        act: Deflect,
+        act: "deflect",
         tags: ["false-comfort", "oblivion"],
         weight: 0.8,
         appeal: [
@@ -414,7 +414,7 @@
     // A wanderer's greeting — curiosity-bright, reaching across the mist toward a stranger
     (
         id: "a_wanderers_greeting",
-        act: Greet,
+        act: "greet",
         tags: ["wandering"],
         weight: 0.6,
         appeal: [
@@ -431,7 +431,7 @@
     // A proud hail — high prominence, a soul that knows its own weight
     (
         id: "a_proud_hail",
-        act: Greet,
+        act: "greet",
         tags: ["esteem", "pride"],
         weight: 0.5,
         appeal: [
@@ -447,7 +447,7 @@
     // A lonely reaching-out — loneliness drives even a cautious soul to speak first
     (
         id: "a_lonesome_greeting",
-        act: Greet,
+        act: "greet",
         tags: ["warmth", "loneliness"],
         weight: 0.7,
         appeal: [
@@ -465,7 +465,7 @@
     // A wary nod — caution keeps the speaker brief, eyes on the exits of the dream
     (
         id: "a_wary_nod",
-        act: Greet,
+        act: "greet",
         tags: ["coldness"],
         weight: 0.4,
         appeal: [
@@ -481,7 +481,7 @@
     // Confessing curiosity about the world's seams — a soul who has begun to notice the cracks
     (
         id: "a_curiosity_about_the_seams",
-        act: Confide,
+        act: "confide",
         tags: ["gnosis", "wonder"],
         weight: 1.0,
         appeal: [
@@ -500,7 +500,7 @@
     // A nostalgic confidence — sharing a half-remembered life before the purgatory
     (
         id: "a_memory_half_remembered",
-        act: Confide,
+        act: "confide",
         tags: ["nostalgia", "warmth"],
         weight: 0.9,
         appeal: [
@@ -518,7 +518,7 @@
     // A guilty admission — something done in this grey life that sits heavy
     (
         id: "a_guilty_admission",
-        act: Confide,
+        act: "confide",
         tags: ["guilt", "trust"],
         weight: 1.0,
         appeal: [
@@ -536,7 +536,7 @@
     // Sharing a foreboding — something is gathering in the mist, and the speaker cannot hold it alone
     (
         id: "a_shared_foreboding",
-        act: Confide,
+        act: "confide",
         tags: ["warning", "foreboding"],
         weight: 0.9,
         appeal: [
@@ -555,7 +555,7 @@
     // Rumour of an Archon's hand — whispered suspicion that the hierarchy moved against someone
     (
         id: "a_rumour_of_an_archons_hand",
-        act: Gossip,
+        act: "gossip",
         tags: ["archon", "warning"],
         weight: 1.0,
         appeal: [
@@ -573,7 +573,7 @@
     // Envious talk of another's fortune — a resentful soul cannot help but name the lucky one
     (
         id: "an_envious_rumour",
-        act: Gossip,
+        act: "gossip",
         tags: ["rumour", "envy"],
         weight: 0.9,
         appeal: [
@@ -590,7 +590,7 @@
     // Idle wonder — a soul simply marvelling aloud at something strange in the grey world
     (
         id: "an_idle_wonder",
-        act: Gossip,
+        act: "gossip",
         tags: ["wonder", "rumour"],
         weight: 0.6,
         appeal: [
@@ -607,7 +607,7 @@
     // Humble praise — low pride, genuine admiration freely given
     (
         id: "a_humble_praise",
-        act: Praise,
+        act: "praise",
         tags: ["esteem", "humility"],
         appeal: [
             (input: Trait("humility"), curve: Power(exp: 1.2)),
@@ -622,7 +622,7 @@
     // Zealous praise of the cult — fervent adulation of a fellow believer
     (
         id: "a_zealous_praise",
-        act: Praise,
+        act: "praise",
         tags: ["cult", "esteem"],
         weight: 0.9,
         appeal: [
@@ -640,7 +640,7 @@
     // Praising a wanderer's courage — admiring someone who defied the mist and walked far
     (
         id: "a_praise_of_the_wanderers_courage",
-        act: Praise,
+        act: "praise",
         tags: ["esteem", "wandering"],
         weight: 0.8,
         appeal: [
@@ -658,7 +658,7 @@
     // A proud boast — pride cresting, the speaker names their own achievements in the grey world
     (
         id: "a_proud_boast",
-        act: Boast,
+        act: "boast",
         tags: ["esteem", "pride"],
         weight: 1.1,
         appeal: [
@@ -675,7 +675,7 @@
     // A zealot's boast — proclaiming the Demiurge's favour with burning certainty
     (
         id: "a_zealots_boast",
-        act: Boast,
+        act: "boast",
         tags: ["cult", "devotion"],
         weight: 1.0,
         appeal: [
@@ -693,7 +693,7 @@
     // A cruel taunt-boast — cruelty and contempt fused into a gloating blow
     (
         id: "a_cruel_taunt",
-        act: Boast,
+        act: "boast",
         tags: ["grievance", "cruelty"],
         weight: 1.1,
         appeal: [
@@ -712,7 +712,7 @@
     // A wanderer's call to roam together — two restless souls, one invitation
     (
         id: "a_call_to_roam",
-        act: Recruit,
+        act: "recruit",
         tags: ["wandering", "faction"],
         weight: 0.8,
         appeal: [
@@ -730,7 +730,7 @@
     // A defiant call to resist — waking soul urges another to stand against the Archons
     (
         id: "a_call_to_resist",
-        act: Recruit,
+        act: "recruit",
         tags: ["gnosis", "defiance"],
         weight: 1.2,
         appeal: [
@@ -750,7 +750,7 @@
     // Accusing of cruelty — naming what was done in plain, damning language
     (
         id: "an_accusation_of_cruelty",
-        act: Accuse,
+        act: "accuse",
         tags: ["grievance", "cruelty"],
         weight: 1.2,
         appeal: [
@@ -768,7 +768,7 @@
     // Accusing of cowardice — contempt for one who flinched when they should have stood
     (
         id: "an_accusation_of_cowardice",
-        act: Accuse,
+        act: "accuse",
         tags: ["grievance", "betrayal"],
         weight: 1.1,
         appeal: [
@@ -787,7 +787,7 @@
     // A cold contemptuous threat — no heat, just the flat certainty of harm to come
     (
         id: "a_contemptuous_threat",
-        act: Threaten,
+        act: "threaten",
         tags: ["grievance", "coldness"],
         weight: 1.1,
         appeal: [
@@ -805,7 +805,7 @@
     // A vengeful threat — old wounds demanding their price
     (
         id: "a_vengeful_threat",
-        act: Threaten,
+        act: "threaten",
         tags: ["grievance", "vengeance"],
         weight: 1.2,
         appeal: [
@@ -823,7 +823,7 @@
     // Pleading from loneliness — the rawest need: just be here, just stay
     (
         id: "a_plea_from_loneliness",
-        act: Plead,
+        act: "plead",
         tags: ["need", "loneliness"],
         weight: 1.0,
         appeal: [
@@ -840,7 +840,7 @@
     // Begging to be remembered — longing for the life before, and for someone to confirm it was real
     (
         id: "a_plea_to_be_remembered",
-        act: Plead,
+        act: "plead",
         tags: ["need", "nostalgia"],
         weight: 1.0,
         appeal: [
@@ -859,7 +859,7 @@
     // Pleading for compassion — bared vulnerability, asking not to be discarded
     (
         id: "a_plea_for_compassion",
-        act: Plead,
+        act: "plead",
         tags: ["need"],
         appeal: [
             (input: Mood("fear"),         curve: Power(exp: 1.3)),
@@ -876,7 +876,7 @@
     // Grief shaded by nostalgia — mourning what was, not just who is gone
     (
         id: "a_nostalgic_mourning",
-        act: Mourn,
+        act: "mourn",
         tags: ["grief", "nostalgia"],
         weight: 0.9,
         appeal: [
@@ -894,7 +894,7 @@
     // Mourning a soul that forgot — grief for one drowned in oblivion while still walking
     (
         id: "a_grief_for_the_sleeping",
-        act: Mourn,
+        act: "mourn",
         tags: ["grief", "oblivion"],
         weight: 1.0,
         appeal: [
@@ -912,7 +912,7 @@
     // A lonely lament — grief without a witness, now offered to one who happened to be near
     (
         id: "a_lonely_lament",
-        act: Mourn,
+        act: "mourn",
         tags: ["grief", "loneliness"],
         weight: 0.8,
         appeal: [
@@ -929,7 +929,7 @@
     // A compassionate consolation — seeing sorrow and moving toward it without hesitation
     (
         id: "a_compassionate_consolation",
-        act: Console,
+        act: "console",
         tags: ["warmth", "compassion"],
         weight: 1.0,
         appeal: [
@@ -948,7 +948,7 @@
     // You are not forgotten — a gentle word against the abyss of loneliness
     (
         id: "a_word_against_forgetting",
-        act: Console,
+        act: "console",
         tags: ["warmth", "loneliness"],
         weight: 0.9,
         appeal: [
@@ -966,7 +966,7 @@
     // Gratitude-tinged comfort — offering solace from the surplus of one's own relief
     (
         id: "a_gratitude_tinged_comfort",
-        act: Console,
+        act: "console",
         tags: ["warmth", "gratitude"],
         weight: 0.8,
         appeal: [
@@ -985,7 +985,7 @@
     // Forgiving from compassion — letting the wound close because kindness demands it
     (
         id: "a_compassionate_forgiveness",
-        act: Reconcile,
+        act: "reconcile",
         tags: ["mercy", "compassion"],
         weight: 1.0,
         appeal: [
@@ -1005,7 +1005,7 @@
     // Two wakers' accord — waking souls recognising each other and putting old friction aside
     (
         id: "a_wakers_accord",
-        act: Reconcile,
+        act: "reconcile",
         tags: ["mercy", "gnosis"],
         weight: 1.1,
         appeal: [
@@ -1026,7 +1026,7 @@
     // Letting an old envy go — envy draining away, replaced by reluctant peace
     (
         id: "an_envy_released",
-        act: Reconcile,
+        act: "reconcile",
         tags: ["mercy", "envy"],
         weight: 0.9,
         appeal: [
@@ -1045,7 +1045,7 @@
     // Humble reconciliation — approaching without pride, hands open
     (
         id: "a_humble_reconciliation",
-        act: Reconcile,
+        act: "reconcile",
         tags: ["mercy", "humility"],
         weight: 0.9,
         appeal: [
@@ -1064,7 +1064,7 @@
     // A proud dismissal — too important to be bothered; pride is the armour
     (
         id: "a_proud_dismissal",
-        act: Deflect,
+        act: "deflect",
         tags: ["esteem", "pride"],
         weight: 0.8,
         appeal: [
@@ -1081,7 +1081,7 @@
     // A contemptuous brush-off — the listener is not worth the breath
     (
         id: "a_contemptuous_brush_off",
-        act: Deflect,
+        act: "deflect",
         tags: ["coldness"],
         weight: 0.9,
         appeal: [
@@ -1099,7 +1099,7 @@
     // A restless "not now" — the wanderer's spirit won't be pinned down even by a friend
     (
         id: "a_restless_deflection",
-        act: Deflect,
+        act: "deflect",
         tags: ["wandering", "coldness"],
         weight: 0.7,
         appeal: [
@@ -1117,7 +1117,7 @@
     // A pious witness — the quiet awe of an unseen hand (the seed of the myth), shared in trust
     (
         id: "a_pious_witness",
-        act: Confide,
+        act: "confide",
         tags: ["wonder", "devotion"],
         weight: 0.9,
         appeal: [
@@ -1135,7 +1135,7 @@
     // A despairing confession — a soul that has stopped struggling, saying so to the last one near
     (
         id: "a_despairing_confession",
-        act: Confide,
+        act: "confide",
         tags: ["grief", "oblivion"],
         weight: 1.0,
         appeal: [
@@ -1153,7 +1153,7 @@
     // A rooted refusal — the soul that will not be moved from the one ground it holds against the fog
     (
         id: "a_rooted_refusal",
-        act: Deflect,
+        act: "deflect",
         tags: ["coldness", "rootedness"],
         weight: 0.7,
         appeal: [
@@ -1169,7 +1169,7 @@
     // A contented blessing — peace inside the dream (an ironic grace): a calm soul easing another
     (
         id: "a_contented_blessing",
-        act: Console,
+        act: "console",
         tags: ["warmth", "calm"],
         weight: 0.8,
         appeal: [
@@ -1187,7 +1187,7 @@
     // A grateful greeting — gratitude reaching first, warm before any word of business
     (
         id: "a_grateful_greeting",
-        act: Greet,
+        act: "greet",
         tags: ["warmth", "gratitude"],
         weight: 0.6,
         appeal: [
