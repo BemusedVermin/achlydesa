@@ -507,6 +507,9 @@ mod tests {
         let book =
             BeatBook::from_ron(ron, &reg).expect("a beat in a data-authored register resolves");
         assert_eq!(book.0.len(), 1);
-        assert_eq!(book.0[0].register, reg.register_id("schadenfreude").unwrap());
+        assert_eq!(
+            book.0[0].register,
+            reg.register_id("schadenfreude").unwrap()
+        );
     }
 }

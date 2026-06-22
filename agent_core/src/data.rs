@@ -763,7 +763,9 @@ mod tests {
     fn bundled_registers_resolve() {
         let reg = Registry::bundled();
         assert!(reg.register_count() >= 15);
-        let betrayal = reg.register_id("betrayal").expect("betrayal register exists");
+        let betrayal = reg
+            .register_id("betrayal")
+            .expect("betrayal register exists");
         let def = reg.register_def(betrayal);
         assert!(def.trunk && def.spine);
         // the spine rotation reproduces the old `director::SPINES` order, betrayal first.
@@ -787,7 +789,9 @@ mod tests {
             ..Default::default()
         })
         .expect("a registers doc with a novel register resolves");
-        let id = reg.register_id("schadenfreude").expect("the new register exists");
+        let id = reg
+            .register_id("schadenfreude")
+            .expect("the new register exists");
         let def = reg.register_def(id);
         assert!(def.spine && def.trunk);
         assert_eq!(def.casting, Casting::Ambitious);
