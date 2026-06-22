@@ -413,6 +413,8 @@ fn tile_info(
 /// Each tick, walk the avatar one (or `speed`) hexes along its route, revealing the map
 /// and discovering features as it goes. Early-returns until an avatar exists and has a
 /// route — so a world with no player is unchanged.
+// Bevy system: every parameter is an injected ECS query/resource, so the count is irreducible.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn player_travel(
     mut state: ResMut<PlayerState>,
     substrate: Res<Substrate>,

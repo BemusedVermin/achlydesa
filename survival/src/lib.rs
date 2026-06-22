@@ -89,6 +89,8 @@ impl Default for SurvivalConfig {
 /// shelter/gear flags. An NPC whose thirst or warmth bottoms out dies (the same sink as
 /// starvation); the avatar is left at the floor for the game to handle. Deterministic — drains are
 /// a pure function of tile data and integer stats, no RNG.
+// Bevy system: the `Query` tuple is the system's parameter signature, not a reducible type.
+#[allow(clippy::type_complexity)]
 pub fn survival_metabolism(
     mut commands: Commands,
     mut bodies: Query<

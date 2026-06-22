@@ -25,8 +25,8 @@ fn main() {
     let mut sums = [0i64; 6];
     for &e in &npcs {
         if let Some(a) = sim.abilities_of(e) {
-            for i in 0..6 {
-                sums[i] += a.scores[i] as i64;
+            for (i, s) in sums.iter_mut().enumerate() {
+                *s += a.scores[i] as i64;
             }
         }
     }
@@ -45,7 +45,7 @@ fn main() {
             .or_default() += 1;
     }
     let mut mix: Vec<_> = edges.into_iter().collect();
-    mix.sort_by(|a, b| b.1.cmp(&a.1));
+    mix.sort_by_key(|x| std::cmp::Reverse(x.1));
     println!("archetypes:");
     for (name, c) in &mix {
         println!("  {name:<14} {c}");
@@ -90,8 +90,8 @@ fn main() {
     );
     if let Some(a) = sim.abilities_of(avatar) {
         print!("avatar attributes: ");
-        for i in 0..6 {
-            print!("{} {}   ", labels[i], a.scores[i]);
+        for (i, label) in labels.iter().enumerate() {
+            print!("{} {}   ", label, a.scores[i]);
         }
         println!();
     }

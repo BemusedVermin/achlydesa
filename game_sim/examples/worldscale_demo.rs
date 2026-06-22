@@ -17,7 +17,7 @@ fn biome_mix(world: &game_sim::World) -> Vec<(String, usize)> {
             .or_default() += 1;
     }
     let mut v: Vec<_> = m.into_iter().collect();
-    v.sort_unstable_by(|a, b| b.1.cmp(&a.1));
+    v.sort_unstable_by_key(|x| std::cmp::Reverse(x.1));
     v
 }
 
