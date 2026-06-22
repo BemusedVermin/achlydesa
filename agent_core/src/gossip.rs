@@ -12,7 +12,7 @@
 //! regardless of map iteration order. With the director asleep nothing is ever seeded, so the map
 //! stays empty and [`gossip_spread`] early-returns — byte-identical to a world before this layer.
 
-use crate::beats::Register;
+use crate::data::RegisterId;
 use crate::people::Npc;
 use crate::{Position, Substrate};
 use bevy_ecs::prelude::*;
@@ -37,7 +37,7 @@ const CAP: usize = 4;
 #[derive(Clone, Copy, Debug)]
 pub struct Rumor {
     pub event_id: u64,
-    pub register: Register,
+    pub register: RegisterId,
     pub lead: Entity,
     /// The counterpart — shed once the rumour wears below [`OTHER_DROP`].
     pub other: Option<Entity>,
@@ -182,7 +182,7 @@ mod tests {
     fn r(id: u64, fid: f32) -> Rumor {
         Rumor {
             event_id: id,
-            register: Register::Betrayal,
+            register: 0, // any register id; this test exercises fidelity/cap, not the register
             lead: Entity::PLACEHOLDER,
             other: None,
             place: Coord::new(0, 0),

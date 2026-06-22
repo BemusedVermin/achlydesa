@@ -18,7 +18,7 @@
     (
         id: "feud_escalating",
         tension: "feud_escalating",
-        register: Vengeance,
+        register: "vengeance",
         window: [
             (kind: GrievanceFormed, binds: [("A", Actor), ("B", Target)]),
             (kind: OpinionCrossed,  binds: [("A", Actor), ("B", Target)], dir: Some(Cold)),
@@ -39,7 +39,7 @@
     (
         id: "vengeance_consummated",
         tension: "vengeance_consummated",
-        register: Vengeance,
+        register: "vengeance",
         window: [
             (kind: GrievanceFormed, binds: [("A", Actor), ("B", Target)]),
             (kind: Killed,          binds: [("A", Actor), ("B", Target)]),
@@ -59,7 +59,7 @@
     (
         id: "tyrant_rising",
         tension: "tyrant_rising",
-        register: Persecution,
+        register: "persecution",
         window: [
             (kind: Crowned,      binds: [("T", Actor)]),
             (kind: Transgressed, binds: [("T", Actor)]),
@@ -80,7 +80,7 @@
     (
         id: "a_war_and_its_dead",
         tension: "a_war_and_its_dead",
-        register: War,
+        register: "war",
         window: [
             (kind: WarDeclared, binds: [("A", Actor), ("B", Target)]),
             (kind: Death),
@@ -100,7 +100,7 @@
     (
         id: "a_grudge_forgiven",
         tension: "a_grudge_forgiven",
-        register: Grace,
+        register: "grace",
         window: [
             (kind: GrievanceFormed, binds: [("A", Actor), ("B", Target)]),
             (kind: OpinionCrossed,  binds: [("A", Actor), ("B", Target)], dir: Some(Warm)),

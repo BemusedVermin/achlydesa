@@ -14,7 +14,6 @@
 //! feature affordances are being worked.
 
 use crate::Substrate;
-use crate::beats::Register;
 use crate::chronicle::{Chronicle, Episode};
 use crate::data::Registry;
 use crate::features::Features;
@@ -187,7 +186,8 @@ pub enum Violation {
 #[derive(Clone, Debug)]
 pub struct RetoldThread {
     pub tension: String,
-    pub register: Register,
+    /// The spine's authored name (resolved from its [`crate::data::RegisterId`] for readable output).
+    pub register: String,
     pub status: SiftStatus,
     pub cast: Vec<Entity>,
     pub support: Vec<Episode>,
@@ -213,12 +213,17 @@ impl Retelling {
             .map(|c| c.recent().copied().collect())
             .unwrap_or_default();
         let by_id: BTreeMap<u64, Episode> = ring.iter().map(|e| (e.id, *e)).collect();
+        // Resolve register ids → their authored names for the readable dump (eval-only).
+        let reg = world.get_resource::<Registry>();
         let threads = sift
             .ranked(min_interest)
             .into_iter()
             .map(|c| RetoldThread {
                 tension: c.tension.clone(),
-                register: c.register,
+                register: reg.map_or_else(
+                    || c.register.to_string(),
+                    |r| r.register_name(c.register).to_string(),
+                ),
                 status: c.status,
                 cast: c.cast.to_vec(),
                 support: c
@@ -254,7 +259,7 @@ impl Retelling {
             let cast: Vec<String> = t.cast.iter().map(|e| format!("#{}", e.index())).collect();
             let _ = writeln!(
                 s,
-                "{}. [{:?}] {} ({:?}) interest={:.2} cast=[{}]",
+                "{}. [{}] {} ({:?}) interest={:.2} cast=[{}]",
                 i + 1,
                 t.register,
                 t.tension,

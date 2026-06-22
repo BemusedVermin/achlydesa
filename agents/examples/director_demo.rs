@@ -16,7 +16,7 @@
 //!
 //! `cargo run -p agents --example director_demo --release`
 
-use agents::{DirectorConfig, FactionConfig, Goals, Norms, Register, Registry, Setup, Simulation};
+use agents::{DirectorConfig, FactionConfig, Goals, Norms, Registry, Setup, Simulation};
 use std::collections::BTreeMap;
 
 fn peaceful_goals(reg: &Registry, with_throne: bool) -> Goals {
@@ -103,19 +103,15 @@ fn freed_world() -> Simulation {
 
 /// The registers the director told, most-told first — the shape of the season. Betrayal
 /// and its kin should top it *emergently*, never by a rule.
-fn register_histogram(sim: &Simulation) -> Vec<(Register, usize)> {
-    let mut counts: BTreeMap<String, (Register, usize)> = BTreeMap::new();
+fn register_histogram(sim: &Simulation) -> Vec<(String, usize)> {
+    let mut counts: BTreeMap<String, usize> = BTreeMap::new();
     for c in sim.director_cadence() {
-        let e = counts
-            .entry(format!("{:?}", c.register))
-            .or_insert((c.register, 0));
-        e.1 += 1;
+        *counts
+            .entry(sim.register_name(c.register).to_string())
+            .or_insert(0) += 1;
     }
-    let mut v: Vec<(Register, usize)> = counts.into_values().collect();
-    v.sort_by(|a, b| {
-        b.1.cmp(&a.1)
-            .then(format!("{:?}", a.0).cmp(&format!("{:?}", b.0)))
-    });
+    let mut v: Vec<(String, usize)> = counts.into_iter().collect();
+    v.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
     v
 }
 
@@ -157,7 +153,7 @@ fn main() {
             "  {:>4}  {:<26} {:<11} {:<7} #{:<4}  {:>4.1}   {}",
             c.tick,
             c.beat.replace('_', " "),
-            format!("{:?}", c.register),
+            volatile.register_name(c.register),
             format!("{:?}", c.phase),
             c.thread,
             c.lead_prominence,
@@ -172,7 +168,7 @@ fn main() {
         "\n  The registers it reached for, most-told first (betrayal dominates *emergently*):"
     );
     for (reg, n) in register_histogram(&volatile) {
-        println!("    {:<12} {n:>3}", format!("{reg:?}"));
+        println!("    {reg:<12} {n:>3}");
     }
     println!();
     readout("volatile:", &mut volatile);

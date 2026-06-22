@@ -47,9 +47,9 @@
 //! Off by default and deterministic (its one source of variety is a dedicated, seeded
 //! [`SplitMix64`] stream).
 
-use crate::beats::{Beat, BeatBook, Casting, Effect, Phase, Pre, Register, Role, SLOTS};
+use crate::beats::{Beat, BeatBook, Effect, Phase, Pre, Role, SLOTS};
 use crate::chronicle::EpisodeKind;
-use crate::data::Registry;
+use crate::data::{Casting, RegisterId, Registry};
 use crate::dialogue::Dialogue;
 use crate::factions::{Allegiance, Detained, Factions, Law, Opinion};
 use crate::features::{Discovery, FeatureCatalog, Features};
@@ -110,21 +110,9 @@ pub(crate) struct Cast<'w, 's> {
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Protagonist;
 
-/// The registers a thread can take as its **spine**. Relief is excluded — it is a *Fall*
-/// flavour, not a story's engine. Betrayal/Vengeance are the **trunk**.
-const SPINES: [Register; 10] = [
-    Register::Betrayal,
-    Register::Vengeance,
-    Register::Ambition,
-    Register::War,
-    Register::Disaster,
-    Register::Persecution,
-    Register::Romance,
-    Register::Triumph,
-    Register::Wonder,
-    // The bright counterweight to the trunk: a redemption/mercy arc as a story engine.
-    Register::Grace,
-];
+// The registers a thread can take as its **spine** are now *data*: the spine-eligible registers,
+// in rotation order, are [`Registry::spines`] (authored in `registers.ron`, `spine: true`). Relief
+// and the other Fall flavours carry `spine: false`; Betrayal/Vengeance carry `trunk: true`.
 
 // Drama-manager knobs ([`DirectorConfig`]) live Bevy-free in the `config` crate;
 // re-exported here and wrapped in an ECS-resource newtype.
@@ -171,7 +159,7 @@ struct Wake {
 pub struct Thread {
     pub id: u64,
     /// The thread's dramatic key. The **trunk** (betrayal/vengeance) self-perpetuates.
-    pub spine: Register,
+    pub spine: RegisterId,
     /// The figure the arc centres on (usually, but not only, the protagonist).
     pub lead: Entity,
     /// The pinned counterpart — the bond to break, the rival to topple, the foe to face.
@@ -196,7 +184,7 @@ pub struct Thread {
 pub struct Cadence {
     pub tick: u64,
     pub beat: String,
-    pub register: Register,
+    pub register: RegisterId,
     pub phase: Phase,
     pub thread: u64,
     pub lead_prominence: f32,
@@ -214,7 +202,7 @@ pub struct BeatEvent {
     /// Stable id of the originating beat — shared with the [`gossip`](crate::gossip) rumour it seeds.
     pub id: u64,
     pub tick: u64,
-    pub register: Register,
+    pub register: RegisterId,
     /// Where it fell — the protagonist's tile when it was staged.
     pub place: Coord,
     /// The figure the beat turned on, and its key counterpart (the friend who turned, the foe).
@@ -234,7 +222,7 @@ pub struct Director {
     /// the register-rotation pressure.
     id_heat: HashMap<String, f32>,
     tag_heat: HashMap<String, f32>,
-    reg_heat: HashMap<Register, f32>,
+    reg_heat: HashMap<RegisterId, f32>,
     /// Beats' wakes awaiting attribution / expiry.
     active: Vec<Wake>,
     /// **Persistent, manufacturable narrative prominence** per soul — the attachment the
@@ -321,23 +309,23 @@ impl Director {
     /// register of the thread it stars in, and whether it is the lead or the pinned counterpart,
     /// name it: this is how a prominent soul becomes *legible in the world*, met not as "a villager"
     /// but as the figure a story turns on. Surface only — never read by the tick.
-    pub fn epithet_of(&self, e: Entity) -> Option<&'static str> {
+    pub fn epithet_of<'a>(&self, reg: &'a Registry, e: Entity) -> Option<&'a str> {
         let t = self
             .threads
             .iter()
             .find(|t| t.lead == e || t.other == Some(e))?;
-        Some(epithet_for(t.spine, t.lead == e))
+        Some(epithet_for(reg, t.spine, t.lead == e))
     }
 
     /// A short, present-tense **opener** naming a thread figure's plight by its register — the
     /// soul's situation in a single line, for a conversation to open on. `None` for a soul not in a
     /// live thread. Surface flavour only; moves no state.
-    pub fn situation_of(&self, e: Entity) -> Option<&'static str> {
+    pub fn situation_of<'a>(&self, reg: &'a Registry, e: Entity) -> Option<&'a str> {
         let t = self
             .threads
             .iter()
             .find(|t| t.lead == e || t.other == Some(e))?;
-        Some(situation_for(t.spine, t.lead == e))
+        Some(situation_for(reg, t.spine, t.lead == e))
     }
 
     /// The beats the director has lately staged, oldest first — the raw material the world gossips
@@ -351,14 +339,14 @@ impl Director {
 /// register, split by whether the soul is the thread's **lead** or its pinned **other**. Registers
 /// without a tuned pair fall through to a generic "the Storied" — the generated half being the
 /// register/role composition itself.
-fn epithet_for(spine: Register, is_lead: bool) -> &'static str {
-    spine.def().epithet(is_lead)
+fn epithet_for(reg: &Registry, spine: RegisterId, is_lead: bool) -> &str {
+    reg.register_def(spine).epithet(is_lead)
 }
 
 /// The matching one-line situational opener — the soul's plight, present-tense, for a conversation
 /// to begin on. Short by design (never a wall of text): the player learns the story by *meeting* it.
-fn situation_for(spine: Register, is_lead: bool) -> &'static str {
-    spine.def().situation(is_lead)
+fn situation_for(reg: &Registry, spine: RegisterId, is_lead: bool) -> &str {
+    reg.register_def(spine).situation(is_lead)
 }
 
 impl Default for Director {
@@ -702,20 +690,32 @@ fn pre_ok(
 fn pick_spine(
     director: &mut Director,
     cfg: &DirectorConfig,
-    taken: &[Register],
+    reg: &Registry,
+    taken: &[RegisterId],
     force_trunk: bool,
-) -> Register {
+) -> RegisterId {
     if force_trunk {
-        return Register::Betrayal;
+        // The first thread always takes the trunk root — the first trunk spine in rotation order
+        // (Betrayal). RNG-free, so the draw stream is byte-identical to the old `return Betrayal`.
+        return reg
+            .spines()
+            .iter()
+            .copied()
+            .find(|&r| reg.register_def(r).trunk)
+            .unwrap_or_else(|| reg.spines().first().copied().unwrap_or(0));
     }
-    let mut best = Register::Ambition;
+    let mut best = reg.spines().first().copied().unwrap_or(0);
     let mut best_score = f32::MIN;
-    for &r in &SPINES {
+    for &r in reg.spines() {
         if taken.contains(&r) {
             continue;
         }
         let heat = director.reg_heat.get(&r).copied().unwrap_or(0.0);
-        let trunk = if r.is_trunk() { cfg.trunk_bonus } else { 1.0 };
+        let trunk = if reg.register_def(r).trunk {
+            cfg.trunk_bonus
+        } else {
+            1.0
+        };
         let jitter = director.rng.next_f64() as f32 * 0.4;
         let score = trunk - 0.5 * heat + jitter;
         if score > best_score {
@@ -728,10 +728,11 @@ fn pick_spine(
 
 /// Pin a thread's counterpart — the figure its arc will groom then reverse — by spine.
 fn pick_other(
-    spine: Register,
+    spine: RegisterId,
     proto: Entity,
     cands: &[Cand],
     cfg: &DirectorConfig,
+    reg: &Registry,
 ) -> Option<Entity> {
     let warmest = || {
         cands
@@ -776,7 +777,7 @@ fn pick_other(
             .max_by(|a, b| a.piety.partial_cmp(&b.piety).unwrap().then(a.e.cmp(&b.e)))
             .map(|c| c.e)
     };
-    match spine.def().casting {
+    match reg.register_def(spine).casting {
         Casting::Warmest => warmest(),
         Casting::Coldest => coldest(),
         Casting::Ambitious => ambitious(),
@@ -1027,7 +1028,7 @@ pub(crate) fn director_step(
     // `pick_spine` is still always called below, so `director.rng` advances identically on vs. off.
     let graft = sinks.sift.as_deref().map(Sift::graft).unwrap_or_default();
     let sift_on = graft.enabled;
-    let sift_threads: Vec<(Register, SmallVec<[Entity; 4]>, f32)> = if sift_on {
+    let sift_threads: Vec<(RegisterId, SmallVec<[Entity; 4]>, f32)> = if sift_on {
         sinks
             .sift
             .as_deref()
@@ -1049,9 +1050,9 @@ pub(crate) fn director_step(
         .threads
         .retain(|t| t.lead == proto || alive.contains(&t.lead));
     while director.threads.len() < cfg.max_threads {
-        let taken: Vec<Register> = director.threads.iter().map(|t| t.spine).collect();
+        let taken: Vec<RegisterId> = director.threads.iter().map(|t| t.spine).collect();
         let force_trunk = director.threads.is_empty();
-        let spine = pick_spine(&mut director, &cfg, &taken, force_trunk);
+        let spine = pick_spine(&mut director, &cfg, &reg, &taken, force_trunk);
         // The first thread anchors the protagonist; the rest anchor the next most
         // prominent figures (the audience's other investments).
         let lead = if director.threads.is_empty() {
@@ -1093,10 +1094,10 @@ pub(crate) fn director_step(
                 .find(|&e| e != lead && idx_of.contains_key(&e) && alive.contains(&e));
             (
                 *reg_c,
-                other_c.or_else(|| pick_other(*reg_c, lead, &cands, &cfg)),
+                other_c.or_else(|| pick_other(*reg_c, lead, &cands, &cfg, &reg)),
             )
         } else {
-            (spine, pick_other(spine, lead, &cands, &cfg))
+            (spine, pick_other(spine, lead, &cands, &cfg, &reg))
         };
         let ripeness = cfg.ripeness_base * (1.0 + director.prominence_of(lead) / cfg.prom_scale);
         let id = director.next_thread;
@@ -1111,7 +1112,7 @@ pub(crate) fn director_step(
             ripeness,
             beats: 0,
             climaxed: false,
-            is_trunk: spine.is_trunk(),
+            is_trunk: reg.register_def(spine).trunk,
         });
     }
     let active_ix = (director.advances as usize) % director.threads.len().max(1);
@@ -1216,18 +1217,15 @@ pub(crate) fn director_step(
         } else {
             cfg.phase_miss
         };
+        let beat_trunk = reg.register_def(beat.register).trunk;
         let spine_bias = if beat.register == active.spine {
             cfg.spine_match
-        } else if beat.register.is_trunk() && active.is_trunk {
+        } else if beat_trunk && active.is_trunk {
             1.2
         } else {
             1.0
         };
-        let trunk_bias = if beat.register.is_trunk() {
-            cfg.trunk_bonus
-        } else {
-            1.0
-        };
+        let trunk_bias = if beat_trunk { cfg.trunk_bonus } else { 1.0 };
         let collide_bias = if collision && beat.phases.contains(&Phase::Climax) {
             cfg.collision_bonus
         } else {
@@ -1706,16 +1704,20 @@ pub(crate) fn director_step(
     };
     if closing {
         let closed = director.threads.remove(active_ix);
-        let seeds_vengeance = closed.spine.def().seeds_vengeance;
-        if seeds_vengeance && director.threads.len() < cfg.max_threads {
+        // A trunk/loss thread's grief seeds the next thread — *which* register it seeds is now data
+        // (`registers.ron`'s `seeds:`), replacing the hardcoded `Register::Vengeance`. The seed's
+        // own trunk flag carries forward (vengeance is a trunk), so the spine keeps self-perpetuating.
+        if let Some(seed) = reg.register_seeds(closed.spine)
+            && director.threads.len() < cfg.max_threads
+        {
             let id = director.next_thread;
             director.next_thread += 1;
-            let other = pick_other(Register::Vengeance, proto, &cands, &cfg);
+            let other = pick_other(seed, proto, &cands, &cfg, &reg);
             let ripeness =
                 cfg.ripeness_base * (1.0 + director.prominence_of(proto) / cfg.prom_scale);
             director.threads.push(Thread {
                 id,
-                spine: Register::Vengeance,
+                spine: seed,
                 lead: proto,
                 other,
                 phase: Phase::Rising,
@@ -1723,7 +1725,7 @@ pub(crate) fn director_step(
                 ripeness,
                 beats: 0,
                 climaxed: false,
-                is_trunk: true,
+                is_trunk: reg.register_def(seed).trunk,
             });
         }
     }

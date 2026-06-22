@@ -135,50 +135,40 @@ fn compass_dir(from: Coord, to: Coord, width: i32) -> &'static str {
     }
 }
 
-/// The plain noun a rumour gives a beat's register ("a betrayal", "a reckoning") — what the world
-/// calls the drama when it does not know the particulars.
-fn rumor_noun(register: agent_core::Register) -> &'static str {
-    use agent_core::Register::*;
-    match register {
-        Betrayal => "betrayal",
-        Vengeance => "reckoning",
-        Ambition => "grasping after power",
-        War => "war",
-        Disaster => "calamity",
-        Persecution => "hounding",
-        Romance => "love-match",
-        Triumph => "triumph",
-        Wonder => "wonder",
-        _ => "strange turn",
+/// Fill a register's surface template — substitute the `{lead}`/`{other}`/`{noun}`/`{giver}`
+/// placeholders. Surface text only (it shapes no sim state), so it lives here in the assembler.
+fn fill_template(template: &str, subs: &[(&str, &str)]) -> String {
+    let mut s = template.to_string();
+    for (k, v) in subs {
+        s = s.replace(k, v);
     }
+    s
 }
 
 /// Render the overheard line, sharpening or blurring by `fid` (the veil): high fidelity names the
-/// figures in a register-specific sentence; middling fidelity gives the lead and a bearing; low
-/// fidelity is loose talk — a rumour and a direction, no names.
+/// figures in the register's own `told` sentence; middling fidelity gives the lead and a bearing;
+/// low fidelity is loose talk — a rumour and a direction, no names. The register's surface
+/// vocabulary (`noun`, `told`) is data (`registers.ron`), so a new register reads sensibly here too.
 fn gossip_line(
-    register: agent_core::Register,
+    def: &agent_core::RegisterDef,
     fid: f32,
     lead: &str,
     other: Option<&str>,
     dir: &str,
 ) -> String {
-    use agent_core::Register::*;
-    let noun = rumor_noun(register);
+    let noun = &def.noun;
     if fid >= 0.6 {
-        match (register, other) {
-            (Betrayal, Some(o)) => format!("They say {lead} was betrayed by {o}."),
-            (Vengeance, Some(o)) => format!("They say {lead} has sworn vengeance on {o}."),
-            (Ambition, Some(o)) => {
-                format!("They say {lead} reaches for power, with {o} in the way.")
+        // The register's high-fidelity sentence. It names the counterpart only when `told` asks for
+        // one and we have it; otherwise the generic noun line (the old `(_, None)` / `_` fallback).
+        if def.told.contains("{other}") {
+            match other {
+                Some(o) => {
+                    fill_template(&def.told, &[("{lead}", lead), ("{other}", o), ("{noun}", noun)])
+                }
+                None => format!("They say {lead} is caught up in a {noun}."),
             }
-            (War, Some(o)) => format!("They say {lead}'s people have gone to war with {o}'s."),
-            (Persecution, Some(o)) => format!("They say {o} hounds {lead} without mercy."),
-            (Romance, Some(o)) => format!("They say {lead} has given their heart to {o}."),
-            (Triumph, Some(o)) => format!("They say {lead} stands triumphant, and {o} eclipsed."),
-            (Disaster, _) => format!("They say a calamity has fallen on {lead}'s house."),
-            (Wonder, _) => format!("They say {lead} has seen a wonder none can explain."),
-            _ => format!("They say {lead} is caught up in a {noun}."),
+        } else {
+            fill_template(&def.told, &[("{lead}", lead), ("{noun}", noun)])
         }
     } else if fid >= 0.3 {
         format!("Word reaches you of a {noun} {dir} — {lead}, they think, at the heart of it.")
@@ -208,47 +198,14 @@ pub struct Quest {
     pub objective: String,
 }
 
-/// The giver's spoken request and the objective line for a charge, framed by the thread's register.
-fn quest_text(register: agent_core::Register, giver: &str, other: &str) -> (String, String) {
-    use agent_core::Register::*;
-    match register {
-        Betrayal | Vengeance => (
-            format!(
-                "\"{other} wronged me, and I cannot let it lie. Find them \u{2014} and I will know whether you stand with me.\""
-            ),
-            format!("Seek out {other}, who wronged {giver}."),
-        ),
-        War => (
-            format!(
-                "\"{other}'s people move against mine. Find them, and we will see this settled.\""
-            ),
-            format!("Find {other}, {giver}'s enemy."),
-        ),
-        Persecution => (
-            format!(
-                "\"{other} hounds me without end. Find them \u{2014} I would not face them alone.\""
-            ),
-            format!("Seek out {other}, who hounds {giver}."),
-        ),
-        Ambition => (
-            format!("\"{other} stands between me and what is mine. Find them.\""),
-            format!("Find {other}, {giver}'s rival."),
-        ),
-        Romance => (
-            format!(
-                "\"My heart is with {other}, and we are kept apart. Carry word to them, will you?\""
-            ),
-            format!("Bear word to {other}, whom {giver} loves."),
-        ),
-        Wonder => (
-            format!("\"I have seen a thing I cannot explain, and {other} was there. Find them.\""),
-            format!("Seek out {other}, who shared {giver}'s wonder."),
-        ),
-        _ => (
-            format!("\"Find {other} for me \u{2014} there is a matter between us.\""),
-            format!("Find {other} for {giver}."),
-        ),
-    }
+/// The giver's spoken request and the objective line for a charge, framed by the thread's register
+/// — both authored as data (`registers.ron`'s `quest_plea`/`quest_objective`, `{giver}`/`{other}`).
+fn quest_text(def: &agent_core::RegisterDef, giver: &str, other: &str) -> (String, String) {
+    let subs = [("{giver}", giver), ("{other}", other)];
+    (
+        fill_template(&def.quest_plea, &subs),
+        fill_template(&def.quest_objective, &subs),
+    )
 }
 
 // --- Scenario ---
@@ -774,6 +731,13 @@ impl Simulation {
         self.world.resource::<Registry>()
     }
 
+    /// The authored name of a register id (e.g. a [`Cadence`]'s `register`, or a beat's) — for
+    /// readable logs, demos, and overlays. The register domain is data ([`RegisterDef`]); this is
+    /// the cheap id → name lookup.
+    pub fn register_name(&self, id: RegisterId) -> &str {
+        self.world.resource::<Registry>().register_name(id)
+    }
+
     pub fn tick(&self) -> u64 {
         self.substrate().tick()
     }
@@ -1138,9 +1102,10 @@ impl Simulation {
     /// "the Faithless" — or `None` for a soul not woven into a story (or the director asleep).
     /// Surface flavour for the HUD and conversation; never affects the sim.
     pub fn npc_epithet(&self, e: bevy_ecs::entity::Entity) -> Option<String> {
+        let reg = self.world.get_resource::<Registry>()?;
         self.world
             .get_resource::<Director>()?
-            .epithet_of(e)
+            .epithet_of(reg, e)
             .map(str::to_string)
     }
 
@@ -1160,9 +1125,10 @@ impl Simulation {
     /// from a trusted friend's turning."), for a conversation to open on as narration. `None` for an
     /// ordinary soul (or the director asleep). Surface flavour; moves no state.
     pub fn npc_situation(&self, e: bevy_ecs::entity::Entity) -> Option<String> {
+        let reg = self.world.get_resource::<Registry>()?;
         self.world
             .get_resource::<Director>()?
-            .situation_of(e)
+            .situation_of(reg, e)
             .map(str::to_string)
     }
 
@@ -1203,8 +1169,9 @@ impl Simulation {
         };
         let other = r.other.map(|e| self.display_name(e));
         let dir = compass_dir(at, r.place, width);
+        let def = self.world.resource::<Registry>().register_def(r.register);
         Some(gossip_line(
-            r.register,
+            def,
             r.fidelity,
             &lead_titled,
             other.as_deref(),
@@ -1273,7 +1240,8 @@ impl Simulation {
             None => self.display_name(npc),
         };
         let other_name = self.display_name(other);
-        let (request, objective) = quest_text(t.spine, &giver_name, &other_name);
+        let def = self.world.resource::<Registry>().register_def(t.spine);
+        let (request, objective) = quest_text(def, &giver_name, &other_name);
         Some(Quest {
             giver: npc,
             other,
@@ -4459,12 +4427,13 @@ mod tests {
         let mut sim = staged(true);
         sim.run(480);
 
-        let mut counts: std::collections::HashMap<Register, usize> =
+        let mut counts: std::collections::HashMap<RegisterId, usize> =
             std::collections::HashMap::new();
         for c in sim.director_cadence() {
             *counts.entry(c.register).or_insert(0) += 1;
         }
-        let betrayal = counts.get(&Register::Betrayal).copied().unwrap_or(0);
+        let betrayal_id = sim.registry().register_id("betrayal").unwrap();
+        let betrayal = counts.get(&betrayal_id).copied().unwrap_or(0);
         let top = counts.values().copied().max().unwrap_or(0);
         assert!(
             betrayal > 0 && betrayal == top,

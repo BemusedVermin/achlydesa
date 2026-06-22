@@ -23,9 +23,8 @@
 //! the director graft follow.
 
 use crate::ai::Curve;
-use crate::beats::Register;
 use crate::chronicle::{Chronicle, Episode, EpisodeKind};
-use crate::data::Registry;
+use crate::data::{RegisterId, Registry};
 use crate::director::MoodIds;
 use crate::factions::{Factions, Opinion};
 use crate::people::{Grievance, Mood, Npc, Personality};
@@ -107,29 +106,42 @@ pub struct InterestAxis {
     pub curve: Curve,
 }
 
-/// A story pattern, as data: an ordered window of episode predicates that bind a cast, the spine it
-/// would let the director amplify, and the interest axes it scores on.
+/// A story pattern as authored in `sift.ron` (its `register` name not yet resolved).
 #[derive(Deserialize, Clone, Debug)]
+struct SiftPatternDef {
+    id: String,
+    tension: String,
+    register: String,
+    window: Vec<WindowStep>,
+    #[serde(default)]
+    interest: Vec<InterestAxis>,
+    #[serde(default = "one")]
+    emerging_at: usize,
+    #[serde(default = "two")]
+    active_at: usize,
+    #[serde(default = "default_window_ticks")]
+    window_ticks: u64,
+}
+
+/// A story pattern, resolved: an ordered window of episode predicates that bind a cast, the spine it
+/// would let the director amplify (a [`RegisterId`]), and the interest axes it scores on.
+#[derive(Clone, Debug)]
 pub struct SiftPattern {
     /// Stable id (and the log line), e.g. `"feud_escalating"`.
     pub id: String,
     /// Machine-readable tension label — surfaced only to the dev overlay / eval, never the player.
     pub tension: String,
     /// The spine a candidate of this pattern would feed the director.
-    pub register: Register,
+    pub register: RegisterId,
     /// The ordered episode window. Non-empty.
     pub window: Vec<WindowStep>,
     /// How a match's interest is computed (surprise + dissonance).
-    #[serde(default)]
     pub interest: Vec<InterestAxis>,
     /// Steps matched to reach [`SiftStatus::Emerging`] (≥ 1).
-    #[serde(default = "one")]
     pub emerging_at: usize,
     /// Steps matched to reach [`SiftStatus::Active`] (the director-graft threshold).
-    #[serde(default = "two")]
     pub active_at: usize,
     /// A partial match whose last episode is older than this (in ticks) has stalled — `Abandoned`.
-    #[serde(default = "default_window_ticks")]
     pub window_ticks: u64,
 }
 
@@ -148,18 +160,36 @@ fn default_window_ticks() -> u64 {
 pub struct SiftBook(pub Vec<SiftPattern>);
 
 impl SiftBook {
-    /// The patterns shipped with the crate.
+    /// The patterns shipped with the crate — resolved against the bundled registry.
     pub fn bundled() -> Self {
-        let book =
-            Self::from_ron(Bundled::get(Asset::Sift)).expect("bundled sift patterns are valid RON");
+        let book = Self::from_ron(Bundled::get(Asset::Sift), &Registry::bundled())
+            .expect("bundled sift patterns are valid RON");
         book.validate()
             .expect("bundled sift patterns are structurally sound");
         book
     }
 
-    /// Parse a sift document.
-    pub fn from_ron(ron: &str) -> Result<Self, config::ConfigError> {
-        Ok(SiftBook(config::parse(ron)?))
+    /// Parse a sift document and resolve each pattern's register name against `reg` (a typo in a
+    /// register name is a load error, not a silent phantom).
+    pub fn from_ron(ron: &str, reg: &Registry) -> Result<Self, String> {
+        let defs: Vec<SiftPatternDef> = config::parse(ron).map_err(|e| e.to_string())?;
+        let mut pats = Vec::with_capacity(defs.len());
+        for d in defs {
+            let register = reg
+                .register_id(&d.register)
+                .ok_or_else(|| format!("sift '{}': unknown register '{}'", d.id, d.register))?;
+            pats.push(SiftPattern {
+                id: d.id,
+                tension: d.tension,
+                register,
+                window: d.window,
+                interest: d.interest,
+                emerging_at: d.emerging_at,
+                active_at: d.active_at,
+                window_ticks: d.window_ticks,
+            });
+        }
+        Ok(SiftBook(pats))
     }
 
     /// Fail fast on a structurally unsound pattern (empty window, or thresholds out of the
@@ -223,7 +253,7 @@ pub struct ThreadCandidate {
     /// The tension label (dev / eval only).
     pub tension: String,
     /// The spine it would feed the director.
-    pub register: Register,
+    pub register: RegisterId,
     /// Where it is centered (the latest supporting episode's place) — for casting + markers.
     pub place: Coord,
     /// The [`Episode::id`]s that constitute it.
@@ -831,12 +861,13 @@ mod tests {
     #[test]
     fn an_unsound_pattern_is_rejected() {
         // active_at past the window length is a structural error.
+        let reg = Registry::bundled();
         let ron = r#"[(
-            id: "bad", tension: "bad", register: Vengeance,
+            id: "bad", tension: "bad", register: "vengeance",
             window: [(kind: GrievanceFormed, binds: [("A", Actor)])],
             emerging_at: 1, active_at: 2,
         )]"#;
-        let book = SiftBook::from_ron(ron).unwrap();
+        let book = SiftBook::from_ron(ron, &reg).unwrap();
         assert!(book.validate().is_err());
     }
 
@@ -847,7 +878,7 @@ mod tests {
         let pat = SiftPattern {
             id: "feud".into(),
             tension: "feud".into(),
-            register: Register::Vengeance,
+            register: Registry::bundled().register_id("vengeance").unwrap(),
             window: vec![
                 WindowStep {
                     kind: EpisodeKind::GrievanceFormed,

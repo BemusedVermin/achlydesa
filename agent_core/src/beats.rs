@@ -13,8 +13,13 @@
 //! systems (the avenge machinery, the faction turn, the planner) play it out. The
 //! director **instigates**; it does not puppet. Authoring is the whole point: add a
 //! beat to `beats.ron` and the director can tell it, with no Rust changes.
+//!
+//! A beat's [`register`](Beat::register) — its dramatic key — is itself **data**
+//! (`registers.ron`, resolved to a [`RegisterId`] at load): the register *domain* (its
+//! levers and surface text) is [`crate::data::RegisterDef`], separate from the beats
+//! (its instances). A new register is pure RON too.
 
-use crate::data::Registry;
+use crate::data::{RegisterId, Registry};
 use config::{Asset, Bundled};
 use serde::Deserialize;
 
@@ -53,225 +58,6 @@ impl Role {
 /// The number of casting slots — every [`Role`] plus headroom. The director's slot
 /// arrays are this wide.
 pub const SLOTS: usize = 8;
-
-/// A beat's **dramatic register** — the emotional key it plays in. The director runs a
-/// few threads at once, each with a `spine` register, and **rotates registers freely**
-/// (decision #17): betrayal dominates because it *scores* highest (the trunk), never by
-/// enforcement. Distinct from the free-form [`Beat::tags`] (which only drive novelty).
-#[derive(Deserialize, Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub enum Register {
-    Betrayal,
-    Vengeance,
-    Ambition,
-    Persecution,
-    War,
-    Disaster,
-    Loss,
-    Romance,
-    Triumph,
-    Wonder,
-    Reunion,
-    Sacrifice,
-    Redemption,
-    Relief,
-    /// The heavenly apex — mercy, healing, union, deliverance, the homecoming. Bright, and
-    /// a thread **spine** in its own right (a redemption/mercy arc): the bright counterweight
-    /// to the betrayal trunk, the top of the "deplorable → heavenly" spectrum.
-    Grace,
-}
-
-/// How a thread pins its counterpart (the figure it grooms then reverses), by register —
-/// the director's casting policy, lifted out of `pick_other` into the register table below.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Casting {
-    /// The warmest soul (a beloved) — the default; a bond to build then break.
-    Warmest,
-    /// The coldest (a foe already turned away) — vengeance, persecution.
-    Coldest,
-    /// The most ambitious (a would-be usurper) — ambition, war.
-    Ambitious,
-    /// The most pious (a believer/elder) — wonder, reunion.
-    Pious,
-}
-
-/// **All per-register metadata in one place** (see [`Register::def`]): brightness, the trunk
-/// flag, whether closing such a thread seeds vengeance, the casting policy, and the
-/// player-facing epithet/situation text (lead vs. the pinned other). Everything that used to
-/// match on `Register` in scattered helpers now reads one row here.
-#[derive(Clone, Copy, Debug)]
-pub struct RegisterDef {
-    pub bright: bool,
-    pub trunk: bool,
-    pub seeds_vengeance: bool,
-    pub casting: Casting,
-    pub epithet_lead: &'static str,
-    pub epithet_other: &'static str,
-    pub situation_lead: &'static str,
-    pub situation_other: &'static str,
-}
-
-impl RegisterDef {
-    /// The earned epithet for the lead (`is_lead`) or the pinned other.
-    pub fn epithet(&self, is_lead: bool) -> &'static str {
-        if is_lead {
-            self.epithet_lead
-        } else {
-            self.epithet_other
-        }
-    }
-    /// The one-line situational opener for the lead or the pinned other.
-    pub fn situation(&self, is_lead: bool) -> &'static str {
-        if is_lead {
-            self.situation_lead
-        } else {
-            self.situation_other
-        }
-    }
-}
-
-impl Register {
-    /// The single source of truth for a register's properties (see [`RegisterDef`]). The match
-    /// has no wildcard, so adding a `Register` variant forces a row here — a register can never
-    /// be half-wired. (Spine eligibility + order stays the explicit `director::SPINES` list, for
-    /// determinism.) Registers without tuned narration fall back to the generic "Storied"/"heavy"
-    /// text (preserving the prior `_ =>` behaviour); surface text only, never read by the tick.
-    pub fn def(self) -> RegisterDef {
-        use Register::*;
-        let storied = RegisterDef {
-            bright: false,
-            trunk: false,
-            seeds_vengeance: false,
-            casting: Casting::Warmest,
-            epithet_lead: "the Storied",
-            epithet_other: "the Storied",
-            situation_lead: "a story heavy on its shoulders.",
-            situation_other: "a story heavy on its shoulders.",
-        };
-        match self {
-            Betrayal => RegisterDef {
-                trunk: true,
-                seeds_vengeance: true,
-                epithet_lead: "the Betrayed",
-                epithet_other: "the Faithless",
-                situation_lead: "still raw from a trusted friend's turning.",
-                situation_other: "something unconfessed moving behind its eyes.",
-                ..storied
-            },
-            Vengeance => RegisterDef {
-                trunk: true,
-                casting: Casting::Coldest,
-                epithet_lead: "the Avenger",
-                epithet_other: "the Hunted",
-                situation_lead: "cold with a purpose it means to see through.",
-                situation_other: "watchful, as one who knows it is hunted.",
-                ..storied
-            },
-            Ambition => RegisterDef {
-                casting: Casting::Ambitious,
-                epithet_lead: "the Ambitious",
-                epithet_other: "the Rival",
-                situation_lead: "hungry for a seat it does not yet hold.",
-                situation_other: "wary of a rival climbing past it.",
-                ..storied
-            },
-            Persecution => RegisterDef {
-                seeds_vengeance: true,
-                casting: Casting::Coldest,
-                epithet_lead: "the Hunted",
-                epithet_other: "the Persecutor",
-                situation_lead: "flinching, as the cornered do.",
-                situation_other: "certain of its right to hound the weak.",
-                ..storied
-            },
-            War => RegisterDef {
-                casting: Casting::Ambitious,
-                epithet_lead: "the Warlord",
-                epithet_other: "the Enemy",
-                situation_lead: "hardened by a war it cannot lay down.",
-                situation_other: "an enemy's shadow never far from its mind.",
-                ..storied
-            },
-            Disaster => RegisterDef {
-                epithet_lead: "the Stricken",
-                epithet_other: "the Bereaved",
-                situation_lead: "hollowed by a ruin that fell on its house.",
-                situation_other: "grieving a loss the famine took.",
-                ..storied
-            },
-            Loss => RegisterDef {
-                seeds_vengeance: true,
-                ..storied
-            },
-            Romance => RegisterDef {
-                bright: true,
-                seeds_vengeance: true,
-                epithet_lead: "the Beloved",
-                epithet_other: "the Lover",
-                situation_lead: "lit, for once, by something like joy.",
-                situation_other: "tender toward one it should not love.",
-                ..storied
-            },
-            Triumph => RegisterDef {
-                bright: true,
-                epithet_lead: "the Triumphant",
-                epithet_other: "the Eclipsed",
-                situation_lead: "borne up by a triumph still warm.",
-                situation_other: "smarting, eclipsed by another's rise.",
-                ..storied
-            },
-            Wonder => RegisterDef {
-                bright: true,
-                casting: Casting::Pious,
-                epithet_lead: "the Seeker",
-                epithet_other: "the Awed",
-                situation_lead: "haunted by a marvel it half-understands.",
-                situation_other: "awed by something it cannot name.",
-                ..storied
-            },
-            Reunion => RegisterDef {
-                bright: true,
-                casting: Casting::Pious,
-                ..storied
-            },
-            Sacrifice => RegisterDef {
-                seeds_vengeance: true,
-                ..storied
-            },
-            Redemption => RegisterDef {
-                bright: true,
-                ..storied
-            },
-            Relief => RegisterDef {
-                bright: true,
-                ..storied
-            },
-            Grace => RegisterDef {
-                bright: true,
-                epithet_lead: "the Redeemed",
-                epithet_other: "the Merciful",
-                situation_lead: "lifted by a grace it did not earn.",
-                situation_other: "moved to a mercy it did not owe.",
-                ..storied
-            },
-        }
-    }
-}
-
-impl Register {
-    /// The **trunk** registers — the betrayal→vengeance spine the whole game turns on.
-    /// Threads on these carry a standing drama bonus, so betrayal *dominates emergently*
-    /// (decision #17), never by a hard rule.
-    pub fn is_trunk(self) -> bool {
-        self.def().trunk
-    }
-
-    /// Whether this register stages a **brighter** experience (love, triumph, awe). The
-    /// director grooms these on purpose so the fall has something to break; they still
-    /// count as *staged* experience, but weigh far below suffering (decision #8).
-    pub fn is_bright(self) -> bool {
-        self.def().bright
-    }
-}
 
 /// Where in a thread's **groom → climax → fall** arc (decision #12) a beat belongs. A
 /// beat with no declared phases fits any. Setup beats *manufacture attachment*; Climax
@@ -360,8 +146,7 @@ impl Pre {
 /// open, data-driven content - a new beat is pure RON, no code). A new `Effect`: add the
 /// variant here, an arm in [`Beat::roles`] (the roles it casts), and an enactment arm in
 /// `director::director_step`. A new [`Pre`]: the variant, an arm in [`Pre::who`] and in
-/// `director::pre_ok`. A new [`Register`]: the variant + one row in [`Register::def`], plus a
-/// `director::SPINES` entry if it is a spine.
+/// `director::pre_ok`. A new **register**: add a row to `registers.ron` — pure data, no code.
 #[derive(Deserialize, Clone, Debug)]
 pub enum Effect {
     /// Set `who` to bear a grudge against `against` — Polti's *Crime Pursued by
@@ -433,21 +218,41 @@ pub enum Effect {
     Free { who: Role },
 }
 
-/// One dramatic situation, as data: a storylet the director can tell.
+/// One dramatic situation, as authored in `beats.ron` (its `register` not yet resolved).
 #[derive(Deserialize, Clone, Debug)]
+struct BeatDef {
+    id: String,
+    /// The dramatic register's authored **name** (`"betrayal"`), resolved to a [`RegisterId`].
+    register: String,
+    #[serde(default)]
+    tags: Vec<String>,
+    #[serde(default)]
+    phases: Vec<Phase>,
+    tension: f32,
+    #[serde(default = "one")]
+    stakes: f32,
+    #[serde(default = "one")]
+    weight: f32,
+    cast: Vec<Role>,
+    #[serde(default)]
+    pre: Vec<Pre>,
+    effects: Vec<Effect>,
+}
+
+/// One dramatic situation, resolved: a storylet the director can tell.
+#[derive(Clone, Debug)]
 pub struct Beat {
     /// A stable id, also the line the story log shows ("a_rival_rises").
     pub id: String,
-    /// The dramatic **register** this beat plays in — its emotional key, read by the
-    /// thread machinery (a thread's `spine`) and by register-rotation. See [`Register`].
-    pub register: Register,
+    /// The dramatic **register** this beat plays in — its emotional key, resolved to a dense
+    /// [`RegisterId`] (the domain lives in [`crate::data::RegisterDef`]). Read by the thread
+    /// machinery (a thread's `spine`) and by register-rotation.
+    pub register: RegisterId,
     /// Free-form registers / tone tags — for the **novelty** penalty (don't repeat a
     /// tone twice running) and authorial filtering: e.g. `"betrayal"`, `"violence"`,
     /// `"political"`, `"survival"`. Orthogonal to the formal [`Beat::register`].
-    #[serde(default)]
     pub tags: Vec<String>,
     /// Which arc [`Phase`]s this beat suits (groom→climax→fall). Empty = any phase.
-    #[serde(default)]
     pub phases: Vec<Phase>,
     /// How much dramatic **tension** telling this beat injects. Escalations are
     /// positive; *relief* beats (a reconciliation, a respite) are negative.
@@ -455,15 +260,12 @@ pub struct Beat {
     /// The **stakes** — how much the target stands to lose or gain (a life, a throne, a
     /// bond, a love). A multiplier in the drama objective (`drama = stakes × attachment ×
     /// reversal`); high for climactic beats, low for grooming.
-    #[serde(default = "one")]
     pub stakes: f32,
     /// Base authorial weight, before the drama objective.
-    #[serde(default = "one")]
     pub weight: f32,
     /// The roles this beat needs cast, in the order its effects refer to them.
     pub cast: Vec<Role>,
     /// What must hold for the beat to be tellable.
-    #[serde(default)]
     pub pre: Vec<Pre>,
     /// What telling it does to the world.
     pub effects: Vec<Effect>,
@@ -535,17 +337,38 @@ impl Beat {
 pub struct BeatBook(pub Vec<Beat>);
 
 impl BeatBook {
-    /// The defaults shipped with the crate.
+    /// The defaults shipped with the crate — resolved against the bundled registry.
     pub fn bundled() -> Self {
-        let book = Self::from_ron(Bundled::get(Asset::Beats)).expect("bundled beats are valid RON");
-        book.validate(&Registry::bundled())
-            .expect("bundled beats resolve against the bundled registry");
-        book
+        Self::from_ron(Bundled::get(Asset::Beats), &Registry::bundled())
+            .expect("bundled beats are valid RON and resolve against the bundled registry")
     }
 
-    /// Parse a beats document (names resolved lazily at enactment).
-    pub fn from_ron(ron: &str) -> Result<Self, config::ConfigError> {
-        Ok(BeatBook(config::parse(ron)?))
+    /// Parse a beats document and resolve each beat's register name against `reg` (trait /
+    /// mood names stay resolved lazily at enactment, but are validated here too). A typo in a
+    /// register, trait, or mood name is a load error, not a silent no-op.
+    pub fn from_ron(ron: &str, reg: &Registry) -> Result<Self, String> {
+        let defs: Vec<BeatDef> = config::parse(ron).map_err(|e| e.to_string())?;
+        let mut beats = Vec::with_capacity(defs.len());
+        for d in defs {
+            let register = reg
+                .register_id(&d.register)
+                .ok_or_else(|| format!("beat '{}': unknown register '{}'", d.id, d.register))?;
+            beats.push(Beat {
+                id: d.id,
+                register,
+                tags: d.tags,
+                phases: d.phases,
+                tension: d.tension,
+                stakes: d.stakes,
+                weight: d.weight,
+                cast: d.cast,
+                pre: d.pre,
+                effects: d.effects,
+            });
+        }
+        let book = BeatBook(beats);
+        book.validate(reg)?;
+        Ok(book)
     }
 
     /// Fail fast on any trait / mood name a beat refers to that the registry doesn't
@@ -588,9 +411,11 @@ impl BeatBook {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::data::Registry;
 
     #[test]
     fn bundled_beats_load_and_resolve() {
+        let reg = Registry::bundled();
         let book = BeatBook::bundled();
         assert!(
             book.0.len() >= 20,
@@ -614,33 +439,49 @@ mod tests {
         }
         // The palette is broad — not all tragedy. The brighter registers the director
         // grooms (decision #8) are stocked alongside the trunk and its tributaries.
-        for reg in [
-            Register::Betrayal,
-            Register::Vengeance,
-            Register::Romance,
-            Register::Triumph,
-            Register::Wonder,
-            Register::Sacrifice,
-            Register::Grace,
+        // Registers are now data, so assert by resolved name → id.
+        for name in [
+            "betrayal",
+            "vengeance",
+            "romance",
+            "triumph",
+            "wonder",
+            "sacrifice",
+            "grace",
         ] {
+            let id = reg
+                .register_id(name)
+                .unwrap_or_else(|| panic!("register '{name}' should exist"));
             assert!(
-                book.0.iter().any(|b| b.register == reg),
-                "no beat plays the {reg:?} register"
+                book.0.iter().any(|b| b.register == id),
+                "no beat plays the {name} register"
             );
         }
         assert!(
-            book.0.iter().any(|b| b.register.is_bright()),
+            book.0.iter().any(|b| reg.register_def(b.register).bright),
             "the palette has no brighter register at all"
         );
     }
 
     #[test]
     fn an_unknown_trait_in_a_beat_is_rejected() {
+        let reg = Registry::bundled();
         let ron = r#"[(
-            id: "bad", register: Betrayal, tension: 1.0, cast: [Protagonist],
+            id: "bad", register: "betrayal", tension: 1.0, cast: [Protagonist],
             effects: [Sway(who: Protagonist, trait_name: "greedmaxxing", delta: 0.1)],
         )]"#;
-        let book = BeatBook::from_ron(ron).unwrap();
-        assert!(book.validate(&Registry::bundled()).is_err());
+        assert!(BeatBook::from_ron(ron, &reg).is_err());
+    }
+
+    #[test]
+    fn an_unknown_register_in_a_beat_is_rejected() {
+        // Adding a register is data, but *referring* to one that doesn't exist is still a
+        // load error — the resolution catches the typo, not a silent phantom register.
+        let reg = Registry::bundled();
+        let ron = r#"[(
+            id: "bad", register: "schadenfreude", tension: 1.0, cast: [Protagonist],
+            effects: [Stir(who: Protagonist, mood: "joy", delta: 0.1)],
+        )]"#;
+        assert!(BeatBook::from_ron(ron, &reg).is_err());
     }
 }
