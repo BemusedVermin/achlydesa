@@ -1,12 +1,19 @@
 # The Story Sifter - Gamma's perception organ (and a retelling eval harness)
 
-> **Status: design / pre-implementation (2026-06).** A working spec, not a contract. It grounds
-> the one genuinely-new idea from `docs/emergent-narrative-brief.md` (bottom-up story sifting)
-> onto this codebase's real architecture, and pairs it with the eval harness the design needs to
-> tune itself. Read alongside `emergent-narrative-grounding.md` (why this and not the rest of the
-> brief), `narrative_director_v2.md` (the top-down drama manager this feeds), and `dialogue.md`
-> (the meaning/surface split and the `MemRecord` discipline). Type and accessor names are the real
-> ones in `agent_core` / `agents` at time of writing.
+> **Status: BUILT (2026-06), branch `beats-and-sifter`.** This began as a spec and is now the
+> shipped design. Implemented across `agent_core`: the bounded Chronicle ring (`chronicle.rs`) fed
+> by director and emergent taps; the RON pattern book (`assets/data/sift.ron`) + the retrospective
+> and incremental matchers (asserted byte-identical) + interest scoring (`sift.rs`); the live
+> `sift_step` system scheduled before `director_step`; the gated director graft (thread seeding +
+> beat resistance) in `director_step`; and the dev-only retelling / expressive-range eval harness on
+> `observe.rs`. Off by default and byte-identical when off; deterministic; integer-economy V&V green
+> (`agents` suite). Where the shipped code diverged from the spec below, a **[Built]** note records
+> it. It grounds the one genuinely-new idea from `docs/emergent-narrative-brief.md` (bottom-up story
+> sifting) onto this codebase's real architecture, and pairs it with the eval harness the design
+> needs to tune itself. Read alongside `emergent-narrative-grounding.md` (why this and not the rest
+> of the brief), `narrative_director_v2.md` (the top-down drama manager this feeds), and
+> `dialogue.md` (the meaning/surface split and the `MemRecord` discipline). Type and accessor names
+> are the real ones in `agent_core` / `agents`.
 >
 > Note on names: the narrative director is written `Γ` elsewhere; here it is spelled "Gamma"
 > (this doc is ASCII-only).
@@ -270,6 +277,19 @@ is neutral whenever the sift layer is off, so director-only worlds are unchanged
    the inverse of resistance) stays as is: it is the *snapshot* signal; `sift_bias` is the
    *trajectory* signal layered on top. This is the snapshot-to-trajectory upgrade - the director now
    rewards nudging stories that are *forming over time*, not just statically primed.
+
+> **[Built]** Two notes on what shipped. (1) **Eligibility is high-*interest* *forming* stories, not
+> `Active`-only.** Instrumentation showed `Active` is starved in practice (it needs a director
+> `OpinionCrossed` to land on an existing grudge, which is rare), so gating on it left the graft
+> inert. The graft instead takes `SiftStatus::is_forming()` (`Emerging | Active`) above
+> `min_interest` - a high-convergence grudge sitting at `Emerging` *is* the forming story to amplify,
+> and the interest floor (not the step count) does the real noise filtering. (2) **The RNG
+> discipline is exact:** `pick_spine` is *always* called (its jitter draws consumed) and the
+> collide/sample draws are unchanged; the graft overrides only RNG-free selections, so `director.rng`
+> advances identically on vs. off. The thread-seeding override keeps `lead` (so the manufactured
+> floor protects the protagonist's own thread) and re-keys only the spine + counterpart to the
+> forming story `lead` is in. The knobs live in `SiftConfig` (`graft`, `max_bias`, `min_interest`,
+> `manufactured_floor`), carried into the `Sift` resource so `director_step` needs no extra param.
 
 **Crucial restraint.** The sifter *informs*, it does not *dictate*. The Demiurge must still
 **author** (manufacture attachment, time reversals, collide threads) - it is a drama manager, not a
