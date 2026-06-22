@@ -609,11 +609,14 @@ impl Simulation {
         sift_cfg.enabled = setup.sift || sift_cfg.enabled;
         if sift_cfg.enabled {
             world.insert_resource(agent_core::chronicle::Chronicle::new(sift_cfg.ring_cap));
-            // The pattern book (authored RON) and the sifter's output/base-rate memory. The
-            // retrospective matcher + eval harness read these; the director graft (a later phase)
-            // will consult `Sift`. Inserting them only when woken keeps a sift-off world identical.
+            // The pattern book (authored RON) and the sifter's output/base-rate memory. The live
+            // `sift_step` system, the retrospective matcher, and the eval harness read these; the
+            // director graft consults `Sift` when `sift_cfg.graft` is set (off => the director runs
+            // byte-identically). Inserting them only when woken keeps a sift-off world identical.
             world.insert_resource(agent_core::SiftBook::bundled());
-            world.insert_resource(agent_core::Sift::default());
+            let mut sift = agent_core::Sift::default();
+            sift.set_graft(&sift_cfg);
+            world.insert_resource(sift);
         }
 
         // Wake the dialogue layer, if asked. Like the director, its `enabled` is the OR of
@@ -2758,6 +2761,44 @@ mod tests {
             off.director_beats_fired(),
             "the whole sift layer is a pure observer: the director runs identically with it on or off",
         );
+    }
+
+    #[test]
+    fn the_graft_is_byte_identical_off_and_steers_the_director_when_on() {
+        // The Phase-5 acceptance check (docs/narrative_sifter.md S2). The graft must: change nothing
+        // until switched on (a sift-on/graft-off run tells exactly the beats a sift-off run does --
+        // the sifter only observes); be deterministic when on; and demonstrably steer the director
+        // toward the forming stories the sifter perceives.
+        let cadence = |sift: bool, graft: bool| {
+            let mut s = Simulation::new(Setup {
+                seed: 42,
+                npcs: 60,
+                markets: 4,
+                feuds: 6,
+                director: true,
+                dialogue: true,
+                director_cfg: DirectorConfig { beat_interval: 7, ..Default::default() },
+                sift,
+                sift_cfg: config::SiftConfig { graft, min_interest: 0.5, ..Default::default() },
+                ..Default::default()
+            });
+            s.run(400);
+            s.director_log().to_vec()
+        };
+
+        let sift_off = cadence(false, false);
+        let graft_off = cadence(true, false); // the sift layer is awake, but only observing
+        let graft_on_a = cadence(true, true);
+        let graft_on_b = cadence(true, true);
+
+        assert!(!sift_off.is_empty(), "the director told beats to compare");
+        // Off-by-default byte-identical: waking the sift layer + the live system + all the graft
+        // code changes NOTHING in the director until the graft flag is set.
+        assert_eq!(sift_off, graft_off, "a sift-on/graft-off run is byte-identical to a sift-off run");
+        // Deterministic with the graft on (the RNG stream is untouched; only RNG-free selection changes).
+        assert_eq!(graft_on_a, graft_on_b, "the grafted director is reproducible");
+        // And the graft bites: consulting the forming stories changes which beats are told.
+        assert_ne!(graft_on_a, graft_off, "the graft steers the director toward the world's forming stories");
     }
 
     #[test]

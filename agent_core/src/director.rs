@@ -54,6 +54,7 @@ use crate::dialogue::Dialogue;
 use crate::factions::{Allegiance, Detained, Factions, Law, Opinion};
 use crate::features::{Discovery, FeatureCatalog, Features};
 use crate::people::{Bond, Grievance, Mood, Needs, Npc, Personality, Throne};
+use crate::sift::Sift;
 use crate::{Position, Substrate};
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::SystemParam;
@@ -72,6 +73,11 @@ pub(crate) struct Sinks<'w> {
     dialogue: Option<ResMut<'w, Dialogue>>,
     gossip: Option<ResMut<'w, crate::gossip::Gossip>>,
     chronicle: Option<ResMut<'w, crate::chronicle::Chronicle>>,
+    /// The sifter's ranked story candidates (read-only): the **graft** consults these to seed
+    /// threads on, and lower resistance toward, the stories the world is already forming. `None`
+    /// (layer off) or its graft flag unset => the director runs byte-identically. Lives here, with
+    /// the other optional-layer connections, so `director_step` needs no extra system param.
+    sift: Option<Res<'w, crate::sift::Sift>>,
 }
 
 /// The **stage** the director manipulates: the land's features (and their catalog), the factions,
@@ -889,6 +895,30 @@ pub(crate) fn director_step(
         }
     }
 
+    // --- The graft (`docs/narrative_sifter.md` S5): consult the forming stories the sifter
+    // perceived — but only when the sift layer is woken AND its graft flag is set; else `sift_on` is
+    // false and every branch below is skipped, so the director runs byte-identically. The candidates
+    // are taken as an owned snapshot (Active stories above the interest floor), so the later mutable
+    // `sinks` use is unconflicted. The graft only overrides *deterministic, RNG-free* selections —
+    // `pick_spine` is still always called below, so `director.rng` advances identically on vs. off.
+    let graft = sinks.sift.as_deref().map(Sift::graft).unwrap_or_default();
+    let sift_on = graft.enabled;
+    let sift_threads: Vec<(Register, SmallVec<[Entity; 4]>, f32)> = if sift_on {
+        sinks
+            .sift
+            .as_deref()
+            .map(|s| {
+                s.ranked(graft.min_interest)
+                    .into_iter()
+                    .filter(|c| c.status.is_forming())
+                    .map(|c| (c.register, c.cast.clone(), c.interest))
+                    .collect()
+            })
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+
     // --- Maintain the threads: drop spent ones, spawn up to the cap (the first anchored
     // on the protagonist), and choose which to advance this beat (round-robin → staggered).
     director.threads.retain(|t| t.lead == proto || alive.contains(&t.lead));
@@ -916,7 +946,23 @@ pub(crate) fn director_step(
                 .map(|c| c.e)
                 .unwrap_or(proto)
         };
-        let other = pick_other(spine, lead, &cands, &cfg);
+        // The graft: past the manufactured floor, if this lead is already in a forming story, re-key
+        // the thread to *that* story's spine and counterpart (the world demonstrably leans here, so
+        // resistance is genuinely low and the alibi genuinely strong). RNG-free — `pick_spine` was
+        // already called above (its draws consumed); these overrides only change deterministic
+        // values. Below the floor (the protagonist's own thread is the first), Γ authors as before.
+        let (spine, other) = if sift_on
+            && director.threads.len() >= graft.floor
+            && let Some((reg_c, cast_c, _)) = sift_threads
+                .iter()
+                .filter(|(_, cast, _)| cast.contains(&lead))
+                .max_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal).then(a.1.cmp(&b.1)))
+        {
+            let other_c = cast_c.iter().copied().find(|&e| e != lead && idx_of.contains_key(&e) && alive.contains(&e));
+            (*reg_c, other_c.or_else(|| pick_other(*reg_c, lead, &cands, &cfg)))
+        } else {
+            (spine, pick_other(spine, lead, &cands, &cfg))
+        };
         let ripeness = cfg.ripeness_base * (1.0 + director.prominence_of(lead) / cfg.prom_scale);
         let id = director.next_thread;
         director.next_thread += 1;
@@ -1010,7 +1056,20 @@ pub(crate) fn director_step(
         let trunk_bias = if beat.register.is_trunk() { cfg.trunk_bonus } else { 1.0 };
         let collide_bias = if collision && beat.phases.contains(&Phase::Climax) { cfg.collision_bonus } else { 1.0 };
         // score = drama × novelty ÷ resistance, with the thread/rotation biases.
-        let score = beat.weight * drama * salience * novelty * phase_bias * spine_bias * trunk_bias * collide_bias;
+        let mut score = beat.weight * drama * salience * novelty * phase_bias * spine_bias * trunk_bias * collide_bias;
+        // The graft's trajectory bias (S5): a beat whose cast rides a live forming story is likelier
+        // to be told — layered atop the snapshot `salience`. Branch-gated, so an ungrafted run never
+        // multiplies by a computed value (byte-identical); RNG-free, so the draw stream is unchanged.
+        if sift_on {
+            let best = sift_threads
+                .iter()
+                .filter(|(_, cast, _)| cast.iter().any(|e| slots.iter().flatten().any(|s| s == e)))
+                .map(|(_, _, i)| *i)
+                .fold(0.0f32, f32::max);
+            if best > 0.0 {
+                score *= 1.0 + (graft.max_bias - 1.0) * (best / (best + 1.0));
+            }
+        }
         if score > 0.0 {
             scored.push((score, bi, slots));
         }

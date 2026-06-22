@@ -501,19 +501,34 @@ pub fn feature() -> FeatureConfig {
 }
 
 /// Knobs for the **narrative sifter** (and its Chronicle ring). Off by default, so a sift-free
-/// world is unchanged. Graft knobs (Phase 5) will join here later.
+/// world is unchanged.
 #[derive(Clone, Debug, Serialize, serde::Deserialize)]
 #[serde(default)]
 pub struct SiftConfig {
-    /// Wake the sift layer — the Chronicle ring plus (later) the sifter and the eval harness.
+    /// Wake the sift layer — the Chronicle ring, the sifter, and the eval harness.
     pub enabled: bool,
     /// Maximum episodes the Chronicle ring holds: the sifter's window onto recent history.
     pub ring_cap: usize,
+    /// **The director graft.** Let the director *consult* the sifter — seed threads on, and lower
+    /// resistance toward, the stories the world is already forming. Default off: a sift-on world
+    /// with this off runs its director byte-identically to a sift-off world (the sifter only
+    /// observes). Requires [`enabled`](Self::enabled).
+    pub graft: bool,
+    /// The most the graft may multiply a beat's score when its cast rides a live forming story —
+    /// the trajectory bias layered atop the snapshot salience. `1.0` = no bias.
+    pub max_bias: f32,
+    /// A candidate must reach this interest to seed a thread or bias a beat (the noise floor that
+    /// keeps single-episode seeds from steering the director).
+    pub min_interest: f32,
+    /// **The manufactured-thread floor** (the doc's S5 restraint): this many threads stay
+    /// director-*authored* (never sift-seeded), so Gamma keeps inventing and never degenerates into
+    /// a pure curator. The protagonist's own thread is the first such.
+    pub manufactured_floor: usize,
 }
 
 impl Default for SiftConfig {
     fn default() -> Self {
-        Self { enabled: false, ring_cap: 4096 }
+        Self { enabled: false, ring_cap: 4096, graft: false, max_bias: 3.0, min_interest: 0.5, manufactured_floor: 1 }
     }
 }
 

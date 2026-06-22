@@ -199,6 +199,16 @@ pub enum SiftStatus {
     Abandoned,
 }
 
+impl SiftStatus {
+    /// Whether this story is still **forming** — worth the director amplifying. `Emerging` and
+    /// `Active` both qualify (a high-interest single grudge against a widely-hated figure is a
+    /// genuine forming story); `Resolved` (already played out) and `Abandoned` (stalled) do not.
+    /// The interest floor, not the step count, is what separates signal from noise.
+    pub fn is_forming(self) -> bool {
+        matches!(self, SiftStatus::Emerging | SiftStatus::Active)
+    }
+}
+
 /// A forming (or formed) story the sifter perceived: the pattern, how far it got, the cast it bound,
 /// the episodes that constitute it, and its interest. `PartialEq` is what the incremental ==
 /// retrospective oracle test compares (both paths emit candidates in one canonical order).
@@ -221,6 +231,21 @@ pub struct ThreadCandidate {
     pub last_updated: u64,
 }
 
+/// The **director-graft** knobs (`docs/narrative_sifter.md` S5), lifted from
+/// [`config::SiftConfig`] into the live [`Sift`] so `director_step` can read them without another
+/// system param. Default = the graft **off**: a sift-on world still only *observes*.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct GraftCfg {
+    /// Whether the director consults the sifter at all.
+    pub enabled: bool,
+    /// The ceiling on the resistance bias a live forming story lends a beat (`1.0` = none).
+    pub max_bias: f32,
+    /// The interest a candidate must reach to seed a thread or bias a beat.
+    pub min_interest: f32,
+    /// How many threads stay director-authored (never sift-seeded) — the manufactured floor.
+    pub floor: usize,
+}
+
 /// The sifter's output (and base-rate memory). A resource, so a sift-free world is byte-identical.
 #[derive(Resource, Clone, Debug, Default)]
 pub struct Sift {
@@ -232,6 +257,11 @@ pub struct Sift {
     /// retrospective path. Folding the ring's episodes in tick order leaves this identical to the
     /// retrospective per-start matches (the oracle equality, verified in tests).
     open: Vec<(usize, RawMatch)>,
+    /// High-water mark of episode ids the live [`sift_step`] has folded in (so it ingests each
+    /// episode once). `None` until the first ingest.
+    last_ingested: Option<u64>,
+    /// The director-graft configuration (set when the layer is woken; default off).
+    graft: GraftCfg,
 }
 
 impl Sift {
@@ -254,6 +284,22 @@ impl Sift {
     /// All candidates, unranked (eval / debugging).
     pub fn candidates(&self) -> &[ThreadCandidate] {
         &self.candidates
+    }
+
+    /// Configure the director graft from [`config::SiftConfig`] (called once when the layer wakes).
+    pub fn set_graft(&mut self, cfg: &config::SiftConfig) {
+        self.graft = GraftCfg {
+            enabled: cfg.graft,
+            max_bias: cfg.max_bias.max(1.0),
+            min_interest: cfg.min_interest,
+            floor: cfg.manufactured_floor,
+        };
+    }
+
+    /// The director-graft configuration — read by `director_step` to decide whether (and how hard)
+    /// to consult the sifter.
+    pub fn graft(&self) -> GraftCfg {
+        self.graft
     }
 
     /// **Retrospective** matcher (the oracle): recompute every candidate from the whole `ring`
@@ -570,6 +616,46 @@ impl SiftReads {
     }
 }
 
+/// Whether any faction forbids the avenge act (`alive(foe) = 0`) — the no-kill taboo that gates the
+/// `NormTension` axis (a vengeful soul under it is a coiled spring).
+fn taboo_in_force(reg: &Registry, factions: Option<&Factions>) -> bool {
+    let avenge = reg.predicate_id("alive").map(|p| (p, 0i64));
+    matches!((avenge, factions), (Some(act), Some(f)) if f.0.iter().any(|fac| fac.forbids(act)))
+}
+
+/// Assemble the read-only snapshot from already-gathered parts — the shared back end for the
+/// `&mut World` eval path ([`gather_reads`]) and the in-schedule system path ([`sift_step`]). It
+/// only *reads* each soul's components (cloning what it keeps), so it perturbs nothing.
+fn assemble_reads<'a>(
+    now: u64,
+    mood_ids: MoodIds,
+    vengeance_id: Option<usize>,
+    taboo_active: bool,
+    rows: impl Iterator<Item = (Entity, Option<&'a Grievance>, &'a Opinion, &'a Mood, &'a Personality)>,
+    ring: &[Episode],
+) -> SiftReads {
+    let mut grudge_convergence: HashMap<Entity, u32> = HashMap::new();
+    let mut opinion: HashMap<Entity, HashMap<Entity, f32>> = HashMap::new();
+    let mut mood: HashMap<Entity, Vec<f32>> = HashMap::new();
+    let mut vengeance: HashMap<Entity, f32> = HashMap::new();
+    for (e, gr, op, md, pers) in rows {
+        if let Some(g) = gr {
+            *grudge_convergence.entry(g.0).or_insert(0) += 1;
+        }
+        if !op.0.is_empty() {
+            opinion.insert(e, op.0.clone());
+        }
+        mood.insert(e, md.0.clone());
+        if let Some(id) = vengeance_id
+            && let Some(&v) = pers.0.get(id)
+        {
+            vengeance.insert(e, v);
+        }
+    }
+    let by_id: HashMap<u64, Episode> = ring.iter().map(|e| (e.id, *e)).collect();
+    SiftReads { now, grudge_convergence, opinion, mood, vengeance, taboo_active, mood_ids, by_id }
+}
+
 /// Gather the read-only world snapshot the scorer needs (live grievance convergence, opinion edges,
 /// moods, the vengeance trait, and whether a no-kill taboo is in force), plus an id index over the
 /// ring. Needs `&mut World` only because ECS queries build their state, as every accessor does.
@@ -577,44 +663,46 @@ pub(crate) fn gather_reads(world: &mut World) -> SiftReads {
     let now = world.resource::<crate::Substrate>().0.tick();
     let mood_ids = MoodIds::resolve(world.resource::<Registry>());
     let vengeance_id = world.resource::<Registry>().trait_id("vengeance");
+    let taboo_active = taboo_in_force(world.resource::<Registry>(), world.get_resource::<Factions>());
+    let ring: Vec<Episode> =
+        world.get_resource::<Chronicle>().map(|c| c.recent().copied().collect()).unwrap_or_default();
+    let mut q = world.query_filtered::<(Entity, Option<&Grievance>, &Opinion, &Mood, &Personality), With<Npc>>();
+    assemble_reads(now, mood_ids, vengeance_id, taboo_active, q.iter(world), &ring)
+}
 
-    // Whether any faction lays a no-kill taboo on the avenge act (`alive(foe) = 0`).
-    let taboo_active = {
-        let avenge = world.resource::<Registry>().predicate_id("alive").map(|p| (p, 0i64));
-        match (avenge, world.get_resource::<Factions>()) {
-            (Some(act), Some(f)) => f.0.iter().any(|fac| fac.forbids(act)),
-            _ => false,
-        }
+/// The **live sifter**: each tick, fold the Chronicle's new episodes into the incremental matcher
+/// and recompute the ranked candidates (the snapshot the director graft and the surface read).
+/// Scheduled before `director_step`. A no-op when the sift layer is off (its resources are absent).
+/// It writes **only** its own [`Sift`] resource — it touches no sim state — so a sift-off (or
+/// graft-off) world runs byte-identically.
+#[allow(clippy::type_complexity)]
+pub(crate) fn sift_step(
+    chronicle: Option<Res<Chronicle>>,
+    book: Option<Res<SiftBook>>,
+    sift: Option<ResMut<Sift>>,
+    substrate: Res<crate::Substrate>,
+    reg: Res<Registry>,
+    factions: Option<Res<Factions>>,
+    npcs: Query<(Entity, Option<&Grievance>, &Opinion, &Mood, &Personality), With<Npc>>,
+) {
+    let (Some(chronicle), Some(book), Some(mut sift)) = (chronicle, book, sift) else {
+        return;
     };
+    let ring: Vec<Episode> = chronicle.recent().copied().collect();
+    let now = substrate.0.tick();
+    let mood_ids = MoodIds::resolve(&reg);
+    let vengeance_id = reg.trait_id("vengeance");
+    let taboo_active = taboo_in_force(&reg, factions.as_deref());
+    let reads = assemble_reads(now, mood_ids, vengeance_id, taboo_active, npcs.iter(), &ring);
 
-    let mut grudge_convergence: HashMap<Entity, u32> = HashMap::new();
-    let mut opinion: HashMap<Entity, HashMap<Entity, f32>> = HashMap::new();
-    let mut mood: HashMap<Entity, Vec<f32>> = HashMap::new();
-    let mut vengeance: HashMap<Entity, f32> = HashMap::new();
-    {
-        let mut q = world.query_filtered::<(Entity, Option<&Grievance>, &Opinion, &Mood, &Personality), With<Npc>>();
-        for (e, gr, op, md, pers) in q.iter(world) {
-            if let Some(g) = gr {
-                *grudge_convergence.entry(g.0).or_insert(0) += 1;
-            }
-            if !op.0.is_empty() {
-                opinion.insert(e, op.0.clone());
-            }
-            mood.insert(e, md.0.clone());
-            if let Some(id) = vengeance_id
-                && let Some(&v) = pers.0.get(id)
-            {
-                vengeance.insert(e, v);
-            }
-        }
+    let last = sift.last_ingested;
+    for ep in ring.iter().filter(|e| last.is_none_or(|l| e.id > l)) {
+        sift.ingest(ep, &book);
     }
-
-    let by_id: HashMap<u64, Episode> = world
-        .get_resource::<Chronicle>()
-        .map(|c| c.recent().map(|e| (e.id, *e)).collect())
-        .unwrap_or_default();
-
-    SiftReads { now, grudge_convergence, opinion, mood, vengeance, taboo_active, mood_ids, by_id }
+    if let Some(e) = ring.last() {
+        sift.last_ingested = Some(e.id);
+    }
+    sift.recompute(&book, &reads);
 }
 
 /// Run the **retrospective** sift against the live world and return the updated [`Sift`] (the
