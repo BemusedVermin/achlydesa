@@ -1,0 +1,141 @@
+name: Claude Code Review
+
+# Posts an automated review on every PR that touches Rust / Cargo files, grounded in
+# achlydesa's non-negotiable invariants (determinism, off-by-default byte-identity,
+# the Bevy-free boundary, the integer economy). Delegates the rubric to
+# anthropics/claude-code-action; this file just wires up the trigger, permissions,
+# and the repo-specific brief.
+#
+# ## Trigger choice: `pull_request` (+ explicit github_token)
+#
+# We pass `secrets.GITHUB_TOKEN` directly to the action so it skips the OIDC ->
+# GitHub App installation-token exchange (which has a known failure mode,
+# anthropics/claude-code-action#1206). Side effect: the review posts as
+# `github-actions[bot]` rather than `claude[bot]`. Under `pull_request` semantics the
+# trigger is the security boundary — fork PRs get a read-only token with no secrets,
+# so the action can't authenticate on a fork even without the draft guard below.
+#
+# ## Setup required
+#
+# This workflow needs a `CLAUDE_CODE_OAUTH_TOKEN` repository secret. Create one with
+# `claude setup-token` (Claude Pro/Max) or the `/install-github-app` flow, then add it
+# under Settings -> Secrets and variables -> Actions. Until it exists, this workflow
+# will fail at the "Run Claude review" step — that is expected.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    # Only fire when something reviewable changed. PRs that only touch CI, docs, or
+    # assets skip the reviewer — saves API spend on diffs it can't meaningfully rate.
+    paths:
+      - '**/*.rs'
+      - '**/Cargo.toml'
+      - 'Cargo.lock'
+
+# Avoid stacking reviewer runs when a PR receives multiple pushes back to back.
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    # Skip drafts (work-in-progress; reviewing them wastes tokens and noises up the PR).
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude review
+        uses: anthropics/claude-code-action@v1
+        env:
+          # Authenticates the `gh` CLI used from Bash to read the diff and post the review.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # Pass the workflow token directly so the action skips the OIDC App-token
+          # exchange (see header). Review posts as github-actions[bot].
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+          claude_args: |
+            --allowed-tools "Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh api:*),Read,Grep,Glob"
+            --max-turns 20
+
+          prompt: |
+            You are reviewing a pull request on **achlydesa** — a deterministic,
+            agent-based living-world simulation in Rust (edition 2024) with a Bevy 3D
+            front-end. Pull request: #${{ github.event.pull_request.number }} in
+            ${{ github.repository }}.
+
+            ## Gather the change
+            * `gh pr view ${{ github.event.pull_request.number }} --json title,body,files`
+              for metadata and the file list.
+            * `gh pr diff ${{ github.event.pull_request.number }}` for the diff.
+            Read surrounding files with Read/Grep/Glob for context as needed.
+
+            ## Review rubric — achlydesa's non-negotiable invariants
+            These are CRITICAL: anything that violates one outweighs an otherwise clean diff.
+
+            1. **Determinism.** Everything runs off a seeded `SplitMix64`; the same seed
+               must yield a byte-identical run. The schedule is single-threaded, fixed
+               order. Flag any wall-clock reads, `HashMap`/`HashSet` iteration order
+               leaking into sim state, thread/parallel nondeterminism, or float
+               nondeterminism on the sim path. Parallel planning (`people_plan`) is only
+               OK because each agent writes its own `Plan` from read-only shared state.
+            2. **Off by default = byte-identical.** Every optional layer (dialogue,
+               director, player avatar, rpg, party, survival, exploration) keeps its
+               state in its own resource/component and early-returns when disabled, so a
+               world without it is bit-for-bit identical. New optional behaviour must do
+               the same — flag code that perturbs a base run when a layer is off.
+            3. **Separate, derived RNG streams.** Each subsystem seeds a dedicated stream
+               by xor-ing the run seed with a distinct constant. Flag any subsystem that
+               pulls randomness from an existing stream — it breaks layer independence.
+            4. **Integer economy.** Money and goods are integers; trade conserves money
+               exactly (deaths are the only sink). Flag anything that could mint or lose
+               money, or introduce floats into the economy.
+            5. **Bevy-free boundary.** Only `app` may link the Bevy engine; everything
+               else is plain Rust, and `agent_core`/`agents` use `bevy_ecs` only. The
+               dependency arrow is always `agents -> config` (and `-> game_sim ->
+               config`); `config` stays tiny and parse-free. Flag new engine deps leaking
+               into sim crates, or crates reaching into `assets/` directly (content is
+               reached only through `config`).
+            6. **The dialogue / SLM seam.** The optional `voice` crate re-voices surface
+               text only and must NEVER feed back into simulation state — a build with the
+               model must be byte-identical to one without.
+
+            Beyond the invariants, apply normal Rust review judgement: correctness,
+            ownership/borrowing, error handling, panics, and idiomatic style. Note that
+            `cargo fmt`, `cargo clippy -D warnings`, and the tests already gate the PR in
+            CI, so focus on what those tools cannot catch.
+
+            ## Post the review
+            Post exactly ONE pull-request review. Prefer inline comments anchored to
+            specific lines on the new side of the diff; lead with a one-line verdict and a
+            short summary. Use:
+
+              gh pr review ${{ github.event.pull_request.number }} \
+                --request-changes -b "<summary>"   # if any blocking finding
+              gh pr review ${{ github.event.pull_request.number }} \
+                --approve -b "<summary>"           # if clean
+
+            For line-anchored inline comments, POST to the reviews API in one call:
+              gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews \
+                -f event=COMMENT -f body="<summary>" \
+                -F 'comments[][path]=<path>' -F 'comments[][line]=<line>' \
+                -F 'comments[][side]=RIGHT' -F 'comments[][body]=<comment>'
+
+            ## Constraints
+            * Be terse and specific — one concrete issue per inline comment, with a fix or
+              snippet. Severity-prefix each (CRITICAL / HIGH / MEDIUM / LOW).
+            * Stay grounded in what the diff actually changes; do not invent issues.
+            * Post exactly one review — do not also paraphrase it into a separate comment.
+
+          # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
+          # for the full set of action options.
