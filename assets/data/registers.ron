@@ -1,0 +1,192 @@
+// The dramatic **registers** — the emotional keys the narrative director plays in, as DATA.
+//
+// A register is a *domain category* (Betrayal, Romance, Wonder, …); this file holds the concrete
+// instances. Each row is one register's whole shape — the structural levers the director/sim read
+// (spine, trunk, bright, seeds, casting) and the surface vocabulary the view renders (epithet,
+// situation, gossip noun/line, quest prose). Add a row here and the director can spine a thread on
+// it, cast it, gossip about it, and offer it as a quest — **with no Rust changes**.
+//
+//   name      the id beats/sift refer to (resolved to a dense RegisterId at load)
+//   spine     spine-eligible — a thread can take this as its key. ORDER of the spine rows below is
+//             load-bearing: it is the director's register-rotation order (the old `SPINES`).
+//   trunk     the betrayal→vengeance spine the world turns on (a standing drama bonus)
+//   bright    a brighter staged experience (love/triumph/awe) — groomed so the fall has something
+//             to break; still staged, but weighed far below suffering
+//   seeds     the register a *closing* thread of this one seeds next (grief → vengeance), or None
+//   casting   how the thread pins its counterpart: Warmest | Coldest | Ambitious | Pious
+//   --- surface only (presentation; never read by the deterministic tick) ---
+//   epithet_*, situation_*   the lead vs. the pinned other's earned honorific / one-line plight
+//   noun                     what the world calls the drama when it lacks the particulars
+//   told                     high-fidelity gossip sentence — {lead}/{other}/{noun} placeholders
+//   quest_plea, quest_objective   the giver's spoken charge / the HUD objective — {giver}/{other}
+//
+// Spine registers first, in the director's rotation order; the non-spine flavours follow.
+[
+    (
+        name: "betrayal",
+        spine: true, trunk: true, bright: false, seeds: Some("vengeance"), casting: Warmest,
+        epithet_lead: "the Betrayed", epithet_other: "the Faithless",
+        situation_lead: "still raw from a trusted friend's turning.",
+        situation_other: "something unconfessed moving behind its eyes.",
+        noun: "betrayal",
+        told: "They say {lead} was betrayed by {other}.",
+        quest_plea: "\"{other} wronged me, and I cannot let it lie. Find them — and I will know whether you stand with me.\"",
+        quest_objective: "Seek out {other}, who wronged {giver}.",
+    ),
+    (
+        name: "vengeance",
+        spine: true, trunk: true, bright: false, seeds: None, casting: Coldest,
+        epithet_lead: "the Avenger", epithet_other: "the Hunted",
+        situation_lead: "cold with a purpose it means to see through.",
+        situation_other: "watchful, as one who knows it is hunted.",
+        noun: "reckoning",
+        told: "They say {lead} has sworn vengeance on {other}.",
+        quest_plea: "\"{other} wronged me, and I cannot let it lie. Find them — and I will know whether you stand with me.\"",
+        quest_objective: "Seek out {other}, who wronged {giver}.",
+    ),
+    (
+        name: "ambition",
+        spine: true, trunk: false, bright: false, seeds: None, casting: Ambitious,
+        epithet_lead: "the Ambitious", epithet_other: "the Rival",
+        situation_lead: "hungry for a seat it does not yet hold.",
+        situation_other: "wary of a rival climbing past it.",
+        noun: "grasping after power",
+        told: "They say {lead} reaches for power, with {other} in the way.",
+        quest_plea: "\"{other} stands between me and what is mine. Find them.\"",
+        quest_objective: "Find {other}, {giver}'s rival.",
+    ),
+    (
+        name: "war",
+        spine: true, trunk: false, bright: false, seeds: None, casting: Ambitious,
+        epithet_lead: "the Warlord", epithet_other: "the Enemy",
+        situation_lead: "hardened by a war it cannot lay down.",
+        situation_other: "an enemy's shadow never far from its mind.",
+        noun: "war",
+        told: "They say {lead}'s people have gone to war with {other}'s.",
+        quest_plea: "\"{other}'s people move against mine. Find them, and we will see this settled.\"",
+        quest_objective: "Find {other}, {giver}'s enemy.",
+    ),
+    (
+        name: "disaster",
+        spine: true, trunk: false, bright: false, seeds: None, casting: Warmest,
+        epithet_lead: "the Stricken", epithet_other: "the Bereaved",
+        situation_lead: "hollowed by a ruin that fell on its house.",
+        situation_other: "grieving a loss the famine took.",
+        noun: "calamity",
+        told: "They say a calamity has fallen on {lead}'s house.",
+        quest_plea: "\"Find {other} for me — there is a matter between us.\"",
+        quest_objective: "Find {other} for {giver}.",
+    ),
+    (
+        name: "persecution",
+        spine: true, trunk: false, bright: false, seeds: Some("vengeance"), casting: Coldest,
+        epithet_lead: "the Hunted", epithet_other: "the Persecutor",
+        situation_lead: "flinching, as the cornered do.",
+        situation_other: "certain of its right to hound the weak.",
+        noun: "hounding",
+        told: "They say {other} hounds {lead} without mercy.",
+        quest_plea: "\"{other} hounds me without end. Find them — I would not face them alone.\"",
+        quest_objective: "Seek out {other}, who hounds {giver}.",
+    ),
+    (
+        name: "romance",
+        spine: true, trunk: false, bright: true, seeds: Some("vengeance"), casting: Warmest,
+        epithet_lead: "the Beloved", epithet_other: "the Lover",
+        situation_lead: "lit, for once, by something like joy.",
+        situation_other: "tender toward one it should not love.",
+        noun: "love-match",
+        told: "They say {lead} has given their heart to {other}.",
+        quest_plea: "\"My heart is with {other}, and we are kept apart. Carry word to them, will you?\"",
+        quest_objective: "Bear word to {other}, whom {giver} loves.",
+    ),
+    (
+        name: "triumph",
+        spine: true, trunk: false, bright: true, seeds: None, casting: Warmest,
+        epithet_lead: "the Triumphant", epithet_other: "the Eclipsed",
+        situation_lead: "borne up by a triumph still warm.",
+        situation_other: "smarting, eclipsed by another's rise.",
+        noun: "triumph",
+        told: "They say {lead} stands triumphant, and {other} eclipsed.",
+        quest_plea: "\"Find {other} for me — there is a matter between us.\"",
+        quest_objective: "Find {other} for {giver}.",
+    ),
+    (
+        name: "wonder",
+        spine: true, trunk: false, bright: true, seeds: None, casting: Pious,
+        epithet_lead: "the Seeker", epithet_other: "the Awed",
+        situation_lead: "haunted by a marvel it half-understands.",
+        situation_other: "awed by something it cannot name.",
+        noun: "wonder",
+        told: "They say {lead} has seen a wonder none can explain.",
+        quest_plea: "\"I have seen a thing I cannot explain, and {other} was there. Find them.\"",
+        quest_objective: "Seek out {other}, who shared {giver}'s wonder.",
+    ),
+    (
+        name: "grace",
+        spine: true, trunk: false, bright: true, seeds: None, casting: Warmest,
+        epithet_lead: "the Redeemed", epithet_other: "the Merciful",
+        situation_lead: "lifted by a grace it did not earn.",
+        situation_other: "moved to a mercy it did not owe.",
+        noun: "strange turn",
+        told: "They say {lead} is caught up in a {noun}.",
+        quest_plea: "\"Find {other} for me — there is a matter between us.\"",
+        quest_objective: "Find {other} for {giver}.",
+    ),
+
+    // --- non-spine flavours (a thread never keys on these; they colour Fall beats) ---
+    (
+        name: "loss",
+        spine: false, trunk: false, bright: false, seeds: Some("vengeance"), casting: Warmest,
+        epithet_lead: "the Storied", epithet_other: "the Storied",
+        situation_lead: "a story heavy on its shoulders.",
+        situation_other: "a story heavy on its shoulders.",
+        noun: "strange turn",
+        told: "They say {lead} is caught up in a {noun}.",
+        quest_plea: "\"Find {other} for me — there is a matter between us.\"",
+        quest_objective: "Find {other} for {giver}.",
+    ),
+    (
+        name: "reunion",
+        spine: false, trunk: false, bright: true, seeds: None, casting: Pious,
+        epithet_lead: "the Storied", epithet_other: "the Storied",
+        situation_lead: "a story heavy on its shoulders.",
+        situation_other: "a story heavy on its shoulders.",
+        noun: "strange turn",
+        told: "They say {lead} is caught up in a {noun}.",
+        quest_plea: "\"Find {other} for me — there is a matter between us.\"",
+        quest_objective: "Find {other} for {giver}.",
+    ),
+    (
+        name: "sacrifice",
+        spine: false, trunk: false, bright: false, seeds: Some("vengeance"), casting: Warmest,
+        epithet_lead: "the Storied", epithet_other: "the Storied",
+        situation_lead: "a story heavy on its shoulders.",
+        situation_other: "a story heavy on its shoulders.",
+        noun: "strange turn",
+        told: "They say {lead} is caught up in a {noun}.",
+        quest_plea: "\"Find {other} for me — there is a matter between us.\"",
+        quest_objective: "Find {other} for {giver}.",
+    ),
+    (
+        name: "redemption",
+        spine: false, trunk: false, bright: true, seeds: None, casting: Warmest,
+        epithet_lead: "the Storied", epithet_other: "the Storied",
+        situation_lead: "a story heavy on its shoulders.",
+        situation_other: "a story heavy on its shoulders.",
+        noun: "strange turn",
+        told: "They say {lead} is caught up in a {noun}.",
+        quest_plea: "\"Find {other} for me — there is a matter between us.\"",
+        quest_objective: "Find {other} for {giver}.",
+    ),
+    (
+        name: "relief",
+        spine: false, trunk: false, bright: true, seeds: None, casting: Warmest,
+        epithet_lead: "the Storied", epithet_other: "the Storied",
+        situation_lead: "a story heavy on its shoulders.",
+        situation_other: "a story heavy on its shoulders.",
+        noun: "strange turn",
+        told: "They say {lead} is caught up in a {noun}.",
+        quest_plea: "\"Find {other} for me — there is a matter between us.\"",
+        quest_objective: "Find {other} for {giver}.",
+    ),
+]
