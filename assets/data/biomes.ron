@@ -1,0 +1,124 @@
+// The **Holdridge life-zone system**, as DATA — the world's ecology classification.
+//
+// A tile's `Biome` is reclassified each tick from its mean annual biotemperature (→ a latitudinal
+// `belt`) and its PET/precipitation ratio (→ a humidity `province` index), then looked up in the
+// `classifier` grid. Each biome carries a coarse structural `formation` (the handle the renderer,
+// travel cost and agent signals read) and the `belt` it sits in; the ecological constants the
+// ecosystem update reads (productivity ceiling, flammability, litter decay) are composed from the
+// formation + belt below. Add a row here and the world can classify into it — **no Rust changes**.
+//
+// Determinism note: the biome order is the dense `BiomeId` order — `Water` MUST be first (id 0). The
+// belt order is the `BeltId` order (coldest→warmest); the biotemp boundaries that separate the belts
+// stay tunable in `Params` (biotemp_*), as do the per-formation base productivities (prod_*).
+(
+    // The 7 Holdridge latitudinal/altitudinal belts, coldest → warmest. `warmth` scales a biome's
+    // productivity and litter-decay within its formation (a tropical forest out-produces a boreal one).
+    belts: [
+        (name: "polar",          warmth: 0.55),
+        (name: "subpolar",       warmth: 0.6),
+        (name: "boreal",         warmth: 0.75),
+        (name: "cool temperate", warmth: 0.9),
+        (name: "warm temperate", warmth: 1.0),
+        (name: "subtropical",    warmth: 1.1),
+        (name: "tropical",       warmth: 1.2),
+    ],
+
+    // The 8 humidity provinces, driest → wettest — the index a PET/precipitation ratio resolves to.
+    provinces: ["superarid", "perarid", "arid", "semiarid", "subhumid", "humid", "perhumid", "superhumid"],
+
+    // The coarse structural formations and the ecology constants they set. The base `productivity`
+    // is the tunable Params `prod_<formation>` (water = 0); here we author flammability and decay.
+    formations: [
+        (name: "water",      flammability: 0.0,  decay: 1.0),
+        (name: "desert",     flammability: 0.4,  decay: 0.5),
+        (name: "tundra",     flammability: 0.2,  decay: 0.3),
+        (name: "grassland",  flammability: 1.5,  decay: 0.9),
+        (name: "shrubland",  flammability: 1.2,  decay: 0.8),
+        (name: "forest",     flammability: 0.8,  decay: 1.0),
+        (name: "rainforest", flammability: 0.25, decay: 1.3),
+    ],
+
+    // The 39 life zones. Index = BiomeId (open water first); each names its structural `formation`
+    // and the `belt` it sits in (None for open water). Names are the scientific life-zone labels.
+    biomes: [
+        (name: "open water",                  formation: "water",      belt: None),
+        // --- Polar ---
+        (name: "polar desert",                formation: "tundra",     belt: Some("polar")),
+        // --- Subpolar ---
+        (name: "subpolar dry tundra",         formation: "tundra",     belt: Some("subpolar")),
+        (name: "subpolar moist tundra",       formation: "tundra",     belt: Some("subpolar")),
+        (name: "subpolar wet tundra",         formation: "tundra",     belt: Some("subpolar")),
+        (name: "subpolar rain tundra",        formation: "tundra",     belt: Some("subpolar")),
+        // --- Boreal ---
+        (name: "boreal desert",               formation: "tundra",     belt: Some("boreal")),
+        (name: "boreal dry scrub",            formation: "shrubland",  belt: Some("boreal")),
+        (name: "boreal moist forest",         formation: "forest",     belt: Some("boreal")),
+        (name: "boreal wet forest",           formation: "forest",     belt: Some("boreal")),
+        (name: "boreal rain forest",          formation: "rainforest", belt: Some("boreal")),
+        // --- Cool temperate ---
+        (name: "cool temperate desert",       formation: "desert",     belt: Some("cool temperate")),
+        (name: "cool temperate desert scrub", formation: "shrubland",  belt: Some("cool temperate")),
+        (name: "cool temperate steppe",       formation: "grassland",  belt: Some("cool temperate")),
+        (name: "cool temperate moist forest", formation: "forest",     belt: Some("cool temperate")),
+        (name: "cool temperate wet forest",   formation: "forest",     belt: Some("cool temperate")),
+        (name: "cool temperate rain forest",  formation: "rainforest", belt: Some("cool temperate")),
+        // --- Warm temperate ---
+        (name: "warm temperate desert",       formation: "desert",     belt: Some("warm temperate")),
+        (name: "warm temperate desert scrub", formation: "shrubland",  belt: Some("warm temperate")),
+        (name: "warm temperate thorn scrub",  formation: "shrubland",  belt: Some("warm temperate")),
+        (name: "warm temperate dry forest",   formation: "forest",     belt: Some("warm temperate")),
+        (name: "warm temperate moist forest", formation: "forest",     belt: Some("warm temperate")),
+        (name: "warm temperate wet forest",   formation: "rainforest", belt: Some("warm temperate")),
+        (name: "warm temperate rain forest",  formation: "rainforest", belt: Some("warm temperate")),
+        // --- Subtropical ---
+        (name: "subtropical desert",          formation: "desert",     belt: Some("subtropical")),
+        (name: "subtropical desert scrub",    formation: "shrubland",  belt: Some("subtropical")),
+        (name: "subtropical thorn woodland",  formation: "shrubland",  belt: Some("subtropical")),
+        (name: "subtropical dry forest",      formation: "forest",     belt: Some("subtropical")),
+        (name: "subtropical moist forest",    formation: "forest",     belt: Some("subtropical")),
+        (name: "subtropical wet forest",      formation: "rainforest", belt: Some("subtropical")),
+        (name: "subtropical rain forest",     formation: "rainforest", belt: Some("subtropical")),
+        // --- Tropical ---
+        (name: "tropical desert",             formation: "desert",     belt: Some("tropical")),
+        (name: "tropical desert scrub",       formation: "shrubland",  belt: Some("tropical")),
+        (name: "tropical thorn woodland",     formation: "shrubland",  belt: Some("tropical")),
+        (name: "tropical very dry forest",    formation: "forest",     belt: Some("tropical")),
+        (name: "tropical dry forest",         formation: "forest",     belt: Some("tropical")),
+        (name: "tropical moist forest",       formation: "forest",     belt: Some("tropical")),
+        (name: "tropical wet forest",         formation: "rainforest", belt: Some("tropical")),
+        (name: "tropical rain forest",        formation: "rainforest", belt: Some("tropical")),
+    ],
+
+    // The classifier grid: each belt's row of 8 life zones (driest → wettest); `from_cell(belt, h)`
+    // = row[h]. The dry/wet span is clamped to the zones a belt actually has, so every cell is real.
+    classifier: [
+        (belt: "polar", row: [
+            "polar desert", "polar desert", "polar desert", "polar desert",
+            "polar desert", "polar desert", "polar desert", "polar desert",
+        ]),
+        (belt: "subpolar", row: [
+            "subpolar dry tundra", "subpolar dry tundra", "subpolar dry tundra", "subpolar dry tundra",
+            "subpolar moist tundra", "subpolar moist tundra", "subpolar wet tundra", "subpolar rain tundra",
+        ]),
+        (belt: "boreal", row: [
+            "boreal desert", "boreal desert", "boreal dry scrub", "boreal dry scrub",
+            "boreal moist forest", "boreal moist forest", "boreal wet forest", "boreal rain forest",
+        ]),
+        (belt: "cool temperate", row: [
+            "cool temperate desert", "cool temperate desert scrub", "cool temperate steppe", "cool temperate steppe",
+            "cool temperate moist forest", "cool temperate moist forest", "cool temperate wet forest", "cool temperate rain forest",
+        ]),
+        (belt: "warm temperate", row: [
+            "warm temperate desert", "warm temperate desert scrub", "warm temperate thorn scrub", "warm temperate dry forest",
+            "warm temperate moist forest", "warm temperate wet forest", "warm temperate rain forest", "warm temperate rain forest",
+        ]),
+        (belt: "subtropical", row: [
+            "subtropical desert", "subtropical desert scrub", "subtropical thorn woodland", "subtropical dry forest",
+            "subtropical moist forest", "subtropical wet forest", "subtropical rain forest", "subtropical rain forest",
+        ]),
+        (belt: "tropical", row: [
+            "tropical desert", "tropical desert scrub", "tropical thorn woodland", "tropical very dry forest",
+            "tropical dry forest", "tropical moist forest", "tropical wet forest", "tropical rain forest",
+        ]),
+    ],
+)

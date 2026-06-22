@@ -72,6 +72,7 @@ pub enum Asset {
     Attributes,
     Beats,
     Bestiary,
+    Biomes,
     Edges,
     Features,
     Foci,
@@ -94,11 +95,12 @@ pub enum Asset {
 impl Asset {
     /// Every asset, in declaration order — handy for "load them all" sweeps and
     /// for tests that assert the bundled set is complete.
-    pub const ALL: [Asset; 21] = [
+    pub const ALL: [Asset; 22] = [
         Asset::Appraisals,
         Asset::Attributes,
         Asset::Beats,
         Asset::Bestiary,
+        Asset::Biomes,
         Asset::Edges,
         Asset::Features,
         Asset::Foci,
@@ -126,6 +128,7 @@ impl Asset {
             Asset::Attributes => "attributes.ron",
             Asset::Beats => "beats.ron",
             Asset::Bestiary => "bestiary.ron",
+            Asset::Biomes => "biomes.ron",
             Asset::Edges => "edges.ron",
             Asset::Features => "features.ron",
             Asset::Foci => "foci.ron",
@@ -187,6 +190,7 @@ impl Bundled {
             Asset::Attributes => bundled!("attributes.ron"),
             Asset::Beats => bundled!("beats.ron"),
             Asset::Bestiary => bundled!("bestiary.ron"),
+            Asset::Biomes => bundled!("biomes.ron"),
             Asset::Edges => bundled!("edges.ron"),
             Asset::Features => bundled!("features.ron"),
             Asset::Foci => bundled!("foci.ron"),
