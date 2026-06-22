@@ -484,4 +484,29 @@ mod tests {
         )]"#;
         assert!(BeatBook::from_ron(ron, &reg).is_err());
     }
+
+    #[test]
+    fn a_beat_in_a_data_authored_register_is_castable() {
+        use crate::data::DataFiles;
+        use config::{Asset, Bundled};
+        // A register that exists in NO Rust code, authored purely in RON (traits/moods bundled so
+        // the beat's mood effect still validates)...
+        let registers = r#"[(name: "schadenfreude", spine: true, casting: Coldest)]"#;
+        let reg = Registry::from_ron(DataFiles {
+            traits: Bundled::get(Asset::Traits),
+            moods: Bundled::get(Asset::Moods),
+            registers,
+            ..Default::default()
+        })
+        .unwrap();
+        // ...and a beat that plays in it loads and resolves with no code change at all.
+        let ron = r#"[(
+            id: "a_petty_delight", register: "schadenfreude", tension: 0.4, cast: [Protagonist],
+            effects: [Stir(who: Protagonist, mood: "joy", delta: 0.2)],
+        )]"#;
+        let book =
+            BeatBook::from_ron(ron, &reg).expect("a beat in a data-authored register resolves");
+        assert_eq!(book.0.len(), 1);
+        assert_eq!(book.0[0].register, reg.register_id("schadenfreude").unwrap());
+    }
 }

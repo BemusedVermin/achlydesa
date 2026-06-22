@@ -758,4 +758,55 @@ mod tests {
         let a = reg.trait_id("ambition").expect("ambition trait exists");
         assert!(reg.trait_def(a).baseline >= 0.0);
     }
+
+    #[test]
+    fn bundled_registers_resolve() {
+        let reg = Registry::bundled();
+        assert!(reg.register_count() >= 15);
+        let betrayal = reg.register_id("betrayal").expect("betrayal register exists");
+        let def = reg.register_def(betrayal);
+        assert!(def.trunk && def.spine);
+        // the spine rotation reproduces the old `director::SPINES` order, betrayal first.
+        assert_eq!(reg.spines().first().copied(), Some(betrayal));
+        // betrayal's grief seeds vengeance (the self-perpetuating trunk), resolved to an id.
+        assert_eq!(reg.register_seeds(betrayal), reg.register_id("vengeance"));
+    }
+
+    #[test]
+    fn a_new_register_needs_no_code() {
+        // A register that exists in NO Rust source — authored purely in RON, with its `seeds`
+        // cross-reference and (untuned) surface text — resolves into the registry exactly like a
+        // new good or mood. This is the whole point: the domain is data, the code is generic.
+        let registers = r#"[
+            (name: "vengeance", casting: Coldest),
+            (name: "schadenfreude", spine: true, trunk: true, seeds: Some("vengeance"),
+             casting: Ambitious, noun: "delicious ruin"),
+        ]"#;
+        let reg = Registry::from_ron(DataFiles {
+            registers,
+            ..Default::default()
+        })
+        .expect("a registers doc with a novel register resolves");
+        let id = reg.register_id("schadenfreude").expect("the new register exists");
+        let def = reg.register_def(id);
+        assert!(def.spine && def.trunk);
+        assert_eq!(def.casting, Casting::Ambitious);
+        assert_eq!(def.noun, "delicious ruin");
+        assert!(reg.spines().contains(&id));
+        // seeds resolved to the vengeance id; untuned epithet fell back to the generic default.
+        assert_eq!(reg.register_seeds(id), reg.register_id("vengeance"));
+        assert_eq!(def.epithet_lead, "the Storied");
+    }
+
+    #[test]
+    fn a_register_seeding_an_unknown_register_is_rejected() {
+        let registers = r#"[(name: "loss", seeds: Some("nirvana"))]"#;
+        assert!(matches!(
+            Registry::from_ron(DataFiles {
+                registers,
+                ..Default::default()
+            }),
+            Err(LoadError::UnknownRegister(_))
+        ));
+    }
 }
