@@ -224,6 +224,10 @@ pub fn build_schedule() -> Schedule {
                 people::regen_affordances,
                 factions::faction_turn,
                 factions::detention_countdown,
+                // The sifter reads the Chronicle (incrementally) into ranked story candidates just
+                // before Γ, so the graft can consult forming stories from *this* tick. A no-op when
+                // the sift layer is off; writes only its own resource, so off => byte-identical.
+                sift::sift_step,
                 // Γ runs late: it charges itself for this tick's deaths inside its
                 // footprints, reads the stage, and may manufacture an escalation.
                 director::director_step,
