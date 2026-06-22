@@ -1,39 +1,26 @@
 //! `coupling-lint` CLI — see the [`coupling_lint`] crate docs.
 //!
-//! - `cargo run -p coupling-lint` — print the report and exit non-zero on a ratchet violation.
-//! - `cargo run -p coupling-lint -- --bless` — regenerate `baseline.txt` from the current tree.
-//!
-//! The same check runs as a `#[test]` (so `cargo test` / the CI quality gate enforces it).
+//! `cargo run -p coupling-lint` prints the report and exits non-zero if any coupling finding lacks a
+//! justified `// coupling-lint:allow <detector> <Symbol>: <reason>` directive at its site. The same
+//! check runs as a `#[test]` (so `cargo test` / the CI quality gate enforces it).
 
 fn main() {
-    let bless = std::env::args().any(|a| a == "--bless" || a == "--update-baseline");
-    let findings = coupling_lint::scan_workspace();
-    let path = coupling_lint::baseline_path();
+    let raw = coupling_lint::scan_workspace_raw();
+    let unresolved = coupling_lint::scan_workspace();
+    let suppressed = raw.len() - unresolved.len();
 
-    if bless {
-        coupling_lint::write_baseline(&path, &findings).expect("write baseline");
-        println!(
-            "blessed: wrote {} findings to {}",
-            findings.len(),
-            path.display()
-        );
-        return;
-    }
+    coupling_lint::print_report(&unresolved);
+    println!("\n{suppressed} finding(s) suppressed by inline allows.");
 
-    coupling_lint::print_report(&findings);
-
-    let baseline = coupling_lint::load_baseline(&path).unwrap_or_default();
-    let violations = coupling_lint::check_against_baseline(&findings, &baseline);
-    if violations.is_empty() {
-        println!("\nratchet: clean (no coupling added beyond baseline).");
+    if unresolved.is_empty() {
+        println!("clean: no unannotated data/logic coupling.");
     } else {
-        eprintln!("\nratchet: {} VIOLATION(S)", violations.len());
-        for v in &violations {
-            eprintln!("  {v}");
-        }
         eprintln!(
-            "\nData-drive the new content (see assets/data/registers.ron for the pattern), or — if\n\
-             this coupling is intentional — re-bless: cargo run -p coupling-lint -- --bless"
+            "\n{} UNANNOTATED coupling finding(s) above. Data-drive the content (see\n\
+             assets/data/registers.ron for the pattern), or — if it is legitimately code, not\n\
+             content — add a justified `// coupling-lint:allow <detector> <Symbol>: <reason>` at\n\
+             the site.",
+            unresolved.len()
         );
         std::process::exit(1);
     }

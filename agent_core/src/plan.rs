@@ -261,6 +261,8 @@ impl GoodSel {
 /// thing the planner plans toward. Every goal is one of these over the shared fact
 /// vocabulary, so "be fed", "keep a larder", "stay solvent", and "hold the throne"
 /// are all the same kind of object.
+// coupling-lint:allow self_match Condition: a generic planner-state vocabulary, not content — the
+// economy content (goods/recipes/skills) is data. A new condition is a planning mechanic, not a row.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Condition {
     /// Sustenance meter at least this (`0..=100`).

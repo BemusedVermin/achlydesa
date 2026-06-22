@@ -13,6 +13,8 @@
 use serde::Deserialize;
 
 /// A response curve mapping an input to a `0..1` utility. Authored in RON.
+// coupling-lint:allow self_match Curve: response-curve math — each variant is a distinct formula
+// evaluated in `apply`, not authored content. You cannot add a curve shape without code.
 #[derive(Deserialize, Clone, Copy, Debug)]
 pub enum Curve {
     /// `m·x + b`.

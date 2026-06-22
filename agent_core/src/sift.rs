@@ -22,6 +22,8 @@
 //! oracle, trivially testable against a saved run); the incremental matcher (asserted to agree) and
 //! the director graft follow.
 
+// coupling-lint:allow string_ids: the vengeance-pressure axis refers to the "vengeance" trait and
+// "alive" predicate by name — necessary semantic references.
 use crate::ai::Curve;
 use crate::chronicle::{Chronicle, Episode, EpisodeKind};
 use crate::data::{RegisterId, Registry};

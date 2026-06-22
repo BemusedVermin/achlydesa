@@ -146,6 +146,8 @@ impl PlayerState {
 }
 
 /// The broad lie of the land at a tile — relief banded by elevation above sea level.
+// coupling-lint:allow self_match Terrain: five relief bands derived from elevation thresholds in
+// `of()` — a tiny fixed classifier, not authored content.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Terrain {
     Ocean,

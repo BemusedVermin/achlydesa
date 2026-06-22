@@ -201,6 +201,9 @@ impl ConsiderationDef {
 
 /// The RON form of a [`Condition`]; names (goods, predicates) resolve to ids on
 /// load. Shared with [`norms`](crate::norms), whose `when` clauses are conditions.
+// coupling-lint:allow self_match ConditionDef: a generic condition-operator vocabulary, not
+// content — goals themselves are data (goals.ron). A new operator is a real mechanic needing
+// evaluation code, like the planner's `Step`/`Condition`.
 #[derive(Deserialize)]
 pub(crate) enum ConditionDef {
     Sustenance {

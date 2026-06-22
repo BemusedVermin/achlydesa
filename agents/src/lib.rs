@@ -25,6 +25,8 @@ use sim::Substrate as SubstrateTrait;
 // assembler on top of it (and the feature crates). Re-export the whole core surface so
 // existing users — `app`, the examples, the tests — keep importing everything from
 // `agents` unchanged.
+// coupling-lint:allow string_ids: a few inspection/metrics helpers resolve named traits/moods
+// (vengeance/anger/ambition) for read-only readouts — necessary references, not an instance table.
 pub use agent_core::*;
 // The RPG layer (WWN attributes/skills/foci/edges) is its own crate; re-export its character
 // types so `app`, the demos and the tests reach them through `agents`. The `rpg::check` engine

@@ -12,6 +12,8 @@
 //! and the pull of a near court). Deterministic — no RNG. The only economy effect is
 //! tribute flowing member→leader (conserved); war and enforcement remove people.
 
+// coupling-lint:allow string_ids: governance/law machinery refers to the named predicate "alive"
+// and the "ambition" trait — necessary semantic references, resolved once.
 use crate::chronicle::EpisodeKind;
 use crate::data::{PredicateId, Registry};
 use crate::features::{Category, FeatureCatalog, Features};
