@@ -65,7 +65,12 @@ pub struct Voice {
 impl Voice {
     /// A disabled voice — every conversation uses the grammar surface.
     pub fn off() -> Self {
-        Self { tx: None, rx: None, status: Arc::new(Mutex::new(VoiceStatus::Off)), _handle: None }
+        Self {
+            tx: None,
+            rx: None,
+            status: Arc::new(Mutex::new(VoiceStatus::Off)),
+            _handle: None,
+        }
     }
 
     /// Spawn from the project's `voice.ron` config (defaults if the file is absent) — the
@@ -90,7 +95,12 @@ impl Voice {
             .spawn(move || worker(cfg, job_rx, out_tx, st))
             .expect("spawn voice worker thread");
 
-        Self { tx: Some(job_tx), rx: Some(out_rx), status, _handle: Some(handle) }
+        Self {
+            tx: Some(job_tx),
+            rx: Some(out_rx),
+            status,
+            _handle: Some(handle),
+        }
     }
 
     /// The worker's current state (cheap; clones a small enum).
@@ -124,7 +134,13 @@ impl Voice {
             return false;
         }
         let Some(tx) = &self.tx else { return false };
-        let job = Job { req_id, key, prompt: prompt::build_chatml(u, prev), fallback: u.surface.clone(), single_line: true };
+        let job = Job {
+            req_id,
+            key,
+            prompt: prompt::build_chatml(u, prev),
+            fallback: u.surface.clone(),
+            single_line: true,
+        };
         tx.send(job).is_ok()
     }
 
@@ -132,14 +148,27 @@ impl Voice {
     /// player's `player_msg`, given the prior `history`. Returns `true` if dispatched (model
     /// ready); the result arrives via [`poll`](Self::poll) under `req_id`. `fallback` is shown
     /// if generation fails. The reply may run a sentence or three (it's a conversation).
-    pub fn request_chat(&self, req_id: u64, card: &str, history: &[ChatTurn], player_msg: &str, fallback: &str) -> bool {
+    pub fn request_chat(
+        &self,
+        req_id: u64,
+        card: &str,
+        history: &[ChatTurn],
+        player_msg: &str,
+        fallback: &str,
+    ) -> bool {
         if !self.is_ready() {
             return false;
         }
         let Some(tx) = &self.tx else { return false };
         let prompt = prompt::build_chat(card, history, player_msg);
         let key = prompt_hash(&prompt);
-        let job = Job { req_id, key, prompt, fallback: fallback.to_string(), single_line: false };
+        let job = Job {
+            req_id,
+            key,
+            prompt,
+            fallback: fallback.to_string(),
+            single_line: false,
+        };
         tx.send(job).is_ok()
     }
 
@@ -147,14 +176,27 @@ impl Voice {
     /// conversation's social effect. The chosen word arrives via [`poll`](Self::poll) under
     /// `req_id`; the host maps it to an authored intent. Single-line guarded; `fallback` (e.g.
     /// `"none"`) is returned on failure.
-    pub fn request_classify(&self, req_id: u64, name: &str, message: &str, labels: &[&str], fallback: &str) -> bool {
+    pub fn request_classify(
+        &self,
+        req_id: u64,
+        name: &str,
+        message: &str,
+        labels: &[&str],
+        fallback: &str,
+    ) -> bool {
         if !self.is_ready() {
             return false;
         }
         let Some(tx) = &self.tx else { return false };
         let prompt = prompt::build_classify(name, message, labels);
         let key = prompt_hash(&prompt);
-        let job = Job { req_id, key, prompt, fallback: fallback.to_string(), single_line: true };
+        let job = Job {
+            req_id,
+            key,
+            prompt,
+            fallback: fallback.to_string(),
+            single_line: true,
+        };
         tx.send(job).is_ok()
     }
 
@@ -173,7 +215,12 @@ impl Voice {
 /// The worker body: load once, then serve requests (cache → generate → guard) until the
 /// channel closes. If loading fails it keeps answering with the grammar fallback so the
 /// conversation never stalls.
-fn worker(cfg: VoiceConfig, jobs: Receiver<Job>, out: Sender<(u64, String)>, status: Arc<Mutex<VoiceStatus>>) {
+fn worker(
+    cfg: VoiceConfig,
+    jobs: Receiver<Job>,
+    out: Sender<(u64, String)>,
+    status: Arc<Mutex<VoiceStatus>>,
+) {
     let model = match CandleModel::load(&cfg) {
         Ok(m) => {
             *status.lock().expect("voice status mutex") = VoiceStatus::Ready;
@@ -196,7 +243,13 @@ fn worker(cfg: VoiceConfig, jobs: Receiver<Job>, out: Sender<(u64, String)>, sta
                 // Seed generation by the prompt/meaning hash, so the same exchange reads the
                 // same. If the line doesn't survive the guard, retry once with a perturbed seed
                 // before giving up to the fallback — small models occasionally emit junk.
-                let clean = |raw: String| if job.single_line { guard(&raw, &job.fallback) } else { guard_chat(&raw, &job.fallback) };
+                let clean = |raw: String| {
+                    if job.single_line {
+                        guard(&raw, &job.fallback)
+                    } else {
+                        guard_chat(&raw, &job.fallback)
+                    }
+                };
                 let mut chosen = clean(model.generate(&job.prompt, job.key));
                 if chosen == job.fallback {
                     let retry = clean(model.generate(&job.prompt, job.key ^ 0x9E37_79B9_7F4A_7C15));
@@ -224,7 +277,10 @@ fn worker(cfg: VoiceConfig, jobs: Receiver<Job>, out: Sender<(u64, String)>, sta
 fn strip_label_and_quotes(s: &str) -> &str {
     let s = match s.split_once(':') {
         Some((head, tail))
-            if !tail.trim().is_empty() && !head.is_empty() && head.chars().count() <= 16 && head.chars().all(char::is_alphabetic) =>
+            if !tail.trim().is_empty()
+                && !head.is_empty()
+                && head.chars().count() <= 16
+                && head.chars().all(char::is_alphabetic) =>
         {
             tail.trim()
         }
@@ -238,7 +294,12 @@ fn strip_label_and_quotes(s: &str) -> &str {
 /// this keeps the first real sentence and rejects only genuine junk (so a good generation is
 /// not discarded over a stray leading newline — the bug that made voicing look broken).
 fn guard(raw: &str, fallback: &str) -> String {
-    let line = raw.trim().lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("");
+    let line = raw
+        .trim()
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .unwrap_or("");
     let line = strip_label_and_quotes(line);
     if line.is_empty() {
         return fallback.to_string();
@@ -257,7 +318,13 @@ fn guard(raw: &str, fallback: &str) -> String {
 /// label/quotes, and cap the length at a sentence boundary. Falls back only on empty output.
 fn guard_chat(raw: &str, fallback: &str) -> String {
     // Collapse to a single paragraph (a spoken reply, even multi-sentence, is one turn).
-    let joined = raw.trim().lines().map(str::trim).filter(|l| !l.is_empty()).collect::<Vec<_>>().join(" ");
+    let joined = raw
+        .trim()
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
     let text = strip_label_and_quotes(joined.trim());
     if text.is_empty() {
         return fallback.to_string();
@@ -318,13 +385,25 @@ mod tests {
     fn the_prompt_is_grounded_and_chatml_shaped() {
         let u = an_utterance();
         let p = prompt::build_chatml(&u, Some("You swore an oath."));
-        assert!(p.contains("<|im_start|>system") && p.contains("<|im_start|>assistant"), "ChatML markers present");
-        assert!(p.contains(&u.speaker_name) && p.contains(&u.listener_name), "names are in the card");
+        assert!(
+            p.contains("<|im_start|>system") && p.contains("<|im_start|>assistant"),
+            "ChatML markers present"
+        );
+        assert!(
+            p.contains(&u.speaker_name) && p.contains(&u.listener_name),
+            "names are in the card"
+        );
         assert!(p.contains(u.act.key()), "the speech act is named");
-        assert!(p.contains(&format!("{} just said", u.listener_name)), "the prior line is included for context");
+        assert!(
+            p.contains(&format!("{} just said", u.listener_name)),
+            "the prior line is included for context"
+        );
         // The grammar draft must NOT be in the prompt: a small model copies a draft verbatim,
         // which defeats the whole point (the line comes back identical to the grammar).
-        assert!(!p.contains(&u.surface), "the grammar surface must not be fed to the model");
+        assert!(
+            !p.contains(&u.surface),
+            "the grammar surface must not be fed to the model"
+        );
     }
 
     #[test]
@@ -337,47 +416,121 @@ mod tests {
 
     #[test]
     fn the_guard_keeps_good_lines_and_rejects_junk() {
-        assert_eq!(guard("I will not forget this.", "FB"), "I will not forget this.");
-        assert_eq!(guard("\"Quoted line.\"", "FB"), "Quoted line.", "surrounding quotes are trimmed");
-        assert_eq!(guard("First line.\nStray narration.", "FB"), "First line.", "only the first line is kept");
-        assert_eq!(guard("\n\n  A line after blank lines.", "FB"), "A line after blank lines.", "leading blanks are skipped, not rejected");
-        assert_eq!(guard("Halvard: \"Be at peace.\"", "FB"), "Be at peace.", "a stray name label + quotes are stripped");
-        assert_eq!(guard("I warn you: leave now.", "FB"), "I warn you: leave now.", "a real colon line is left intact");
+        assert_eq!(
+            guard("I will not forget this.", "FB"),
+            "I will not forget this."
+        );
+        assert_eq!(
+            guard("\"Quoted line.\"", "FB"),
+            "Quoted line.",
+            "surrounding quotes are trimmed"
+        );
+        assert_eq!(
+            guard("First line.\nStray narration.", "FB"),
+            "First line.",
+            "only the first line is kept"
+        );
+        assert_eq!(
+            guard("\n\n  A line after blank lines.", "FB"),
+            "A line after blank lines.",
+            "leading blanks are skipped, not rejected"
+        );
+        assert_eq!(
+            guard("Halvard: \"Be at peace.\"", "FB"),
+            "Be at peace.",
+            "a stray name label + quotes are stripped"
+        );
+        assert_eq!(
+            guard("I warn you: leave now.", "FB"),
+            "I warn you: leave now.",
+            "a real colon line is left intact"
+        );
         assert_eq!(guard("   ", "FB"), "FB", "empty → grammar fallback");
-        assert_eq!(guard(&"x".repeat(300), "FB"), "FB", "a wall of text with no sentence end → grammar fallback");
+        assert_eq!(
+            guard(&"x".repeat(300), "FB"),
+            "FB",
+            "a wall of text with no sentence end → grammar fallback"
+        );
         let long_with_stop = format!("A short first sentence. {}", "y".repeat(300));
-        assert_eq!(guard(&long_with_stop, "FB"), "A short first sentence.", "an overlong line is trimmed to its first sentence");
+        assert_eq!(
+            guard(&long_with_stop, "FB"),
+            "A short first sentence.",
+            "an overlong line is trimmed to its first sentence"
+        );
     }
 
     #[test]
     fn the_chat_prompt_is_multiturn_chatml() {
         let card = "You are Aldric. You are vengeful.";
         let history = vec![
-            ChatTurn { from_player: true, text: "Well met.".into() },
-            ChatTurn { from_player: false, text: "State your business.".into() },
+            ChatTurn {
+                from_player: true,
+                text: "Well met.".into(),
+            },
+            ChatTurn {
+                from_player: false,
+                text: "State your business.".into(),
+            },
         ];
         let p = prompt::build_chat(card, &history, "I seek the old road.");
         assert!(p.contains(card), "the character card is in the system turn");
-        assert!(p.contains("<|im_start|>user\nWell met."), "a player turn maps to the user role");
-        assert!(p.contains("<|im_start|>assistant\nState your business."), "an NPC turn maps to the assistant role");
-        assert!(p.contains("I seek the old road."), "the new player message is included");
-        assert!(p.trim_end().ends_with("<|im_start|>assistant"), "ends primed for the character to speak");
+        assert!(
+            p.contains("<|im_start|>user\nWell met."),
+            "a player turn maps to the user role"
+        );
+        assert!(
+            p.contains("<|im_start|>assistant\nState your business."),
+            "an NPC turn maps to the assistant role"
+        );
+        assert!(
+            p.contains("I seek the old road."),
+            "the new player message is included"
+        );
+        assert!(
+            p.trim_end().ends_with("<|im_start|>assistant"),
+            "ends primed for the character to speak"
+        );
     }
 
     #[test]
     fn the_chat_guard_keeps_a_short_paragraph() {
-        assert_eq!(guard_chat("I will not forget this. You owe me.", "FB"), "I will not forget this. You owe me.", "multiple sentences kept");
-        assert_eq!(guard_chat("Aldric: \"Be at peace, friend.\"", "FB"), "Be at peace, friend.", "label + quotes stripped");
-        assert_eq!(guard_chat("First thought.\nSecond thought.", "FB"), "First thought. Second thought.", "lines join into one paragraph");
+        assert_eq!(
+            guard_chat("I will not forget this. You owe me.", "FB"),
+            "I will not forget this. You owe me.",
+            "multiple sentences kept"
+        );
+        assert_eq!(
+            guard_chat("Aldric: \"Be at peace, friend.\"", "FB"),
+            "Be at peace, friend.",
+            "label + quotes stripped"
+        );
+        assert_eq!(
+            guard_chat("First thought.\nSecond thought.", "FB"),
+            "First thought. Second thought.",
+            "lines join into one paragraph"
+        );
         assert_eq!(guard_chat("   ", "FB"), "FB", "empty → fallback");
     }
 
     #[test]
     fn the_classify_prompt_lists_the_labels() {
-        let p = prompt::build_classify("Mira", "You'll pay for this.", &["greet", "threaten", "praise"]);
-        assert!(p.contains("Mira") && p.contains("You'll pay for this."), "names the listener and the line");
-        assert!(p.contains("greet, threaten, praise"), "lists the allowed labels");
-        assert!(p.trim_end().ends_with("<|im_start|>assistant"), "primed for a one-word answer");
+        let p = prompt::build_classify(
+            "Mira",
+            "You'll pay for this.",
+            &["greet", "threaten", "praise"],
+        );
+        assert!(
+            p.contains("Mira") && p.contains("You'll pay for this."),
+            "names the listener and the line"
+        );
+        assert!(
+            p.contains("greet, threaten, praise"),
+            "lists the allowed labels"
+        );
+        assert!(
+            p.trim_end().ends_with("<|im_start|>assistant"),
+            "primed for a one-word answer"
+        );
     }
 
     /// The social-effect mechanism, deterministically (no model): applying the `a_threat` intent
@@ -402,12 +555,21 @@ mod tests {
         let npc = sim.any_npc().expect("an npc exists");
         sim.spawn_player(None);
         let before = sim.mood_of(npc, "fear").unwrap_or(0.0);
-        assert!(sim.apply_conversational_intent(npc, "a_threat"), "the threat intent applies");
+        assert!(
+            sim.apply_conversational_intent(npc, "a_threat"),
+            "the threat intent applies"
+        );
         let after = sim.mood_of(npc, "fear").unwrap_or(0.0);
-        assert!(after > before, "a threat should raise the listener's fear ({before} -> {after})");
+        assert!(
+            after > before,
+            "a threat should raise the listener's fear ({before} -> {after})"
+        );
         // And it lowers the soul's opinion of you — the disposition the tab header shows.
         let avatar = sim.player_avatar().expect("avatar");
-        assert!(sim.opinion_of(npc, avatar).unwrap_or(0.0) < 0.0, "a threat should sour the soul toward you");
+        assert!(
+            sim.opinion_of(npc, avatar).unwrap_or(0.0) < 0.0,
+            "a threat should sour the soul toward you"
+        );
         // An unknown intent id is a no-op (returns false).
         assert!(!sim.apply_conversational_intent(npc, "not_a_real_intent"));
     }
@@ -433,7 +595,13 @@ mod tests {
         });
         sim.run(1500);
         let mut seen = std::collections::HashSet::new();
-        let utts: Vec<Utterance> = sim.dialogue_log().iter().filter(|u| seen.insert(state_hash(u))).take(16).cloned().collect();
+        let utts: Vec<Utterance> = sim
+            .dialogue_log()
+            .iter()
+            .filter(|u| seen.insert(state_hash(u)))
+            .take(16)
+            .cloned()
+            .collect();
         assert!(!utts.is_empty(), "no utterances to diagnose");
 
         let model = CandleModel::load(&VoiceConfig::default()).expect("load model");
@@ -443,9 +611,17 @@ mod tests {
             let g = guard(&raw, &u.surface);
             let fb = g == u.surface;
             fell += fb as usize;
-            eprintln!("[{:<8}] fallback={fb} raw_len={:>3} raw={raw:?}", u.act.key(), raw.chars().count());
+            eprintln!(
+                "[{:<8}] fallback={fb} raw_len={:>3} raw={raw:?}",
+                u.act.key(),
+                raw.chars().count()
+            );
         }
-        eprintln!("=> fell back {fell}/{} ({}%)", utts.len(), fell * 100 / utts.len());
+        eprintln!(
+            "=> fell back {fell}/{} ({}%)",
+            utts.len(),
+            fell * 100 / utts.len()
+        );
     }
 
     /// End-to-end free-text chat against the real model: a grounded character card + history +
@@ -460,12 +636,23 @@ mod tests {
             thread::sleep(std::time::Duration::from_millis(200));
             waited += 1;
         }
-        assert_eq!(v.status(), VoiceStatus::Ready, "model should load: {:?}", v.status());
+        assert_eq!(
+            v.status(),
+            VoiceStatus::Ready,
+            "model should load: {:?}",
+            v.status()
+        );
 
         let card = "You are Aldric. By nature you are vengeful and wary. Right now you are seething \
             with anger. You bear an old grudge against this traveller, and it colours every word.";
-        let history = vec![ChatTurn { from_player: false, text: "State your business, stranger.".into() }];
-        assert!(v.request_chat(7, card, &history, "I came to make peace between us.", "FB"), "dispatched");
+        let history = vec![ChatTurn {
+            from_player: false,
+            text: "State your business, stranger.".into(),
+        }];
+        assert!(
+            v.request_chat(7, card, &history, "I came to make peace between us.", "FB"),
+            "dispatched"
+        );
 
         let mut reply = None;
         for _ in 0..600 {
@@ -478,7 +665,10 @@ mod tests {
         }
         let reply = reply.expect("a reply came back");
         eprintln!("chat reply: {reply:?}");
-        assert!(!reply.is_empty() && reply != "FB", "got an in-character reply, not the fallback");
+        assert!(
+            !reply.is_empty() && reply != "FB",
+            "got an in-character reply, not the fallback"
+        );
     }
 
     /// End-to-end classification: a clearly threatening line should be labelled "threaten".
@@ -492,10 +682,32 @@ mod tests {
             thread::sleep(std::time::Duration::from_millis(200));
             waited += 1;
         }
-        assert_eq!(v.status(), VoiceStatus::Ready, "model should load: {:?}", v.status());
+        assert_eq!(
+            v.status(),
+            VoiceStatus::Ready,
+            "model should load: {:?}",
+            v.status()
+        );
 
-        let labels = ["greet", "praise", "console", "reconcile", "accuse", "threaten", "dismiss"];
-        assert!(v.request_classify(9, "Mira", "Cross me again and I will cut you down where you stand.", &labels, "none"), "dispatched");
+        let labels = [
+            "greet",
+            "praise",
+            "console",
+            "reconcile",
+            "accuse",
+            "threaten",
+            "dismiss",
+        ];
+        assert!(
+            v.request_classify(
+                9,
+                "Mira",
+                "Cross me again and I will cut you down where you stand.",
+                &labels,
+                "none"
+            ),
+            "dispatched"
+        );
         let mut label = None;
         for _ in 0..600 {
             if let Some((id, text)) = v.poll().into_iter().next() {
@@ -507,7 +719,10 @@ mod tests {
         }
         let label = label.expect("a label came back").to_lowercase();
         eprintln!("classified as: {label:?}");
-        assert!(label.contains("threat"), "a death threat should classify as 'threaten', got {label:?}");
+        assert!(
+            label.contains("threat"),
+            "a death threat should classify as 'threaten', got {label:?}"
+        );
     }
 
     /// End-to-end against the real model. Ignored by default: it downloads (~1 GB on first run)
@@ -523,7 +738,12 @@ mod tests {
             thread::sleep(std::time::Duration::from_millis(200));
             waited += 1;
         }
-        assert_eq!(v.status(), VoiceStatus::Ready, "model should load: {:?}", v.status());
+        assert_eq!(
+            v.status(),
+            VoiceStatus::Ready,
+            "model should load: {:?}",
+            v.status()
+        );
         assert!(v.request(1, &u, None), "request dispatched");
         let mut line = None;
         for _ in 0..600 {

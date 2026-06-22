@@ -80,11 +80,12 @@ impl Gossip {
 /// drop is deterministic and "keep the top-K" is order-independent however the list was built).
 fn cap(list: &mut Vec<Rumor>) {
     while list.len() > CAP {
-        if let Some((i, _)) = list
-            .iter()
-            .enumerate()
-            .min_by(|a, b| a.1.fidelity.partial_cmp(&b.1.fidelity).unwrap().then(b.1.event_id.cmp(&a.1.event_id)))
-        {
+        if let Some((i, _)) = list.iter().enumerate().min_by(|a, b| {
+            a.1.fidelity
+                .partial_cmp(&b.1.fidelity)
+                .unwrap()
+                .then(b.1.event_id.cmp(&a.1.event_id))
+        }) {
             list.swap_remove(i);
         } else {
             break;
@@ -96,7 +97,11 @@ fn cap(list: &mut Vec<Rumor>) {
 /// — each learns each rumour on its tile at the tile's **best fidelity × one hop's decay**, kept only
 /// if it beats what it already held, the `other` shed once worn thin. One hop per tick, deterministic
 /// and order-independent. Early-returns while no rumour is abroad (the director asleep) — byte-identical.
-pub(crate) fn gossip_spread(substrate: Res<Substrate>, mut gossip: ResMut<Gossip>, people: Query<(Entity, &Position), With<Npc>>) {
+pub(crate) fn gossip_spread(
+    substrate: Res<Substrate>,
+    mut gossip: ResMut<Gossip>,
+    people: Query<(Entity, &Position), With<Npc>>,
+) {
     if gossip.by_soul.is_empty() {
         return;
     }
@@ -127,12 +132,13 @@ pub(crate) fn gossip_spread(substrate: Res<Substrate>, mut gossip: ResMut<Gossip
         let mut best: HashMap<u64, Rumor> = HashMap::new();
         for &s in &souls {
             for &r in gossip.rumors_of(s) {
-                best.entry(r.event_id).and_modify(|b| {
-                    if r.fidelity > b.fidelity {
-                        *b = r;
-                    }
-                })
-                .or_insert(r);
+                best.entry(r.event_id)
+                    .and_modify(|b| {
+                        if r.fidelity > b.fidelity {
+                            *b = r;
+                        }
+                    })
+                    .or_insert(r);
             }
         }
         if best.is_empty() {
@@ -174,7 +180,14 @@ mod tests {
     use game_sim::Coord;
 
     fn r(id: u64, fid: f32) -> Rumor {
-        Rumor { event_id: id, register: Register::Betrayal, lead: Entity::PLACEHOLDER, other: None, place: Coord::new(0, 0), fidelity: fid }
+        Rumor {
+            event_id: id,
+            register: Register::Betrayal,
+            lead: Entity::PLACEHOLDER,
+            other: None,
+            place: Coord::new(0, 0),
+            fidelity: fid,
+        }
     }
 
     #[test]
@@ -187,13 +200,19 @@ mod tests {
         g.witness(who, r(1, 0.9));
         g.witness(who, r(1, 0.2));
         assert_eq!(g.rumors_of(who).len(), 1, "one belief per event");
-        assert!((g.rumors_of(who)[0].fidelity - 0.9).abs() < 1e-6, "the sharpest telling is kept");
+        assert!(
+            (g.rumors_of(who)[0].fidelity - 0.9).abs() < 1e-6,
+            "the sharpest telling is kept"
+        );
 
         // Past the cap, the weakest events are shed — the loudest few survive.
         for id in 2..=(CAP as u64 + 3) {
             g.witness(who, r(id, 0.1 * id as f32));
         }
         assert_eq!(g.rumors_of(who).len(), CAP, "carries only the loudest few");
-        assert!(g.rumors_of(who).iter().any(|x| x.event_id == 1), "the sharp rumour (0.9) survives the cap");
+        assert!(
+            g.rumors_of(who).iter().any(|x| x.event_id == 1),
+            "the sharp rumour (0.9) survives the cap"
+        );
     }
 }

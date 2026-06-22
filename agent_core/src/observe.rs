@@ -61,12 +61,21 @@ impl Census {
         let features = world.get_resource::<Features>().map_or(0, Features::total);
         let (factions, largest_faction) = world
             .get_resource::<crate::factions::Factions>()
-            .map(|f| (f.0.len(), f.0.iter().map(|x| x.members.len()).max().unwrap_or(0)))
+            .map(|f| {
+                (
+                    f.0.len(),
+                    f.0.iter().map(|x| x.members.len()).max().unwrap_or(0),
+                )
+            })
             .unwrap_or((0, 0));
         let (affordance_sites, worked_out_sites, affordance_uses) = world
             .get_resource::<WorldAffordances>()
             .map(|wa| {
-                (wa.0.len(), wa.0.iter().filter(|s| !s.available()).count(), wa.0.iter().map(|s| s.uses).sum::<u64>())
+                (
+                    wa.0.len(),
+                    wa.0.iter().filter(|s| !s.available()).count(),
+                    wa.0.iter().map(|s| s.uses).sum::<u64>(),
+                )
             })
             .unwrap_or((0, 0, 0));
 
@@ -88,7 +97,12 @@ impl Census {
                 markets += 1;
                 money += m.money;
                 goods += m.stock.iter().map(|&s| s as u64).sum::<u64>();
-                market_bases.push(m.price_basis.iter().map(|&x| x.round().max(0.0) as u32).collect());
+                market_bases.push(
+                    m.price_basis
+                        .iter()
+                        .map(|&x| x.round().max(0.0) as u32)
+                        .collect(),
+                );
             }
         }
         let mut professions = vec![0usize; skill_count];
@@ -111,7 +125,8 @@ impl Census {
             for stock in &market_bases {
                 for (g, &basis) in stock.iter().enumerate() {
                     let p = price(reg, econ, g, basis) as f64;
-                    let floor = (reg.good(g).base_price as f64 * econ.price_floor_frac as f64).max(1.0);
+                    let floor =
+                        (reg.good(g).base_price as f64 * econ.price_floor_frac as f64).max(1.0);
                     let ceil = reg.good(g).base_price as f64 * econ.price_ceil_frac as f64;
                     if p < floor - 0.5 || p > ceil + 0.5 {
                         price_band_breaches += 1;
@@ -190,9 +205,13 @@ impl Retelling {
     /// interest ≥ `min_interest`. Empty (not an error) when the sift layer is off. Dev/eval only —
     /// it reads the world and perturbs nothing.
     pub fn dump(world: &mut World, min_interest: f32) -> Retelling {
-        let Some(sift) = sift::run_retrospective(world) else { return Retelling::default() };
-        let ring: Vec<Episode> =
-            world.get_resource::<Chronicle>().map(|c| c.recent().copied().collect()).unwrap_or_default();
+        let Some(sift) = sift::run_retrospective(world) else {
+            return Retelling::default();
+        };
+        let ring: Vec<Episode> = world
+            .get_resource::<Chronicle>()
+            .map(|c| c.recent().copied().collect())
+            .unwrap_or_default();
         let by_id: BTreeMap<u64, Episode> = ring.iter().map(|e| (e.id, *e)).collect();
         let threads = sift
             .ranked(min_interest)
@@ -202,7 +221,11 @@ impl Retelling {
                 register: c.register,
                 status: c.status,
                 cast: c.cast.to_vec(),
-                support: c.support.iter().filter_map(|id| by_id.get(id).copied()).collect(),
+                support: c
+                    .support
+                    .iter()
+                    .filter_map(|id| by_id.get(id).copied())
+                    .collect(),
                 interest: c.interest,
             })
             .collect();
@@ -240,8 +263,12 @@ impl Retelling {
                 cast.join(", "),
             );
             for ep in &t.support {
-                let who: Vec<String> =
-                    ep.parties.iter().flatten().map(|e| format!("#{}", e.index())).collect();
+                let who: Vec<String> = ep
+                    .parties
+                    .iter()
+                    .flatten()
+                    .map(|e| format!("#{}", e.index()))
+                    .collect();
                 let _ = writeln!(s, "     t{:<5} {:?} [{}]", ep.tick, ep.kind, who.join(", "));
             }
         }
@@ -254,16 +281,27 @@ impl Retelling {
 pub fn check(prev: &Census, now: &Census) -> Vec<Violation> {
     let mut v = Vec::new();
     if now.money > prev.money {
-        v.push(Violation::MoneyCreated { prev: prev.money, now: now.money });
+        v.push(Violation::MoneyCreated {
+            prev: prev.money,
+            now: now.money,
+        });
     }
     if now.population > prev.population {
-        v.push(Violation::PopulationGrew { prev: prev.population, now: now.population });
+        v.push(Violation::PopulationGrew {
+            prev: prev.population,
+            now: now.population,
+        });
     }
     if now.affordance_uses < prev.affordance_uses {
-        v.push(Violation::AffordanceUsesFell { prev: prev.affordance_uses, now: now.affordance_uses });
+        v.push(Violation::AffordanceUsesFell {
+            prev: prev.affordance_uses,
+            now: now.affordance_uses,
+        });
     }
     if now.price_band_breaches > 0 {
-        v.push(Violation::PriceOutOfBand { count: now.price_band_breaches });
+        v.push(Violation::PriceOutOfBand {
+            count: now.price_band_breaches,
+        });
     }
     v
 }

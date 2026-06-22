@@ -169,7 +169,11 @@ impl Bundled {
         // same no matter which crate or working directory the build runs from.
         macro_rules! bundled {
             ($file:literal) => {
-                include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../assets/data/", $file))
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../assets/data/",
+                    $file
+                ))
             };
         }
         match asset {
@@ -247,12 +251,19 @@ impl InMemory {
 
 impl AssetSource for InMemory {
     fn text(&self, asset: Asset) -> std::io::Result<Cow<'static, str>> {
-        self.texts.get(&asset).cloned().map(Cow::Owned).ok_or_else(|| {
-            std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                format!("no in-memory text for asset {asset:?} ({})", asset.file_name()),
-            )
-        })
+        self.texts
+            .get(&asset)
+            .cloned()
+            .map(Cow::Owned)
+            .ok_or_else(|| {
+                std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    format!(
+                        "no in-memory text for asset {asset:?} ({})",
+                        asset.file_name()
+                    ),
+                )
+            })
     }
 }
 
@@ -267,17 +278,23 @@ pub struct Config {
 impl Config {
     /// Production default: content baked into the binary ([`Bundled`]).
     pub fn bundled() -> Self {
-        Self { source: Box::new(Bundled) }
+        Self {
+            source: Box::new(Bundled),
+        }
     }
 
     /// Read content from `dir` at runtime (live editing, or test fixtures).
     pub fn from_dir(dir: impl Into<PathBuf>) -> Self {
-        Self { source: Box::new(DirSource::new(dir)) }
+        Self {
+            source: Box::new(DirSource::new(dir)),
+        }
     }
 
     /// Wrap any custom [`AssetSource`] — e.g. an [`InMemory`] set in a test.
     pub fn from_source(source: impl AssetSource + Send + Sync + 'static) -> Self {
-        Self { source: Box::new(source) }
+        Self {
+            source: Box::new(source),
+        }
     }
 
     /// The RON text for `asset`, from whichever source backs this config.
@@ -305,7 +322,10 @@ impl Default for Config {
 /// (`Config::from_dir(assets_data_dir())`); a shipped binary should be handed an
 /// explicit path or use [`Config::bundled`] instead.
 pub fn assets_data_dir() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("assets").join("data")
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("assets")
+        .join("data")
 }
 
 #[cfg(test)]
@@ -348,7 +368,10 @@ mod tests {
     fn in_memory_source_swaps_one_asset_and_reports_the_rest_missing() {
         let cfg = Config::from_source(InMemory::new().with(Asset::Goods, "[]"));
         assert_eq!(cfg.text(Asset::Goods).unwrap(), "[]");
-        assert_eq!(cfg.text(Asset::Beats).unwrap_err().kind(), std::io::ErrorKind::NotFound);
+        assert_eq!(
+            cfg.text(Asset::Beats).unwrap_err().kind(),
+            std::io::ErrorKind::NotFound
+        );
     }
 
     #[test]
@@ -361,7 +384,8 @@ mod tests {
     #[test]
     fn load_surfaces_a_parse_error_for_the_wrong_shape() {
         // predicates is a list of strings, not a map of ints — a shape mismatch is a Parse error.
-        let wrong: Result<std::collections::HashMap<String, i32>, _> = Config::bundled().load(Asset::Predicates);
+        let wrong: Result<std::collections::HashMap<String, i32>, _> =
+            Config::bundled().load(Asset::Predicates);
         assert!(matches!(wrong, Err(ConfigError::Parse(_))));
     }
 

@@ -29,7 +29,10 @@ pub use agent_core::*;
 // The RPG layer (WWN attributes/skills/foci/edges) is its own crate; re-export its character
 // types so `app`, the demos and the tests reach them through `agents`. The `rpg::check` engine
 // and `rpg::wwn_mod` are used internally — depend on `rpg` directly to call them.
-pub use rpg::{Abilities, Archetype, CheckOutcome, FociHeld, Flags, PowerTier, Proficiencies, Rolled, RpgData, Save};
+pub use rpg::{
+    Abilities, Archetype, CheckOutcome, Flags, FociHeld, PowerTier, Proficiencies, Rolled, RpgData,
+    Save,
+};
 // The party layer (recruited companions that travel with the avatar) is its own crate.
 pub use party::{Party, PartyConfig, PartyMember};
 // The survival layer (per-tile, per-day vital drain on every body) is its own crate.
@@ -53,8 +56,13 @@ const NOVICE_SKILL: f32 = 0.25;
 fn affordance_verb(effect: agent_core::AffordEffect) -> String {
     use agent_core::{AffordEffect, Need};
     match effect {
-        AffordEffect::Relieve { need: Need::Rest, .. } => "rest here".into(),
-        AffordEffect::Relieve { need: Need::Sustenance, .. } => "tend yourself".into(),
+        AffordEffect::Relieve {
+            need: Need::Rest, ..
+        } => "rest here".into(),
+        AffordEffect::Relieve {
+            need: Need::Sustenance,
+            ..
+        } => "tend yourself".into(),
         AffordEffect::Yield { .. } => "work the place".into(),
         AffordEffect::Teach { .. } => "watch the craft".into(),
     }
@@ -115,7 +123,11 @@ fn compass_dir(from: Coord, to: Coord, width: i32) -> &'static str {
         return "nearby";
     }
     if dcol.abs() >= drow.abs() {
-        if dcol > 0 { "to the east" } else { "to the west" }
+        if dcol > 0 {
+            "to the east"
+        } else {
+            "to the west"
+        }
     } else if drow > 0 {
         "to the south"
     } else {
@@ -144,14 +156,22 @@ fn rumor_noun(register: agent_core::Register) -> &'static str {
 /// Render the overheard line, sharpening or blurring by `fid` (the veil): high fidelity names the
 /// figures in a register-specific sentence; middling fidelity gives the lead and a bearing; low
 /// fidelity is loose talk — a rumour and a direction, no names.
-fn gossip_line(register: agent_core::Register, fid: f32, lead: &str, other: Option<&str>, dir: &str) -> String {
+fn gossip_line(
+    register: agent_core::Register,
+    fid: f32,
+    lead: &str,
+    other: Option<&str>,
+    dir: &str,
+) -> String {
     use agent_core::Register::*;
     let noun = rumor_noun(register);
     if fid >= 0.6 {
         match (register, other) {
             (Betrayal, Some(o)) => format!("They say {lead} was betrayed by {o}."),
             (Vengeance, Some(o)) => format!("They say {lead} has sworn vengeance on {o}."),
-            (Ambition, Some(o)) => format!("They say {lead} reaches for power, with {o} in the way."),
+            (Ambition, Some(o)) => {
+                format!("They say {lead} reaches for power, with {o} in the way.")
+            }
             (War, Some(o)) => format!("They say {lead}'s people have gone to war with {o}'s."),
             (Persecution, Some(o)) => format!("They say {o} hounds {lead} without mercy."),
             (Romance, Some(o)) => format!("They say {lead} has given their heart to {o}."),
@@ -193,15 +213,21 @@ fn quest_text(register: agent_core::Register, giver: &str, other: &str) -> (Stri
     use agent_core::Register::*;
     match register {
         Betrayal | Vengeance => (
-            format!("\"{other} wronged me, and I cannot let it lie. Find them \u{2014} and I will know whether you stand with me.\""),
+            format!(
+                "\"{other} wronged me, and I cannot let it lie. Find them \u{2014} and I will know whether you stand with me.\""
+            ),
             format!("Seek out {other}, who wronged {giver}."),
         ),
         War => (
-            format!("\"{other}'s people move against mine. Find them, and we will see this settled.\""),
+            format!(
+                "\"{other}'s people move against mine. Find them, and we will see this settled.\""
+            ),
             format!("Find {other}, {giver}'s enemy."),
         ),
         Persecution => (
-            format!("\"{other} hounds me without end. Find them \u{2014} I would not face them alone.\""),
+            format!(
+                "\"{other} hounds me without end. Find them \u{2014} I would not face them alone.\""
+            ),
             format!("Seek out {other}, who hounds {giver}."),
         ),
         Ambition => (
@@ -209,7 +235,9 @@ fn quest_text(register: agent_core::Register, giver: &str, other: &str) -> (Stri
             format!("Find {other}, {giver}'s rival."),
         ),
         Romance => (
-            format!("\"My heart is with {other}, and we are kept apart. Carry word to them, will you?\""),
+            format!(
+                "\"My heart is with {other}, and we are kept apart. Carry word to them, will you?\""
+            ),
             format!("Bear word to {other}, whom {giver} loves."),
         ),
         Wonder => (
@@ -425,7 +453,8 @@ impl Simulation {
     /// directly; the terrain generator lives in [`game_sim`](game_sim::World::generate),
     /// never here — this crate only *drives* a substrate, it does not author one.
     pub fn new(setup: Setup) -> Self {
-        let world = GameWorld::generate(setup.width, setup.height, setup.params.clone(), setup.seed);
+        let world =
+            GameWorld::generate(setup.width, setup.height, setup.params.clone(), setup.seed);
         Self::from_world(world, setup)
     }
 
@@ -450,16 +479,33 @@ impl Simulation {
         // Layer the world's features onto the warmed substrate, from a dedicated RNG
         // stream so placement never perturbs the economy's (fauna/market/NPC) stream.
         let mut feat_rng = SplitMix64::new(setup.seed ^ 0xF0A7_FEA7_57E5_0001);
-        let features = features::place(&substrate, &setup.features, &setup.feature_cfg, &mut feat_rng);
+        let features = features::place(
+            &substrate,
+            &setup.features,
+            &setup.feature_cfg,
+            &mut feat_rng,
+        );
         // The smart-object layer: resolve each feature's advertised affordances into
         // live sites the planner can route to and execution can deplete.
-        let affordances = people::build_affordances(&setup.features, &features, &setup.registry, substrate.topology());
+        let affordances = people::build_affordances(
+            &setup.features,
+            &features,
+            &setup.registry,
+            substrate.topology(),
+        );
 
         let mut world = World::new();
         // The creature roster — which species live which biomes. Static content, so
         // built once and shared between placement and the running fauna systems.
         let bestiary = fauna::Bestiary::bundled();
-        fauna::spawn_fauna(&mut world, &substrate, &bestiary, &mut rng, setup.fauna, setup.fauna_cfg.initial_energy);
+        fauna::spawn_fauna(
+            &mut world,
+            &substrate,
+            &bestiary,
+            &mut rng,
+            setup.fauna,
+            setup.fauna_cfg.initial_energy,
+        );
         fauna::spawn_carnivores(
             &mut world,
             &substrate,
@@ -477,7 +523,13 @@ impl Simulation {
                 .into_iter()
                 .take(setup.markets)
                 .collect();
-            people::spawn_markets_at(&mut world, &setup.registry, &tiles, setup.market_money, setup.initial_market_stock)
+            people::spawn_markets_at(
+                &mut world,
+                &setup.registry,
+                &tiles,
+                setup.market_money,
+                setup.initial_market_stock,
+            )
         } else {
             people::spawn_markets(
                 &mut world,
@@ -510,8 +562,14 @@ impl Simulation {
         // one (a seat of rule), else on a market tile (a hub contenders pass
         // through). Either way it must be reachable.
         if setup.throne {
-            let court = setup.markets_on_settlements
-                .then(|| features.tiles_of(&setup.features, Category::Court, substrate.topology()).first().copied())
+            let court = setup
+                .markets_on_settlements
+                .then(|| {
+                    features
+                        .tiles_of(&setup.features, Category::Court, substrate.topology())
+                        .first()
+                        .copied()
+                })
                 .flatten();
             if let Some(tile) = court.or_else(|| markets.first().map(|&(_, t)| t)) {
                 world.insert_resource(people::Throne { tile, holder: None });
@@ -532,9 +590,14 @@ impl Simulation {
             };
             for e in npcs {
                 let r = rpg::roll(&mut rpg_rng, &data);
-                world
-                    .entity_mut(e)
-                    .insert((r.abilities, r.proficiencies, r.foci, r.flags, r.power, rpg::Archetype(r.edge)));
+                world.entity_mut(e).insert((
+                    r.abilities,
+                    r.proficiencies,
+                    r.foci,
+                    r.flags,
+                    r.power,
+                    rpg::Archetype(r.edge),
+                ));
             }
             world.insert_resource(RpgSeed(rpg_seed));
             world.insert_resource(data);
@@ -573,9 +636,11 @@ impl Simulation {
         // build the per-tile travel cost field from it. Off → no Roads/TravelCost, so the avatar
         // travels BFS at one hex per tick (byte-identical).
         if setup.exploration {
-            let hubs = features.tiles_of(&setup.features, Category::Community, substrate.topology());
+            let hubs =
+                features.tiles_of(&setup.features, Category::Community, substrate.topology());
             let roads = travel::build_roads(&substrate, &setup.explore_cfg.cost, &hubs);
-            let cost = travel::cost_field(&substrate, &setup.explore_cfg.cost, &|i| roads.contains(&i));
+            let cost =
+                travel::cost_field(&substrate, &setup.explore_cfg.cost, &|i| roads.contains(&i));
             world.insert_resource(explore::Roads(roads));
             world.insert_resource(setup.explore_cfg);
             world.insert_resource(TravelCost(cost));
@@ -600,7 +665,9 @@ impl Simulation {
         world.insert_resource(beat_book);
         // The director draws its variety from a dedicated, seeded stream so a story is
         // deterministic yet not the same every beat.
-        world.insert_resource(director::Director::seeded(setup.seed ^ 0xD1EC_7012_0F00_0001));
+        world.insert_resource(director::Director::seeded(
+            setup.seed ^ 0xD1EC_7012_0F00_0001,
+        ));
 
         // Wake the sift layer, if asked: insert the bounded Chronicle ring (the sifter + eval
         // read it; the director and other systems tap it). Off by default -> the resource is
@@ -625,10 +692,16 @@ impl Simulation {
         // from its own dedicated seeded stream.
         let mut dialogue_cfg = setup.dialogue_cfg;
         dialogue_cfg.enabled = setup.dialogue || dialogue_cfg.enabled;
-        let intents = if dialogue_cfg.enabled { dialogue::IntentBook::bundled() } else { dialogue::IntentBook::default() };
+        let intents = if dialogue_cfg.enabled {
+            dialogue::IntentBook::bundled()
+        } else {
+            dialogue::IntentBook::default()
+        };
         world.insert_resource(dialogue::DialogueRes(dialogue_cfg));
         world.insert_resource(intents);
-        world.insert_resource(dialogue::Dialogue::seeded(setup.seed ^ 0xD1A1_706E_0FF1_CE00));
+        world.insert_resource(dialogue::Dialogue::seeded(
+            setup.seed ^ 0xD1A1_706E_0FF1_CE00,
+        ));
         // Gossip of the director's beats spreads between co-located souls (`gossip_spread`). Always
         // present (the schedule reads it), but empty until the director seeds the first rumour — so a
         // director-free world never gossips and stays byte-identical. No RNG: the spread is arithmetic.
@@ -650,7 +723,9 @@ impl Simulation {
         world.insert_resource(SimRng(rng));
         // Predation draws from its own stream (seeded off the run seed, not the main
         // RNG) so a predator-free world is unchanged and the substrate is unperturbed.
-        world.insert_resource(fauna::FaunaRng(SplitMix64::new(setup.seed ^ 0xCA12_0FF5_0FF1_CE00)));
+        world.insert_resource(fauna::FaunaRng(SplitMix64::new(
+            setup.seed ^ 0xCA12_0FF5_0FF1_CE00,
+        )));
         world.insert_resource(factions::Factions::default());
         world.insert_resource(factions::FactionRes(setup.faction_cfg));
         world.insert_resource(fauna::FaunaRes(setup.fauna_cfg));
@@ -663,13 +738,18 @@ impl Simulation {
         world.insert_resource(setup.appraisals);
         world.insert_resource(events::EventQueue::default());
         // The level-of-detail config the `lod_dormancy` system reads (radius None → full detail).
-        world.insert_resource(agent_core::SimRadius { radius: setup.sim_radius, far_stride: setup.sim_far_stride });
+        world.insert_resource(agent_core::SimRadius {
+            radius: setup.sim_radius,
+            far_stride: setup.sim_far_stride,
+        });
 
         // The fixed-order, single-threaded per-step schedule is owned by `agent_core`; the
         // survival layer (when on) adds its per-day drain just before the core metabolism.
         let mut schedule = agent_core::build_schedule();
         if setup.survival {
-            schedule.add_systems(survival::survival_metabolism.before(agent_core::people::people_metabolism));
+            schedule.add_systems(
+                survival::survival_metabolism.before(agent_core::people::people_metabolism),
+            );
         }
 
         Self { world, schedule }
@@ -772,7 +852,9 @@ impl Simulation {
     /// How many episodes the [`Chronicle`] ring holds (0 if the sift layer is off) — for the
     /// story sifter, the eval harness, and tests.
     pub fn chronicle_len(&self) -> usize {
-        self.world.get_resource::<Chronicle>().map_or(0, Chronicle::len)
+        self.world
+            .get_resource::<Chronicle>()
+            .map_or(0, Chronicle::len)
     }
 
     /// The ranked stories the run has produced — the dev/eval **retelling dump**
@@ -806,7 +888,12 @@ impl Simulation {
     /// How many *distinct* beats the director has told — a read on the diversity of the
     /// story (the novelty pressure keeps this climbing rather than repeating one beat).
     pub fn director_distinct_beats(&self) -> usize {
-        self.director().log.iter().map(|(_, id)| id.as_str()).collect::<std::collections::HashSet<_>>().len()
+        self.director()
+            .log
+            .iter()
+            .map(|(_, id)| id.as_str())
+            .collect::<std::collections::HashSet<_>>()
+            .len()
     }
 
     /// Turn the director on or off — a *scenario* switch, not a player verb. There is
@@ -827,13 +914,18 @@ impl Simulation {
             return 0.0;
         };
         let mut q = self.world.query_filtered::<&Personality, With<Npc>>();
-        let (sum, n) = q.iter(&self.world).filter_map(|p| p.0.get(id).copied()).fold((0.0f32, 0u32), |(s, n), v| (s + v, n + 1));
+        let (sum, n) = q
+            .iter(&self.world)
+            .filter_map(|p| p.0.get(id).copied())
+            .fold((0.0f32, 0u32), |(s, n), v| (s + v, n + 1));
         if n == 0 { 0.0 } else { sum / n as f32 }
     }
 
     /// The entity the director stages its drama for, if a protagonist is tagged and alive.
     pub fn protagonist(&mut self) -> Option<bevy_ecs::entity::Entity> {
-        let mut q = self.world.query_filtered::<bevy_ecs::entity::Entity, With<Protagonist>>();
+        let mut q = self
+            .world
+            .query_filtered::<bevy_ecs::entity::Entity, With<Protagonist>>();
         q.iter(&self.world).next()
     }
 
@@ -866,7 +958,11 @@ impl Simulation {
     /// the check is `EASY` — *anyone* can be pleasant, so even a blunt avatar slowly builds rapport
     /// (a `1.0` Pass) — but a silver-tongued one lands a `1.5` Strong, shifting opinion (and so
     /// earning recruitment) far faster, while a *strong-willed* listener can resist the inarticulate.
-    pub fn speech_strength(&self, speaker: bevy_ecs::entity::Entity, listener: bevy_ecs::entity::Entity) -> f32 {
+    pub fn speech_strength(
+        &self,
+        speaker: bevy_ecs::entity::Entity,
+        listener: bevy_ecs::entity::Entity,
+    ) -> f32 {
         let (Some(ab), Some(pr), Some(data)) = (
             self.world.get::<Abilities>(speaker),
             self.world.get::<Proficiencies>(speaker),
@@ -874,7 +970,11 @@ impl Simulation {
         ) else {
             return 1.0;
         };
-        let rank = |name: &str| data.skill_id(name).map(|i| pr.rank(i)).unwrap_or(rpg::PROF_UNSKILLED);
+        let rank = |name: &str| {
+            data.skill_id(name)
+                .map(|i| pr.rank(i))
+                .unwrap_or(rpg::PROF_UNSKILLED)
+        };
         let social = rank("Convince").max(rank("Lead"));
         // A strong-willed listener resists more: its best of WIS/CHA modifier lifts the difficulty.
         let resist = self
@@ -890,7 +990,11 @@ impl Simulation {
     /// on the listener (scaled by [`Self::speech_strength`]), it is remembered, and the rendered
     /// [`Utterance`] is returned (and appended to [`Self::dialogue_log`]). `None` if there is no
     /// avatar or the intent is unknown. Does not advance time — see [`Self::player_talk`].
-    pub fn player_say(&mut self, listener: bevy_ecs::entity::Entity, intent_id: &str) -> Option<Utterance> {
+    pub fn player_say(
+        &mut self,
+        listener: bevy_ecs::entity::Entity,
+        intent_id: &str,
+    ) -> Option<Utterance> {
         let avatar = self.world.resource::<player::PlayerState>().avatar()?;
         let scale = self.speech_strength(avatar, listener);
         dialogue::perform_scaled(&mut self.world, avatar, listener, intent_id, scale)
@@ -902,11 +1006,23 @@ impl Simulation {
     /// host classifies what the player said into an intent, then calls this. Returns `false` if
     /// there is no avatar or the intent id is unknown. Player-driven and out of the tick, so a
     /// world with no player stays byte-identical.
-    pub fn apply_conversational_intent(&mut self, listener: bevy_ecs::entity::Entity, intent_id: &str) -> bool {
-        let Some(avatar) = self.world.resource::<player::PlayerState>().avatar() else { return false };
+    pub fn apply_conversational_intent(
+        &mut self,
+        listener: bevy_ecs::entity::Entity,
+        intent_id: &str,
+    ) -> bool {
+        let Some(avatar) = self.world.resource::<player::PlayerState>().avatar() else {
+            return false;
+        };
         let scale = self.speech_strength(avatar, listener);
         // Clone the moves out (releasing the IntentBook borrow) before mutating the world.
-        let moves = match self.world.resource::<dialogue::IntentBook>().0.iter().find(|i| i.id == intent_id) {
+        let moves = match self
+            .world
+            .resource::<dialogue::IntentBook>()
+            .0
+            .iter()
+            .find(|i| i.id == intent_id)
+        {
             Some(i) => i.moves.clone(),
             None => return false,
         };
@@ -988,10 +1104,17 @@ impl Simulation {
     /// The NPCs within the avatar's sight, nearest first — who the player could turn and
     /// speak to. Empty if there is no avatar.
     pub fn player_nearby_npcs(&mut self) -> Vec<(bevy_ecs::entity::Entity, Coord)> {
-        let Some(view) = self.player_view() else { return Vec::new() };
+        let Some(view) = self.player_view() else {
+            return Vec::new();
+        };
         let here = view.pos;
         let mut v = view.nearby;
-        v.sort_by_key(|(e, c)| ((c.col - here.col).abs() + (c.row - here.row).abs(), e.to_bits()));
+        v.sort_by_key(|(e, c)| {
+            (
+                (c.col - here.col).abs() + (c.row - here.row).abs(),
+                e.to_bits(),
+            )
+        });
         v
     }
 
@@ -1015,7 +1138,10 @@ impl Simulation {
     /// "the Faithless" — or `None` for a soul not woven into a story (or the director asleep).
     /// Surface flavour for the HUD and conversation; never affects the sim.
     pub fn npc_epithet(&self, e: bevy_ecs::entity::Entity) -> Option<String> {
-        self.world.get_resource::<Director>()?.epithet_of(e).map(str::to_string)
+        self.world
+            .get_resource::<Director>()?
+            .epithet_of(e)
+            .map(str::to_string)
     }
 
     /// The soul's own most-recent **forced line** — words the director lately put in its mouth (a
@@ -1034,7 +1160,10 @@ impl Simulation {
     /// from a trusted friend's turning."), for a conversation to open on as narration. `None` for an
     /// ordinary soul (or the director asleep). Surface flavour; moves no state.
     pub fn npc_situation(&self, e: bevy_ecs::entity::Entity) -> Option<String> {
-        self.world.get_resource::<Director>()?.situation_of(e).map(str::to_string)
+        self.world
+            .get_resource::<Director>()?
+            .situation_of(e)
+            .map(str::to_string)
     }
 
     /// **Word reaches you** — a line of gossip about the director's drama, heard from a soul in
@@ -1060,7 +1189,12 @@ impl Simulation {
             nearby
                 .iter()
                 .flat_map(|&e| gossip.rumors_of(e).iter().copied())
-                .max_by(|a, b| a.fidelity.partial_cmp(&b.fidelity).unwrap().then(a.event_id.cmp(&b.event_id)))?
+                .max_by(|a, b| {
+                    a.fidelity
+                        .partial_cmp(&b.fidelity)
+                        .unwrap()
+                        .then(a.event_id.cmp(&b.event_id))
+                })?
         };
         let lead = self.display_name(r.lead);
         let lead_titled = match self.npc_epithet(r.lead) {
@@ -1069,16 +1203,30 @@ impl Simulation {
         };
         let other = r.other.map(|e| self.display_name(e));
         let dir = compass_dir(at, r.place, width);
-        Some(gossip_line(r.register, r.fidelity, &lead_titled, other.as_deref(), dir))
+        Some(gossip_line(
+            r.register,
+            r.fidelity,
+            &lead_titled,
+            other.as_deref(),
+            dir,
+        ))
     }
 
     /// The NPCs within `radius` hexes of the avatar (wrapped E–W) — a wider net than sight, for what
     /// the avatar can *hear* talk from. Empty if there is no avatar.
     fn souls_within(&mut self, radius: i32) -> Vec<bevy_ecs::entity::Entity> {
-        let Some(at) = self.player_position() else { return Vec::new() };
+        let Some(at) = self.player_position() else {
+            return Vec::new();
+        };
         let width = self.substrate().topology().width();
-        let mut q = self.world.query_filtered::<(bevy_ecs::entity::Entity, &agent_core::Position), With<people::Npc>>();
-        q.iter(&self.world).filter(|(_, p)| wrapped_dist(at, p.0, width) <= radius).map(|(e, _)| e).collect()
+        let mut q = self
+            .world
+            .query_filtered::<(bevy_ecs::entity::Entity, &agent_core::Position), With<people::Npc>>(
+            );
+        q.iter(&self.world)
+            .filter(|(_, p)| wrapped_dist(at, p.0, width) <= radius)
+            .map(|(e, _)| e)
+            .collect()
     }
 
     /// The **current narrative pulse**, pushed at the player as it moves — the world *telling* its
@@ -1092,7 +1240,10 @@ impl Simulation {
         }
         let at = self.player_position()?;
         let width = self.substrate().topology().width();
-        let strongest = self.drama_marks().into_iter().max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())?;
+        let strongest = self
+            .drama_marks()
+            .into_iter()
+            .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())?;
         let dir = compass_dir(at, strongest.0, width);
         // Give the unrest a face: the figure the director's drama turns on, if one is staged.
         let who = match self.protagonist() {
@@ -1123,7 +1274,15 @@ impl Simulation {
         };
         let other_name = self.display_name(other);
         let (request, objective) = quest_text(t.spine, &giver_name, &other_name);
-        Some(Quest { giver: npc, other, target, giver_name, other_name, request, objective })
+        Some(Quest {
+            giver: npc,
+            other,
+            target,
+            giver_name,
+            other_name,
+            request,
+            objective,
+        })
     }
 
     /// Whether a taken charge is fulfilled — the avatar has reached the other's last-known place
@@ -1132,7 +1291,9 @@ impl Simulation {
         if !self.npc_present(q.other) {
             return true;
         }
-        let Some(at) = self.player_position() else { return false };
+        let Some(at) = self.player_position() else {
+            return false;
+        };
         wrapped_dist(at, q.target, self.substrate().topology().width()) <= 5
     }
 
@@ -1145,9 +1306,11 @@ impl Simulation {
     /// the same counterpart. When false, the director has resolved it (the reckoning came and went,
     /// or the thread moved on), so the charge can close even if the avatar never ran the other down.
     pub fn quest_thread_open(&self, q: &Quest) -> bool {
-        self.world
-            .get_resource::<Director>()
-            .is_some_and(|d| d.threads().iter().any(|t| t.lead == q.giver && t.other == Some(q.other)))
+        self.world.get_resource::<Director>().is_some_and(|d| {
+            d.threads()
+                .iter()
+                .any(|t| t.lead == q.giver && t.other == Some(q.other))
+        })
     }
 
     /// A short bearing to the other, for the objective read-out ("— to the east", "— close at hand").
@@ -1155,7 +1318,9 @@ impl Simulation {
         if !self.npc_present(q.other) {
             return "\u{2014} the matter is ended".into();
         }
-        let Some(at) = self.player_position() else { return String::new() };
+        let Some(at) = self.player_position() else {
+            return String::new();
+        };
         let width = self.substrate().topology().width();
         if wrapped_dist(at, q.target, width) <= 5 {
             "\u{2014} close at hand".into()
@@ -1169,13 +1334,20 @@ impl Simulation {
     /// player toward unrest ("a commotion to the east"); travelling there makes [`Self::overheard`]
     /// sharp by proximity. Empty with no avatar or director. Read-only; fidelity is deterministic.
     pub fn drama_marks(&self) -> Vec<(Coord, f32)> {
-        let Some(at) = self.player_position() else { return Vec::new() };
-        let Some(director) = self.world.get_resource::<Director>() else { return Vec::new() };
+        let Some(at) = self.player_position() else {
+            return Vec::new();
+        };
+        let Some(director) = self.world.get_resource::<Director>() else {
+            return Vec::new();
+        };
         let width = self.substrate().topology().width();
         let now = self.substrate().tick();
         let mut marks: Vec<(Coord, f32)> = Vec::new();
         for ev in director.recent_events() {
-            let fid = gossip_fidelity(wrapped_dist(at, ev.place, width), now.saturating_sub(ev.tick));
+            let fid = gossip_fidelity(
+                wrapped_dist(at, ev.place, width),
+                now.saturating_sub(ev.tick),
+            );
             if fid <= 0.0 {
                 continue;
             }
@@ -1195,12 +1367,23 @@ impl Simulation {
         // Collect present NPCs and their current goal index (releasing the query borrow), copy the
         // goal names out, then turn each into words via the name/epithet accessors.
         let here: Vec<(bevy_ecs::entity::Entity, Option<usize>)> = {
-            let mut q = self
-                .world
-                .query_filtered::<(bevy_ecs::entity::Entity, &agent_core::Position, &people::Plan), With<people::Npc>>();
-            q.iter(&self.world).filter(|(_, p, _)| p.0 == c).map(|(e, _, plan)| (e, plan.goal)).collect()
+            let mut q = self.world.query_filtered::<(
+                bevy_ecs::entity::Entity,
+                &agent_core::Position,
+                &people::Plan,
+            ), With<people::Npc>>();
+            q.iter(&self.world)
+                .filter(|(_, p, _)| p.0 == c)
+                .map(|(e, _, plan)| (e, plan.goal))
+                .collect()
         };
-        let goal_names: Vec<String> = self.world.resource::<Goals>().0.iter().map(|g| g.name.clone()).collect();
+        let goal_names: Vec<String> = self
+            .world
+            .resource::<Goals>()
+            .0
+            .iter()
+            .map(|g| g.name.clone())
+            .collect();
         here.into_iter()
             .map(|(e, goal)| {
                 let name = self.display_name(e);
@@ -1208,7 +1391,10 @@ impl Simulation {
                     Some(ep) => format!("{name}, {ep}"),
                     None => name,
                 };
-                let doing = goal.and_then(|i| goal_names.get(i)).map(|n| activity_phrase(n)).unwrap_or("at rest");
+                let doing = goal
+                    .and_then(|i| goal_names.get(i))
+                    .map(|n| activity_phrase(n))
+                    .unwrap_or("at rest");
                 format!("{titled} — {doing}")
             })
             .collect()
@@ -1219,14 +1405,22 @@ impl Simulation {
     /// yourself"). Empty when there is nothing to engage. Drives the Use action and its read-out;
     /// called every frame for the button gate, so it borrows rather than clones the avatar's `Known`.
     pub fn affordances_here(&self) -> Vec<(usize, String)> {
-        let Some(avatar) = self.world.resource::<player::PlayerState>().avatar() else { return Vec::new() };
-        let Some(at) = self.world.get::<agent_core::Position>(avatar).map(|p| p.0) else { return Vec::new() };
+        let Some(avatar) = self.world.resource::<player::PlayerState>().avatar() else {
+            return Vec::new();
+        };
+        let Some(at) = self.world.get::<agent_core::Position>(avatar).map(|p| p.0) else {
+            return Vec::new();
+        };
         let known = self.world.get::<people::Known>(avatar);
         let aff = self.world.resource::<people::WorldAffordances>();
         aff.0
             .iter()
             .enumerate()
-            .filter(|(_, s)| s.at == at && s.available() && (!s.needs_discovery || known.is_some_and(|k| k.0.contains(&s.tile))))
+            .filter(|(_, s)| {
+                s.at == at
+                    && s.available()
+                    && (!s.needs_discovery || known.is_some_and(|k| k.0.contains(&s.tile)))
+            })
             .map(|(i, s)| (i, affordance_verb(s.effect)))
             .collect()
     }
@@ -1240,7 +1434,11 @@ impl Simulation {
     pub fn player_use_affordance(&mut self, idx: usize) -> Option<String> {
         let avatar = self.world.resource::<player::PlayerState>().avatar()?;
         let at = self.world.get::<agent_core::Position>(avatar)?.0;
-        let known = self.world.get::<people::Known>(avatar).map(|k| k.0.clone()).unwrap_or_default();
+        let known = self
+            .world
+            .get::<people::Known>(avatar)
+            .map(|k| k.0.clone())
+            .unwrap_or_default();
         let effect = {
             let aff = self.world.resource::<people::WorldAffordances>();
             let s = aff.0.get(idx)?;
@@ -1252,7 +1450,12 @@ impl Simulation {
         match self.apply_affordance_to_avatar(avatar, effect) {
             // It applied: draw the site down a use, and let the world live a tick around the act.
             Ok(outcome) => {
-                if let Some(s) = self.world.resource_mut::<people::WorldAffordances>().0.get_mut(idx) {
+                if let Some(s) = self
+                    .world
+                    .resource_mut::<people::WorldAffordances>()
+                    .0
+                    .get_mut(idx)
+                {
                     s.uses += 1;
                     if s.capacity > 0 {
                         s.remaining -= 1.0;
@@ -1293,8 +1496,12 @@ impl Simulation {
                     }
                 }
                 Ok(match need {
-                    Need::Rest => "You take your rest here, and the ache eases from your limbs.".into(),
-                    Need::Sustenance => "You tend your body here; water and forage ease the day's wear.".into(),
+                    Need::Rest => {
+                        "You take your rest here, and the ache eases from your limbs.".into()
+                    }
+                    Need::Sustenance => {
+                        "You tend your body here; water and forage ease the day's wear.".into()
+                    }
                 })
             }
             AffordEffect::Yield { good, units, skill } => {
@@ -1310,12 +1517,17 @@ impl Simulation {
                 };
                 // A craft the avatar has not learned cannot be worked here — the lure to go apprentice.
                 let has_craft = match skill {
-                    Some(sk) => self.world.get::<people::Skills>(avatar).is_some_and(|s| s.0.get(sk).is_some_and(|&v| v > 0.0)),
+                    Some(sk) => self
+                        .world
+                        .get::<people::Skills>(avatar)
+                        .is_some_and(|s| s.0.get(sk).is_some_and(|&v| v > 0.0)),
                     None => true,
                 };
                 if !has_craft {
                     let craft = craft_name.unwrap_or_else(|| "craft".into());
-                    return Err(format!("You could work this place, but you have not learned the {craft}'s craft."));
+                    return Err(format!(
+                        "You could work this place, but you have not learned the {craft}'s craft."
+                    ));
                 }
                 if let Some(mut inv) = self.world.get_mut::<people::Inventory>(avatar)
                     && let Some(slot) = inv.stock.get_mut(good)
@@ -1332,8 +1544,10 @@ impl Simulation {
             }
             AffordEffect::Teach { skill } => {
                 let craft = self.world.resource::<Registry>().skill(skill).name.clone();
-                let already =
-                    self.world.get::<people::Skills>(avatar).is_some_and(|s| s.0.get(skill).is_some_and(|&v| v > 0.0));
+                let already = self
+                    .world
+                    .get::<people::Skills>(avatar)
+                    .is_some_and(|s| s.0.get(skill).is_some_and(|&v| v > 0.0));
                 if already {
                     return Err(format!("You already know the {craft}'s craft."));
                 }
@@ -1345,7 +1559,9 @@ impl Simulation {
                     learned = true;
                 }
                 if learned {
-                    Ok(format!("You apprentice here, and learn the {craft}'s craft."))
+                    Ok(format!(
+                        "You apprentice here, and learn the {craft}'s craft."
+                    ))
                 } else {
                     Err("There is no craft to learn here.".into())
                 }
@@ -1356,20 +1572,37 @@ impl Simulation {
     /// The goods in the avatar's satchel — `(name, count)` for each it carries (gathered at `Yield`
     /// sites). Empty if there is no avatar or it carries nothing. For the Inventory tab.
     pub fn player_goods(&self) -> Vec<(String, u32)> {
-        let Some(avatar) = self.player_avatar() else { return Vec::new() };
-        let Some(inv) = self.world.get::<people::Inventory>(avatar) else { return Vec::new() };
+        let Some(avatar) = self.player_avatar() else {
+            return Vec::new();
+        };
+        let Some(inv) = self.world.get::<people::Inventory>(avatar) else {
+            return Vec::new();
+        };
         let reg = self.world.resource::<Registry>();
-        inv.stock.iter().enumerate().filter(|&(_, &n)| n > 0).map(|(i, &n)| (reg.good(i).name.clone(), n)).collect()
+        inv.stock
+            .iter()
+            .enumerate()
+            .filter(|&(_, &n)| n > 0)
+            .map(|(i, &n)| (reg.good(i).name.clone(), n))
+            .collect()
     }
 
     /// The **callings** the avatar has learned — `(craft, proficiency)` for each economy skill above
     /// zero (taught at a guild, grown by working). Empty if there is no avatar or it has learned
     /// none. For the Inventory tab. These are the *crafts* economy, distinct from the WWN skills.
     pub fn player_callings(&self) -> Vec<(String, f32)> {
-        let Some(avatar) = self.player_avatar() else { return Vec::new() };
-        let Some(sk) = self.world.get::<people::Skills>(avatar) else { return Vec::new() };
+        let Some(avatar) = self.player_avatar() else {
+            return Vec::new();
+        };
+        let Some(sk) = self.world.get::<people::Skills>(avatar) else {
+            return Vec::new();
+        };
         let reg = self.world.resource::<Registry>();
-        sk.0.iter().enumerate().filter(|&(_, &v)| v > 0.0).map(|(i, &v)| (reg.skill(i).name.clone(), v)).collect()
+        sk.0.iter()
+            .enumerate()
+            .filter(|&(_, &v)| v > 0.0)
+            .map(|(i, &v)| (reg.skill(i).name.clone(), v))
+            .collect()
     }
 
     // --- Exploration: the player avatar (an ordinary body in the world) ---
@@ -1399,7 +1632,9 @@ impl Simulation {
             ));
             // World-interaction skill: a keener Notice reveals more of the map each step, and a
             // trained scout (Notice ≥ 2) passively spots the Secrets it already knows to look for.
-            let notice = self.proficiency_of(avatar, "Notice").unwrap_or(rpg::PROF_UNSKILLED) as i32;
+            let notice = self
+                .proficiency_of(avatar, "Notice")
+                .unwrap_or(rpg::PROF_UNSKILLED) as i32;
             {
                 let mut st = self.world.resource_mut::<player::PlayerState>();
                 st.set_sight(3 + notice);
@@ -1407,8 +1642,14 @@ impl Simulation {
             }
         }
         // The avatar is a body in the world too: give it Vitals when the survival layer is on.
-        if self.world.get_resource::<survival::SurvivalConfig>().is_some() {
-            self.world.entity_mut(avatar).insert(survival::Vitals::default());
+        if self
+            .world
+            .get_resource::<survival::SurvivalConfig>()
+            .is_some()
+        {
+            self.world
+                .entity_mut(avatar)
+                .insert(survival::Vitals::default());
         }
         // Exploration on: the avatar can carry gear (climbing gear, a boat, …) — start empty.
         if self.world.get_resource::<ExploreConfig>().is_some() {
@@ -1425,9 +1666,13 @@ impl Simulation {
                 (reg.good_count(), reg.skill_count())
             };
             if n_goods > 0 {
-                self.world
-                    .entity_mut(avatar)
-                    .insert((people::Inventory { money: 0, stock: vec![0; n_goods] }, people::Skills(vec![0.0; n_skills])));
+                self.world.entity_mut(avatar).insert((
+                    people::Inventory {
+                        money: 0,
+                        stock: vec![0; n_goods],
+                    },
+                    people::Skills(vec![0.0; n_skills]),
+                ));
             }
         }
         avatar
@@ -1443,7 +1688,10 @@ impl Simulation {
         npc.unwrap_or_else(|| {
             let gw = &self.world.resource::<Substrate>().0;
             let (topo, sea) = (gw.topology(), gw.params().sea_level);
-            (0..topo.len()).map(|i| topo.coord(i)).find(|&c| gw.elevation(c) >= sea).unwrap_or(Coord::new(0, 0))
+            (0..topo.len())
+                .map(|i| topo.coord(i))
+                .find(|&c| gw.elevation(c) >= sea)
+                .unwrap_or(Coord::new(0, 0))
         })
     }
 
@@ -1454,14 +1702,19 @@ impl Simulation {
     /// then paces the walk (roads several hexes a day, mountains several days a hex). Returns
     /// `false` if there is no avatar or `to` is unreachable with the party's capabilities.
     pub fn player_travel_to(&mut self, to: Coord) -> bool {
-        let Some(avatar) = self.world.resource::<player::PlayerState>().avatar() else { return false };
-        let Some(from) = self.world.get::<Position>(avatar).map(|p| p.0) else { return false };
+        let Some(avatar) = self.world.resource::<player::PlayerState>().avatar() else {
+            return false;
+        };
+        let Some(from) = self.world.get::<Position>(avatar).map(|p| p.0) else {
+            return false;
+        };
         let path = if let Some(cfg) = self.world.get_resource::<ExploreConfig>().copied() {
             let caps = self.party_caps(cfg);
             let roads = self.world.get_resource::<Roads>();
             let is_road = |i: usize| roads.is_some_and(|r| r.has(i));
             let gw = &self.world.resource::<Substrate>().0;
-            travel::route(gw, &cfg.cost, &is_road, from, to, caps).map(std::collections::VecDeque::from)
+            travel::route(gw, &cfg.cost, &is_road, from, to, caps)
+                .map(std::collections::VecDeque::from)
         } else {
             let mg = self.world.resource::<people::MoveGraph>();
             let gw = &self.world.resource::<Substrate>().0;
@@ -1469,7 +1722,9 @@ impl Simulation {
         };
         match path {
             Some(p) => {
-                self.world.resource_mut::<player::PlayerState>().set_path(to, p);
+                self.world
+                    .resource_mut::<player::PlayerState>()
+                    .set_path(to, p);
                 true
             }
             None => false,
@@ -1487,9 +1742,24 @@ impl Simulation {
         if let Some(p) = self.world.get_resource::<Party>() {
             roster.extend(p.members.iter().copied());
         }
-        let has_gear = |g: &str| roster.iter().any(|&e| self.world.get::<Gear>(e).is_some_and(|gr| gr.has(g)));
-        let climbers = roster.iter().filter(|&&e| self.world.get::<Flags>(e).is_some_and(|f| f.has("climbing_proficient"))).count();
-        let share = if roster.is_empty() { 0.0 } else { climbers as f32 / roster.len() as f32 };
+        let has_gear = |g: &str| {
+            roster
+                .iter()
+                .any(|&e| self.world.get::<Gear>(e).is_some_and(|gr| gr.has(g)))
+        };
+        let climbers = roster
+            .iter()
+            .filter(|&&e| {
+                self.world
+                    .get::<Flags>(e)
+                    .is_some_and(|f| f.has("climbing_proficient"))
+            })
+            .count();
+        let share = if roster.is_empty() {
+            0.0
+        } else {
+            climbers as f32 / roster.len() as f32
+        };
         travel::Caps {
             climbing: has_gear("climbing_gear") && share >= cfg.climb_share,
             boat: has_gear("boat"),
@@ -1507,7 +1777,12 @@ impl Simulation {
     /// turn-based contract holds: *one player action == one tick*. Returns `false` (and does
     /// not advance the world) if there is no avatar — waiting is a thing a *body* does.
     pub fn player_wait(&mut self) -> bool {
-        if self.world.resource::<player::PlayerState>().avatar().is_none() {
+        if self
+            .world
+            .resource::<player::PlayerState>()
+            .avatar()
+            .is_none()
+        {
             return false;
         }
         self.step(); // a wait is one tick; the avatar simply does not move during it
@@ -1519,7 +1794,12 @@ impl Simulation {
     /// lore those places teach. It is an action like waiting: one tick passes. Returns what was
     /// found (empty with no avatar). Deterministic: knowledge, not luck, decides.
     pub fn player_search(&mut self) -> player::SearchOutcome {
-        if self.world.resource::<player::PlayerState>().avatar().is_none() {
+        if self
+            .world
+            .resource::<player::PlayerState>()
+            .avatar()
+            .is_none()
+        {
             return player::SearchOutcome::default();
         }
         let out = player::search(&mut self.world);
@@ -1535,14 +1815,23 @@ impl Simulation {
 
     /// The lore facts the player holds, sorted — the contents of the journal's Lore tab.
     pub fn player_lore(&self) -> Vec<String> {
-        let mut v: Vec<String> = self.world.resource::<player::PlayerKnowledge>().lore.iter().cloned().collect();
+        let mut v: Vec<String> = self
+            .world
+            .resource::<player::PlayerKnowledge>()
+            .lore
+            .iter()
+            .cloned()
+            .collect();
         v.sort();
         v
     }
 
     /// Does the player hold this lore fact?
     pub fn player_knows(&self, fact: &str) -> bool {
-        self.world.resource::<player::PlayerKnowledge>().lore.contains(fact)
+        self.world
+            .resource::<player::PlayerKnowledge>()
+            .lore
+            .contains(fact)
     }
 
     /// Is the avatar mid-journey?
@@ -1558,13 +1847,17 @@ impl Simulation {
 
     /// How many tiles the player has revealed (the fog-of-war it has lifted).
     pub fn player_explored_count(&self) -> usize {
-        self.world.resource::<player::PlayerState>().explored_count()
+        self.world
+            .resource::<player::PlayerState>()
+            .explored_count()
     }
 
     /// Every tile the player has revealed, for a renderer to draw the explored map.
     pub fn player_explored(&self) -> Vec<Coord> {
         let topo = self.world.resource::<Substrate>().0.topology();
-        self.world.resource::<player::PlayerState>().explored_tiles(topo)
+        self.world
+            .resource::<player::PlayerState>()
+            .explored_tiles(topo)
     }
 
     /// What the player sees right now — the tile underfoot, the tiles in sight (terrain +
@@ -1575,7 +1868,10 @@ impl Simulation {
 
     /// The court seats a person currently belongs to (it may hold several).
     pub fn allegiance_of(&self, e: bevy_ecs::entity::Entity) -> Vec<Coord> {
-        self.world.get::<Allegiance>(e).map(|a| a.0.iter().map(|b| b.seat).collect()).unwrap_or_default()
+        self.world
+            .get::<Allegiance>(e)
+            .map(|a| a.0.iter().map(|b| b.seat).collect())
+            .unwrap_or_default()
     }
 
     /// How many people are currently detained by faction enforcers.
@@ -1610,10 +1906,16 @@ impl Simulation {
     /// Is the throne held by someone whose ambition runs well above the innate
     /// baseline? (The content never pursue it — a held throne is ambitious hands.)
     pub fn throne_held_by_the_ambitious(&self) -> bool {
-        let Some(h) = self.throne_holder() else { return false };
-        let Some(p) = self.world.get::<Personality>(h) else { return false };
+        let Some(h) = self.throne_holder() else {
+            return false;
+        };
+        let Some(p) = self.world.get::<Personality>(h) else {
+            return false;
+        };
         let reg = self.world.resource::<Registry>();
-        reg.trait_id("ambition").and_then(|a| p.0.get(a).copied()).is_some_and(|v| v > 0.4)
+        reg.trait_id("ambition")
+            .and_then(|a| p.0.get(a).copied())
+            .is_some_and(|v| v > 0.4)
     }
 
     /// Is this entity still a living person?
@@ -1675,12 +1977,18 @@ impl Simulation {
     /// `false` (and no tick) if there's no avatar, the target isn't a recruitable NPC, the RPG or
     /// party layers are off, the target is already a member, or the party is full.
     pub fn player_recruit(&mut self, listener: bevy_ecs::entity::Entity) -> bool {
-        let Some(avatar) = self.player_avatar() else { return false };
+        let Some(avatar) = self.player_avatar() else {
+            return false;
+        };
         if avatar == listener || self.world.get::<Npc>(listener).is_none() {
             return false;
         }
-        let Some(cfg) = self.world.get_resource::<PartyConfig>().copied() else { return false };
-        let Some(party) = self.world.get_resource::<Party>() else { return false };
+        let Some(cfg) = self.world.get_resource::<PartyConfig>().copied() else {
+            return false;
+        };
+        let Some(party) = self.world.get_resource::<Party>() else {
+            return false;
+        };
         if party.contains(listener) || (cfg.max_size != 0 && party.len() >= cfg.max_size) {
             return false;
         }
@@ -1693,21 +2001,35 @@ impl Simulation {
             ) else {
                 return false;
             };
-            let rank = |name: &str| data.skill_id(name).map(|i| pr.rank(i)).unwrap_or(rpg::PROF_UNSKILLED);
+            let rank = |name: &str| {
+                data.skill_id(name)
+                    .map(|i| pr.rank(i))
+                    .unwrap_or(rpg::PROF_UNSKILLED)
+            };
             (ab.modifier(rpg::CHA), rank("Convince").max(rank("Lead")))
         };
         // Disposition: the NPC's standing opinion of the avatar sets the difficulty.
-        let opinion = self.world.get::<Opinion>(listener).map(|o| o.of(avatar)).unwrap_or(0.0);
+        let opinion = self
+            .world
+            .get::<Opinion>(listener)
+            .map(|o| o.of(avatar))
+            .unwrap_or(0.0);
         let difficulty = party::disposition_difficulty(&cfg, opinion);
         let joined = rpg::check(cha_mod, social, 0, difficulty).succeeded();
         if joined {
             let since = self.tick();
             let at = self.player_position();
-            self.world.entity_mut(listener).insert((PartyMember { since }, Suspended, Follower));
+            self.world
+                .entity_mut(listener)
+                .insert((PartyMember { since }, Suspended, Follower));
             // A companion shares the road's hardships: give it `Vitals` if survival is on and it
             // lacks them (party-scoped survival, where NPCs otherwise carry none).
-            if self.world.get_resource::<SurvivalConfig>().is_some() && self.world.get::<Vitals>(listener).is_none() {
-                self.world.entity_mut(listener).insert(survival::Vitals::default());
+            if self.world.get_resource::<SurvivalConfig>().is_some()
+                && self.world.get::<Vitals>(listener).is_none()
+            {
+                self.world
+                    .entity_mut(listener)
+                    .insert(survival::Vitals::default());
             }
             // Snap them to the avatar's side at once; `player_travel` keeps them there.
             if let (Some(at), Some(mut p)) = (at, self.world.get_mut::<Position>(listener)) {
@@ -1721,7 +2043,10 @@ impl Simulation {
 
     /// The avatar's party roster, in recruit order (empty if the party layer is off).
     pub fn party_roster(&self) -> Vec<bevy_ecs::entity::Entity> {
-        self.world.get_resource::<Party>().map(|p| p.members.clone()).unwrap_or_default()
+        self.world
+            .get_resource::<Party>()
+            .map(|p| p.members.clone())
+            .unwrap_or_default()
     }
 
     /// How many companions travel with the avatar.
@@ -1739,7 +2064,9 @@ impl Simulation {
         if self.world.get::<PartyMember>(e).is_none() {
             return false;
         }
-        self.world.entity_mut(e).remove::<(PartyMember, Suspended, Follower)>();
+        self.world
+            .entity_mut(e)
+            .remove::<(PartyMember, Suspended, Follower)>();
         if let Some(mut party) = self.world.get_resource_mut::<Party>() {
             party.remove(e);
         }
@@ -1767,7 +2094,9 @@ impl Simulation {
 
     /// Every tile carrying a road (empty if the layer is off) — for a renderer to draw the network.
     pub fn road_tiles(&self) -> Vec<Coord> {
-        let Some(roads) = self.world.get_resource::<Roads>() else { return Vec::new() };
+        let Some(roads) = self.world.get_resource::<Roads>() else {
+            return Vec::new();
+        };
         let topo = self.world.resource::<Substrate>().0.topology();
         roads.0.iter().map(|&i| topo.coord(i)).collect()
     }
@@ -1776,13 +2105,18 @@ impl Simulation {
     /// dearer). `1.0` when the exploration layer is off.
     pub fn travel_cost_at(&self, c: Coord) -> f32 {
         let topo = self.world.resource::<Substrate>().0.topology();
-        self.world.get_resource::<TravelCost>().and_then(|tc| tc.0.get(topo.index_of(c)).copied()).unwrap_or(1.0)
+        self.world
+            .get_resource::<TravelCost>()
+            .and_then(|tc| tc.0.get(topo.index_of(c)).copied())
+            .unwrap_or(1.0)
     }
 
     /// Give the avatar a piece of gear (`"climbing_gear"`, `"boat"`, `"warm_gear"`, …). Returns
     /// false if there is no avatar.
     pub fn player_equip(&mut self, item: &str) -> bool {
-        let Some(avatar) = self.player_avatar() else { return false };
+        let Some(avatar) = self.player_avatar() else {
+            return false;
+        };
         let mut em = self.world.entity_mut(avatar);
         match em.get_mut::<Gear>() {
             Some(mut g) => {
@@ -1797,14 +2131,18 @@ impl Simulation {
 
     /// Whether the avatar carries a piece of gear.
     pub fn player_has_gear(&self, item: &str) -> bool {
-        self.player_avatar().is_some_and(|a| self.world.get::<Gear>(a).is_some_and(|g| g.has(item)))
+        self.player_avatar()
+            .is_some_and(|a| self.world.get::<Gear>(a).is_some_and(|g| g.has(item)))
     }
 
     /// Everything the avatar carries, sorted (empty if it carries nothing / no exploration layer) —
     /// for the character sheet to list.
     pub fn player_gear(&self) -> Vec<String> {
-        let mut v: Vec<String> =
-            self.player_avatar().and_then(|a| self.world.get::<Gear>(a)).map(|g| g.0.iter().cloned().collect()).unwrap_or_default();
+        let mut v: Vec<String> = self
+            .player_avatar()
+            .and_then(|a| self.world.get::<Gear>(a))
+            .map(|g| g.0.iter().cloned().collect())
+            .unwrap_or_default();
         v.sort();
         v
     }
@@ -1812,13 +2150,23 @@ impl Simulation {
     /// `who`'s opinion of `toward` (`-1..1`; `0` if they have no opinion or no `Opinion`).
     /// Read-only — used to show a soul's live disposition toward the player as a conversation
     /// moves it.
-    pub fn opinion_of(&self, who: bevy_ecs::entity::Entity, toward: bevy_ecs::entity::Entity) -> Option<f32> {
+    pub fn opinion_of(
+        &self,
+        who: bevy_ecs::entity::Entity,
+        toward: bevy_ecs::entity::Entity,
+    ) -> Option<f32> {
         self.world.get::<Opinion>(who).map(|o| o.of(toward))
     }
 
     /// Does `who` bear a standing grudge against `toward`? (Read-only counterpart to [`Self::grudges`].)
-    pub fn bears_grudge(&self, who: bevy_ecs::entity::Entity, toward: bevy_ecs::entity::Entity) -> bool {
-        self.world.get::<Grievance>(who).is_some_and(|g| g.0 == toward)
+    pub fn bears_grudge(
+        &self,
+        who: bevy_ecs::entity::Entity,
+        toward: bevy_ecs::entity::Entity,
+    ) -> bool {
+        self.world
+            .get::<Grievance>(who)
+            .is_some_and(|g| g.0 == toward)
     }
 
     /// Every entity that someone bears a grudge against (the targets of feuds).
@@ -1829,13 +2177,17 @@ impl Simulation {
 
     /// Every grudge as a `(holder, target)` pair — who would see whom dead.
     pub fn grudges(&mut self) -> Vec<(bevy_ecs::entity::Entity, bevy_ecs::entity::Entity)> {
-        let mut q = self.world.query_filtered::<(bevy_ecs::entity::Entity, &Grievance), With<Npc>>();
+        let mut q = self
+            .world
+            .query_filtered::<(bevy_ecs::entity::Entity, &Grievance), With<Npc>>();
         q.iter(&self.world).map(|(e, g)| (e, g.0)).collect()
     }
 
     /// Any one living NPC (deterministic — the first in iteration order).
     pub fn any_npc(&mut self) -> Option<bevy_ecs::entity::Entity> {
-        let mut q = self.world.query_filtered::<bevy_ecs::entity::Entity, With<Npc>>();
+        let mut q = self
+            .world
+            .query_filtered::<bevy_ecs::entity::Entity, With<Npc>>();
         q.iter(&self.world).next()
     }
 
@@ -1852,7 +2204,9 @@ impl Simulation {
             return 0.0;
         };
         let mut q = self.world.query_filtered::<&Personality, With<Npc>>();
-        q.iter(&self.world).filter_map(|p| p.0.get(id).copied()).fold(0.0, f32::max)
+        q.iter(&self.world)
+            .filter_map(|p| p.0.get(id).copied())
+            .fold(0.0, f32::max)
     }
 
     /// The lowest value of a named trait across all living people.
@@ -1861,7 +2215,9 @@ impl Simulation {
             return 0.0;
         };
         let mut q = self.world.query_filtered::<&Personality, With<Npc>>();
-        q.iter(&self.world).filter_map(|p| p.0.get(id).copied()).fold(1.0, f32::min)
+        q.iter(&self.world)
+            .filter_map(|p| p.0.get(id).copied())
+            .fold(1.0, f32::min)
     }
 
     /// A named mood for an entity, if it has one.
@@ -1876,7 +2232,9 @@ impl Simulation {
             return 0.0;
         };
         let mut q = self.world.query_filtered::<&Mood, With<Npc>>();
-        q.iter(&self.world).filter_map(|m| m.0.get(id).copied()).fold(0.0, f32::max)
+        q.iter(&self.world)
+            .filter_map(|m| m.0.get(id).copied())
+            .fold(0.0, f32::max)
     }
 
     pub fn fauna_count(&mut self) -> usize {
@@ -1906,7 +2264,9 @@ impl Simulation {
     /// demos read to show how species sort themselves into their biomes.
     pub fn fauna_census(&mut self) -> Vec<(u64, usize, Coord)> {
         let mut q = self.world.query::<(Entity, &SpeciesId, &Position)>();
-        q.iter(&self.world).map(|(e, s, p)| (e.to_bits(), s.0, p.0)).collect()
+        q.iter(&self.world)
+            .map(|(e, s, p)| (e.to_bits(), s.0, p.0))
+            .collect()
     }
 
     pub fn npc_count(&mut self) -> usize {
@@ -1926,7 +2286,9 @@ impl Simulation {
             return 0;
         };
         let mut q = self.world.query_filtered::<&Skills, With<Npc>>();
-        q.iter(&self.world).filter(|s| s.0.get(id).is_some_and(|&v| v > 0.1)).count()
+        q.iter(&self.world)
+            .filter(|s| s.0.get(id).is_some_and(|&v| v > 0.1))
+            .count()
     }
 
     /// Total coins across NPCs and markets — exactly conserved by trade (deaths
@@ -1942,14 +2304,19 @@ impl Simulation {
     /// Total goods stock held across all markets.
     pub fn total_market_stock(&mut self) -> u64 {
         let mut q = self.world.query::<&Market>();
-        q.iter(&self.world).map(|m| m.stock.iter().map(|&s| s as u64).sum::<u64>()).sum()
+        q.iter(&self.world)
+            .map(|m| m.stock.iter().map(|&s| s as u64).sum::<u64>())
+            .sum()
     }
 
     /// Total goods in the world — every NPC inventory plus every market. Rises
     /// when production outpaces consumption.
     pub fn total_goods(&mut self) -> u64 {
         let mut np = self.world.query_filtered::<&Inventory, With<Npc>>();
-        let held: u64 = np.iter(&self.world).map(|i| i.stock.iter().map(|&s| s as u64).sum::<u64>()).sum();
+        let held: u64 = np
+            .iter(&self.world)
+            .map(|i| i.stock.iter().map(|&s| s as u64).sum::<u64>())
+            .sum();
         held + self.total_market_stock()
     }
 }
@@ -1962,17 +2329,28 @@ mod tests {
 
     #[test]
     fn fauna_spawn_on_land() {
-        let mut sim = Simulation::new(Setup { fauna: 40, seed: 2026, ..Default::default() });
+        let mut sim = Simulation::new(Setup {
+            fauna: 40,
+            seed: 2026,
+            ..Default::default()
+        });
         let sea = sim.substrate().params().sea_level;
         let positions = sim.fauna_positions();
         assert!(!positions.is_empty(), "no fauna spawned");
         let sub = sim.substrate();
-        assert!(positions.iter().all(|&c| sub.elevation(c) >= sea), "a herbivore spawned in the sea");
+        assert!(
+            positions.iter().all(|&c| sub.elevation(c) >= sea),
+            "a herbivore spawned in the sea"
+        );
     }
 
     #[test]
     fn simulation_steps_and_advances_time() {
-        let mut sim = Simulation::new(Setup { fauna: 20, seed: 1, ..Default::default() });
+        let mut sim = Simulation::new(Setup {
+            fauna: 20,
+            seed: 1,
+            ..Default::default()
+        });
         let start = sim.tick();
         sim.run(20);
         assert_eq!(sim.tick(), start + 20);
@@ -1980,10 +2358,18 @@ mod tests {
 
     #[test]
     fn population_grows_below_capacity() {
-        let mut sim = Simulation::new(Setup { fauna: 6, seed: 2026, ..Default::default() });
+        let mut sim = Simulation::new(Setup {
+            fauna: 6,
+            seed: 2026,
+            ..Default::default()
+        });
         let start = sim.fauna_count();
         sim.run(60);
-        assert!(sim.fauna_count() > start, "a small fed population should grow ({start} → {})", sim.fauna_count());
+        assert!(
+            sim.fauna_count() > start,
+            "a small fed population should grow ({start} → {})",
+            sim.fauna_count()
+        );
     }
 
     #[test]
@@ -1992,26 +2378,44 @@ mod tests {
             fauna: 30,
             seed: 5,
             warmup: 50,
-            fauna_cfg: FaunaConfig { eat_rate: 0.0, initial_energy: 10.0, metabolism: 1.0, ..Default::default() },
+            fauna_cfg: FaunaConfig {
+                eat_rate: 0.0,
+                initial_energy: 10.0,
+                metabolism: 1.0,
+                ..Default::default()
+            },
             ..Default::default()
         });
         assert!(sim.fauna_count() > 0);
         // Long enough that even the smallest, slowest-burning species starves
         // (metabolism now scales with body size, so the tiniest last the longest).
         sim.run(40);
-        assert_eq!(sim.fauna_count(), 0, "no animal should survive without food");
+        assert_eq!(
+            sim.fauna_count(),
+            0,
+            "no animal should survive without food"
+        );
     }
 
     #[test]
     fn grazing_depletes_vegetation() {
         let standing_biomass = |fauna: usize| -> f32 {
-            let mut sim = Simulation::new(Setup { fauna, seed: 2026, ..Default::default() });
+            let mut sim = Simulation::new(Setup {
+                fauna,
+                seed: 2026,
+                ..Default::default()
+            });
             sim.run(40);
             let sub = sim.substrate();
             let topo = sub.topology();
-            topo.indices().map(|i| sub.plant_biomass(topo.coord(i))).sum()
+            topo.indices()
+                .map(|i| sub.plant_biomass(topo.coord(i)))
+                .sum()
         };
-        assert!(standing_biomass(120) < standing_biomass(0), "grazers should draw vegetation down");
+        assert!(
+            standing_biomass(120) < standing_biomass(0),
+            "grazers should draw vegetation down"
+        );
     }
 
     #[test]
@@ -2019,7 +2423,12 @@ mod tests {
         // Now with predators too — the stochastic kills draw from a seeded stream, so
         // two identical runs stay bit-identical in both populations.
         let run = || {
-            let mut s = Simulation::new(Setup { fauna: 40, carnivores: 15, seed: 42, ..Default::default() });
+            let mut s = Simulation::new(Setup {
+                fauna: 40,
+                carnivores: 15,
+                seed: 42,
+                ..Default::default()
+            });
             s.run(60);
             (s.fauna_count(), s.carnivore_count())
         };
@@ -2035,14 +2444,27 @@ mod tests {
         // prey by sparing the forage; that phase-dependence is why this test pins down
         // the *mechanism* on a range where culling dominates.)
         let herd = |carnivores: usize| -> usize {
-            let mut sim = Simulation::new(Setup { width: 18, height: 12, fauna: 60, carnivores, seed: 11, ..Default::default() });
+            let mut sim = Simulation::new(Setup {
+                width: 18,
+                height: 12,
+                fauna: 60,
+                carnivores,
+                seed: 11,
+                ..Default::default()
+            });
             sim.run(80);
             sim.fauna_count()
         };
         let without = herd(0);
         let with = herd(20);
-        assert!(without > 0, "the control herd died out on its own; can't test predation");
-        assert!(with < without, "predators should thin a dense herd (with {with} vs without {without})");
+        assert!(
+            without > 0,
+            "the control herd died out on its own; can't test predation"
+        );
+        assert!(
+            with < without,
+            "predators should thin a dense herd (with {with} vs without {without})"
+        );
     }
 
     #[test]
@@ -2050,25 +2472,51 @@ mod tests {
         // The trophic loop closes: with Liebig productivity, herd aggregation (huntable
         // density), and a patient pack riding out the troughs, both tiers survive a long
         // run in a sustained oscillation — neither collapses. A standing predator tier.
-        let mut sim = Simulation::new(Setup { width: 48, height: 36, seed: 11, warmup: 300, fauna: 60, carnivores: 8, ..Default::default() });
+        let mut sim = Simulation::new(Setup {
+            width: 48,
+            height: 36,
+            seed: 11,
+            warmup: 300,
+            fauna: 60,
+            carnivores: 8,
+            ..Default::default()
+        });
         sim.run(600);
         assert!(sim.fauna_count() > 0, "the herd died out");
-        assert!(sim.carnivore_count() > 0, "the predators died out — no standing tier formed");
+        assert!(
+            sim.carnivore_count() > 0,
+            "the predators died out — no standing tier formed"
+        );
     }
 
     #[test]
     fn predators_starve_without_prey() {
         // A pack with nothing to hunt only pays metabolism — it dwindles toward zero.
-        let mut sim = Simulation::new(Setup { fauna: 0, carnivores: 40, seed: 4, ..Default::default() });
+        let mut sim = Simulation::new(Setup {
+            fauna: 0,
+            carnivores: 40,
+            seed: 4,
+            ..Default::default()
+        });
         let start = sim.carnivore_count();
         sim.run(250);
-        assert!(sim.carnivore_count() < start, "predators with no prey should decline ({start} → {})", sim.carnivore_count());
+        assert!(
+            sim.carnivore_count() < start,
+            "predators with no prey should decline ({start} → {})",
+            sim.carnivore_count()
+        );
     }
 
     // --- Economy ---
 
     fn economy(npcs: usize) -> Simulation {
-        Simulation::new(Setup { width: 40, height: 30, seed: 2026, npcs, ..Default::default() })
+        Simulation::new(Setup {
+            width: 40,
+            height: 30,
+            seed: 2026,
+            npcs,
+            ..Default::default()
+        })
     }
 
     #[test]
@@ -2078,7 +2526,10 @@ mod tests {
         let positions = sim.npc_positions();
         assert!(!positions.is_empty(), "no NPCs spawned");
         let sub = sim.substrate();
-        assert!(positions.iter().all(|&c| sub.elevation(c) >= sea), "an NPC spawned in the sea");
+        assert!(
+            positions.iter().all(|&c| sub.elevation(c) >= sea),
+            "an NPC spawned in the sea"
+        );
     }
 
     #[test]
@@ -2087,36 +2538,75 @@ mod tests {
         // a large start is carried, not collapsed.
         let mut sim = economy(40);
         sim.run(150);
-        assert!(sim.npc_count() > 5, "the economy collapsed ({} left)", sim.npc_count());
+        assert!(
+            sim.npc_count() > 5,
+            "the economy collapsed ({} left)",
+            sim.npc_count()
+        );
     }
 
     // --- RPG layer (Worlds Without Number) ---
 
     #[test]
     fn rpg_layer_stamps_npcs_and_the_avatar() {
-        let mut sim = Simulation::new(Setup { width: 40, height: 30, seed: 2026, npcs: 30, rpg: true, ..Default::default() });
-        assert!(sim.rpg_enabled(), "the rpg resource is present when enabled");
-        let npc = sim.any_npc().expect("npcs spawned");
-        assert!(sim.abilities_of(npc).is_some(), "an NPC carries WWN attributes");
-        // The rolled edge / background trained at least one skill above unskilled.
-        let names: Vec<String> = sim.rpg_data().unwrap().skills().iter().map(|s| s.name.clone()).collect();
+        let mut sim = Simulation::new(Setup {
+            width: 40,
+            height: 30,
+            seed: 2026,
+            npcs: 30,
+            rpg: true,
+            ..Default::default()
+        });
         assert!(
-            names.iter().any(|s| sim.proficiency_of(npc, s).is_some_and(|r| r > -1)),
+            sim.rpg_enabled(),
+            "the rpg resource is present when enabled"
+        );
+        let npc = sim.any_npc().expect("npcs spawned");
+        assert!(
+            sim.abilities_of(npc).is_some(),
+            "an NPC carries WWN attributes"
+        );
+        // The rolled edge / background trained at least one skill above unskilled.
+        let names: Vec<String> = sim
+            .rpg_data()
+            .unwrap()
+            .skills()
+            .iter()
+            .map(|s| s.name.clone())
+            .collect();
+        assert!(
+            names
+                .iter()
+                .any(|s| sim.proficiency_of(npc, s).is_some_and(|r| r > -1)),
             "the NPC has at least one trained skill",
         );
         // The avatar gets capabilities too.
         let avatar = sim.spawn_player(None);
-        assert!(sim.abilities_of(avatar).is_some(), "the avatar carries WWN attributes");
+        assert!(
+            sim.abilities_of(avatar).is_some(),
+            "the avatar carries WWN attributes"
+        );
     }
 
     #[test]
     fn rpg_rolls_are_deterministic() {
         let first_scores = || {
-            let mut sim = Simulation::new(Setup { width: 40, height: 30, seed: 2026, npcs: 20, rpg: true, ..Default::default() });
+            let mut sim = Simulation::new(Setup {
+                width: 40,
+                height: 30,
+                seed: 2026,
+                npcs: 20,
+                rpg: true,
+                ..Default::default()
+            });
             let npc = sim.any_npc().unwrap();
             sim.abilities_of(npc).unwrap().scores
         };
-        assert_eq!(first_scores(), first_scores(), "same seed → identical rolled stats");
+        assert_eq!(
+            first_scores(),
+            first_scores(),
+            "same seed → identical rolled stats"
+        );
     }
 
     // --- Party layer ---
@@ -2131,20 +2621,30 @@ mod tests {
             rpg: true,
             party: true,
             // Trivial difficulty so the check always passes — this tests the mechanics, not the roll.
-            party_cfg: PartyConfig { recruit_difficulty: -100, ..Default::default() },
+            party_cfg: PartyConfig {
+                recruit_difficulty: -100,
+                ..Default::default()
+            },
             ..Default::default()
         });
         let _avatar = sim.spawn_player(None);
         let target = sim.any_npc().expect("npcs spawned");
 
-        assert!(sim.player_recruit(target), "the recruit check passes at trivial difficulty");
+        assert!(
+            sim.player_recruit(target),
+            "the recruit check passes at trivial difficulty"
+        );
         assert!(sim.is_party_member(target) && sim.party_size() == 1);
         assert_eq!(sim.party_roster(), vec![target]);
 
         // Snapped to the avatar's side, and — being suspended — it stays there rather than
         // wandering off on its own as the world ticks on around it.
         let at = sim.player_position().unwrap();
-        assert_eq!(sim.position_of(target), Some(at), "the companion is at the avatar's side");
+        assert_eq!(
+            sim.position_of(target),
+            Some(at),
+            "the companion is at the avatar's side"
+        );
         sim.run(5);
         assert_eq!(
             sim.position_of(target),
@@ -2168,12 +2668,18 @@ mod tests {
             npcs: 30,
             rpg: true,
             party: true,
-            party_cfg: PartyConfig { recruit_difficulty: 100, ..Default::default() },
+            party_cfg: PartyConfig {
+                recruit_difficulty: 100,
+                ..Default::default()
+            },
             ..Default::default()
         });
         let _ = sim.spawn_player(None);
         let target = sim.any_npc().unwrap();
-        assert!(!sim.player_recruit(target), "an impossible check refuses the recruit");
+        assert!(
+            !sim.player_recruit(target),
+            "an impossible check refuses the recruit"
+        );
         assert!(sim.party_size() == 0 && !sim.is_party_member(target));
     }
 
@@ -2184,16 +2690,30 @@ mod tests {
         let mut sim = economy(20);
         let avatar = sim.spawn_player(None);
         let npc = sim.any_npc().unwrap();
-        assert_eq!(sim.speech_strength(avatar, npc), 1.0, "no RPG layer → the avatar's words land at full strength");
+        assert_eq!(
+            sim.speech_strength(avatar, npc),
+            1.0,
+            "no RPG layer → the avatar's words land at full strength"
+        );
     }
 
     #[test]
     fn speech_strength_is_a_graded_check_with_the_rpg_layer() {
-        let mut sim = Simulation::new(Setup { width: 40, height: 30, seed: 2026, npcs: 20, rpg: true, ..Default::default() });
+        let mut sim = Simulation::new(Setup {
+            width: 40,
+            height: 30,
+            seed: 2026,
+            npcs: 20,
+            rpg: true,
+            ..Default::default()
+        });
         let avatar = sim.spawn_player(None);
         let npc = sim.any_npc().unwrap();
         let s = sim.speech_strength(avatar, npc);
-        assert!([0.0, 1.0, 1.5].contains(&s), "a graded persuasion result, got {s}");
+        assert!(
+            [0.0, 1.0, 1.5].contains(&s),
+            "a graded persuasion result, got {s}"
+        );
     }
 
     // --- World-interaction skill: Notice → exploration sight ---
@@ -2205,12 +2725,30 @@ mod tests {
         let _ = off.spawn_player(None);
         assert_eq!(off.player_sight(), 3, "no RPG layer → base sight");
 
-        let mut on = Simulation::new(Setup { width: 40, height: 30, seed: 2026, npcs: 20, rpg: true, ..Default::default() });
+        let mut on = Simulation::new(Setup {
+            width: 40,
+            height: 30,
+            seed: 2026,
+            npcs: 20,
+            rpg: true,
+            ..Default::default()
+        });
         let avatar = on.spawn_player(None);
         let notice = on.proficiency_of(avatar, "Notice").unwrap();
-        assert_eq!(on.player_sight(), (3 + notice as i32).max(1), "sight tracks Notice");
-        assert_eq!(on.player_perceptive(), notice >= 2, "a trained scout (Notice ≥ 2) is perceptive");
-        assert!(!off.player_perceptive(), "no RPG layer → not perceptive (active search only)");
+        assert_eq!(
+            on.player_sight(),
+            (3 + notice as i32).max(1),
+            "sight tracks Notice"
+        );
+        assert_eq!(
+            on.player_perceptive(),
+            notice >= 2,
+            "a trained scout (Notice ≥ 2) is perceptive"
+        );
+        assert!(
+            !off.player_perceptive(),
+            "no RPG layer → not perceptive (active search only)"
+        );
     }
 
     // --- Survival layer ---
@@ -2220,7 +2758,10 @@ mod tests {
         let mut sim = economy(20);
         assert!(!sim.survival_enabled());
         let npc = sim.any_npc().unwrap();
-        assert!(sim.vitals_of(npc).is_none(), "no survival layer → no vitals (byte-identical)");
+        assert!(
+            sim.vitals_of(npc).is_none(),
+            "no survival layer → no vitals (byte-identical)"
+        );
     }
 
     #[test]
@@ -2236,9 +2777,16 @@ mod tests {
         });
         assert!(sim.survival_enabled());
         let npc = sim.any_npc().unwrap();
-        assert_eq!(sim.vitals_of(npc).unwrap().thirst, 100.0, "vitals start full");
+        assert_eq!(
+            sim.vitals_of(npc).unwrap().thirst,
+            100.0,
+            "vitals start full"
+        );
         let avatar = sim.spawn_player(None);
-        assert!(sim.vitals_of(avatar).is_some(), "the avatar is a body too — it carries vitals");
+        assert!(
+            sim.vitals_of(avatar).is_some(),
+            "the avatar is a body too — it carries vitals"
+        );
         // The per-day system runs every tick and keeps every meter in range (no NaN/overflow).
         sim.run(20);
         if let Some(v) = sim.vitals_of(npc) {
@@ -2256,7 +2804,11 @@ mod tests {
         assert!(!sim.exploration_enabled());
         assert!(sim.road_tiles().is_empty(), "no roads without the layer");
         let c = sim.substrate().topology().coord(0);
-        assert_eq!(sim.travel_cost_at(c), 1.0, "no cost field → a flat day per hex (byte-identical)");
+        assert_eq!(
+            sim.travel_cost_at(c),
+            1.0,
+            "no cost field → a flat day per hex (byte-identical)"
+        );
     }
 
     #[test]
@@ -2271,8 +2823,16 @@ mod tests {
         });
         let _ = sim.spawn_player(None);
         assert!(sim.exploration_enabled());
-        assert!(!sim.road_tiles().is_empty(), "roads were laid between the settlements");
-        assert!(sim.road_tiles().iter().any(|&c| sim.travel_cost_at(c) < 1.0), "roads make some tiles the fast lane");
+        assert!(
+            !sim.road_tiles().is_empty(),
+            "roads were laid between the settlements"
+        );
+        assert!(
+            sim.road_tiles()
+                .iter()
+                .any(|&c| sim.travel_cost_at(c) < 1.0),
+            "roads make some tiles the fast lane"
+        );
         // Gear can be equipped — the climbing/boat gates read it.
         assert!(!sim.player_has_gear("climbing_gear"));
         assert!(sim.player_equip("climbing_gear") && sim.player_has_gear("climbing_gear"));
@@ -2303,8 +2863,14 @@ mod tests {
         };
         let a = run();
         let b = run();
-        assert_eq!(a, b, "rpg + party + survival + exploration on → byte-identical per seed");
-        assert!(a.1 <= a.0, "no layer mints money — the total only falls (deaths), trade conserving the rest");
+        assert_eq!(
+            a, b,
+            "rpg + party + survival + exploration on → byte-identical per seed"
+        );
+        assert!(
+            a.1 <= a.0,
+            "no layer mints money — the total only falls (deaths), trade conserving the rest"
+        );
     }
 
     #[test]
@@ -2317,7 +2883,10 @@ mod tests {
         // assigned a job: the planner found both.
         sim.run(180);
         let (farmers, bakers) = (sim.practitioners("farming"), sim.practitioners("baking"));
-        assert!(farmers > 0 && bakers > 0, "occupations didn't emerge (farming {farmers}, baking {bakers})");
+        assert!(
+            farmers > 0 && bakers > 0,
+            "occupations didn't emerge (farming {farmers}, baking {bakers})"
+        );
     }
 
     /// Economy goals plus a "rule" goal (hold the throne, gated on ambition).
@@ -2357,7 +2926,10 @@ mod tests {
         sim.run(160);
         // Nobody was handed the crown: the ambitious sought it out, and the throne
         // (one shared seat) ends in ambitious hands — never the content's.
-        assert!(sim.throne_held_by_the_ambitious(), "an ambitious person should hold the throne");
+        assert!(
+            sim.throne_held_by_the_ambitious(),
+            "an ambitious person should hold the throne"
+        );
     }
 
     #[test]
@@ -2371,7 +2943,10 @@ mod tests {
         sim.run(150);
         // The economy sustains everyone, so the same person is still here.
         let late = sim.trait_of(npc, "greed").expect("still alive");
-        assert!((late - early).abs() < 1e-6, "an innate trait must not drift ({early:.3} -> {late:.3})");
+        assert!(
+            (late - early).abs() < 1e-6,
+            "an innate trait must not drift ({early:.3} -> {late:.3})"
+        );
     }
 
     #[test]
@@ -2398,8 +2973,14 @@ mod tests {
         sim.run(160);
         let vengeance = sim.max_trait("vengeance");
         let forgiveness = sim.min_trait("forgiveness");
-        assert!(vengeance > 0.40, "sustained anger should breed vengeance (peak {vengeance:.3})");
-        assert!(forgiveness < 0.30, "and wear away its opposite, forgiveness (min {forgiveness:.3})");
+        assert!(
+            vengeance > 0.40,
+            "sustained anger should breed vengeance (peak {vengeance:.3})"
+        );
+        assert!(
+            forgiveness < 0.30,
+            "and wear away its opposite, forgiveness (min {forgiveness:.3})"
+        );
     }
 
     #[test]
@@ -2441,10 +3022,19 @@ mod tests {
         sim.run(8);
         let joy_late = sim.mood_of(king, "joy").unwrap_or(0.0);
         let greed_late = sim.trait_of(king, "greed").unwrap_or(0.0);
-        assert!(joy_early > 0.1, "crowning should bring a flush of joy ({joy_early:.3})");
-        assert!(joy_late < joy_early, "joy (a mood) should fade ({joy_early:.3} -> {joy_late:.3})");
+        assert!(
+            joy_early > 0.1,
+            "crowning should bring a flush of joy ({joy_early:.3})"
+        );
+        assert!(
+            joy_late < joy_early,
+            "joy (a mood) should fade ({joy_early:.3} -> {joy_late:.3})"
+        );
         // The disposition holds steady while the feeling cools. Weather vs climate.
-        assert!((greed_late - greed_early).abs() < 1e-6, "an unshaped trait must hold ({greed_early:.3} -> {greed_late:.3})");
+        assert!(
+            (greed_late - greed_early).abs() < 1e-6,
+            "an unshaped trait must hold ({greed_early:.3} -> {greed_late:.3})"
+        );
     }
 
     #[test]
@@ -2480,7 +3070,10 @@ mod tests {
         assert_eq!(victims.len(), 3, "three grudges should be set");
         sim.run(200);
         let killed = victims.iter().filter(|&&v| !sim.is_alive(v)).count();
-        assert!(killed >= 1, "an aggrieved hunter should run down its foe (killed {killed}/3)");
+        assert!(
+            killed >= 1,
+            "an aggrieved hunter should run down its foe (killed {killed}/3)"
+        );
     }
 
     #[test]
@@ -2528,11 +3121,23 @@ mod tests {
         let mut bound = avenging_world(reg, taboo);
         let bound_victims = bound.feud_targets();
         bound.run(200);
-        let bound_killed = bound_victims.iter().filter(|&&v| !bound.is_alive(v)).count();
+        let bound_killed = bound_victims
+            .iter()
+            .filter(|&&v| !bound.is_alive(v))
+            .count();
 
-        assert!(free_killed >= 1, "without a taboo, vengeance runs its course ({free_killed}/3)");
-        assert_eq!(bound_killed, 0, "a kill taboo should stay every hand ({bound_killed} killed)");
-        assert!(bound_killed < free_killed, "the taboo restrains relative to free vengeance");
+        assert!(
+            free_killed >= 1,
+            "without a taboo, vengeance runs its course ({free_killed}/3)"
+        );
+        assert_eq!(
+            bound_killed, 0,
+            "a kill taboo should stay every hand ({bound_killed} killed)"
+        );
+        assert!(
+            bound_killed < free_killed,
+            "the taboo restrains relative to free vengeance"
+        );
     }
 
     #[test]
@@ -2568,18 +3173,28 @@ mod tests {
         });
         // Each aggressor's foe and starting vengeance, before any blood is shed.
         let grudges = sim.grudges();
-        let before: Vec<_> =
-            grudges.into_iter().map(|(holder, foe)| (holder, foe, sim.trait_of(holder, "vengeance").unwrap())).collect();
+        let before: Vec<_> = grudges
+            .into_iter()
+            .map(|(holder, foe)| (holder, foe, sim.trait_of(holder, "vengeance").unwrap()))
+            .collect();
         sim.run(200);
         let mut hardened = 0;
         for (holder, foe, v0) in before {
             if !sim.is_alive(foe) {
-                let v1 = sim.trait_of(holder, "vengeance").expect("the killer still lives");
-                assert!(v1 > v0, "breaking the taboo should harden the killer ({v0:.3} -> {v1:.3})");
+                let v1 = sim
+                    .trait_of(holder, "vengeance")
+                    .expect("the killer still lives");
+                assert!(
+                    v1 > v0,
+                    "breaking the taboo should harden the killer ({v0:.3} -> {v1:.3})"
+                );
                 hardened += 1;
             }
         }
-        assert!(hardened >= 1, "at least one avenger should have killed — and been hardened by it");
+        assert!(
+            hardened >= 1,
+            "at least one avenger should have killed — and been hardened by it"
+        );
     }
 
     #[test]
@@ -2630,7 +3245,12 @@ mod tests {
 
         // The aggressors -- the only ones who bear a grudge at the outset (no one else
         // does), captured before any blood is shed.
-        let aggressors = |sim: &mut Simulation| -> HashSet<Entity> { sim.grudges().into_iter().map(|(holder, _)| holder).collect() };
+        let aggressors = |sim: &mut Simulation| -> HashSet<Entity> {
+            sim.grudges()
+                .into_iter()
+                .map(|(holder, _)| holder)
+                .collect()
+        };
         // Play a world out, watching tick by tick for the quarrel to change hands -- a
         // grudge taken up by someone who bore none at the start -- and noting whether an
         // aggressor is ultimately run down. (Inheritance must be caught as it happens:
@@ -2655,7 +3275,10 @@ mod tests {
         let mut dutiful = feud_world(dutiful_norms);
         let agg = aggressors(&mut dutiful);
         let (inherited, avenged) = play_out(dutiful, &agg);
-        assert!(inherited, "a slain lord's quarrel should pass to his vassal");
+        assert!(
+            inherited,
+            "a slain lord's quarrel should pass to his vassal"
+        );
         assert!(avenged >= 1, "and that vassal should run the killer down");
 
         // With only the blanket taboo: no duty to override it, so no lord ever falls and
@@ -2665,7 +3288,10 @@ mod tests {
         let mut peaceful = feud_world(taboo_only);
         let agg = aggressors(&mut peaceful);
         let (inherited, _) = play_out(peaceful, &agg);
-        assert!(!inherited, "the taboo alone keeps the peace -- no lord falls, no quarrel passes");
+        assert!(
+            !inherited,
+            "the taboo alone keeps the peace -- no lord falls, no quarrel passes"
+        );
     }
 
     #[test]
@@ -2679,7 +3305,10 @@ mod tests {
                 markets: 4,
                 feuds: 4,
                 director: true,
-                director_cfg: DirectorConfig { beat_interval: 9, ..Default::default() },
+                director_cfg: DirectorConfig {
+                    beat_interval: 9,
+                    ..Default::default()
+                },
                 sift,
                 ..Default::default()
             });
@@ -2687,10 +3316,17 @@ mod tests {
             s
         };
         let on = build(true);
-        assert!(on.chronicle_len() > 0, "a woken sift layer should record episodes from the director");
+        assert!(
+            on.chronicle_len() > 0,
+            "a woken sift layer should record episodes from the director"
+        );
 
         let off = build(false);
-        assert_eq!(off.chronicle_len(), 0, "no Chronicle resource when the sift layer is off");
+        assert_eq!(
+            off.chronicle_len(),
+            0,
+            "no Chronicle resource when the sift layer is off"
+        );
         assert_eq!(
             on.director_beats_fired(),
             off.director_beats_fired(),
@@ -2716,7 +3352,10 @@ mod tests {
                 feuds: 8,
                 director: true,
                 dialogue: true,
-                director_cfg: DirectorConfig { beat_interval: 7, ..Default::default() },
+                director_cfg: DirectorConfig {
+                    beat_interval: 7,
+                    ..Default::default()
+                },
                 sift,
                 ..Default::default()
             });
@@ -2726,14 +3365,22 @@ mod tests {
 
         let mut on = build(true);
         assert!(on.chronicle_len() > 0, "the Chronicle recorded episodes");
-        assert!(on.sift_candidate_count() > 0, "the sifter perceived forming stories");
+        assert!(
+            on.sift_candidate_count() > 0,
+            "the sifter perceived forming stories"
+        );
 
         // The interest threshold surfaces the real stories above the single-episode noise.
         let top = on.retelling(0.5);
-        assert!(!top.threads.is_empty(), "high-interest stories were surfaced");
+        assert!(
+            !top.threads.is_empty(),
+            "high-interest stories were surfaced"
+        );
         // Ranked highest-interest first.
         assert!(
-            top.threads.windows(2).all(|w| w[0].interest >= w[1].interest),
+            top.threads
+                .windows(2)
+                .all(|w| w[0].interest >= w[1].interest),
             "the retelling is ranked by interest, descending",
         );
         // The leading thread reads as a story: a labelled tension, a bound cast, and the very
@@ -2746,7 +3393,9 @@ mod tests {
         // multi-step arc formed (Active = forming, Resolved = the whole window played out).
         let full = on.retelling(0.0);
         assert!(
-            full.threads.iter().any(|t| matches!(t.status, SiftStatus::Active | SiftStatus::Resolved)),
+            full.threads
+                .iter()
+                .any(|t| matches!(t.status, SiftStatus::Active | SiftStatus::Resolved)),
             "at least one multi-step story formed over the run",
         );
 
@@ -2754,12 +3403,22 @@ mod tests {
         // re-running the dump yields the same candidate count (reading it perturbs nothing).
         let count_a = on.sift_candidate_count();
         let count_b = on.sift_candidate_count();
-        assert_eq!(count_a, count_b, "the retrospective sifter is deterministic");
+        assert_eq!(
+            count_a, count_b,
+            "the retrospective sifter is deterministic"
+        );
 
         let mut off = build(false);
-        assert_eq!(off.chronicle_len(), 0, "no Chronicle when the sift layer is off");
+        assert_eq!(
+            off.chronicle_len(),
+            0,
+            "no Chronicle when the sift layer is off"
+        );
         assert_eq!(off.sift_candidate_count(), 0, "and so nothing to sift");
-        assert!(off.retelling(0.0).threads.is_empty(), "no stories without the layer");
+        assert!(
+            off.retelling(0.0).threads.is_empty(),
+            "no stories without the layer"
+        );
         assert_eq!(
             on.director_beats_fired(),
             off.director_beats_fired(),
@@ -2785,9 +3444,16 @@ mod tests {
                 feuds: 8,
                 director: true,
                 dialogue: true,
-                director_cfg: DirectorConfig { beat_interval: 7, ..Default::default() },
+                director_cfg: DirectorConfig {
+                    beat_interval: 7,
+                    ..Default::default()
+                },
                 sift,
-                sift_cfg: config::SiftConfig { graft, min_interest: 0.5, ..Default::default() },
+                sift_cfg: config::SiftConfig {
+                    graft,
+                    min_interest: 0.5,
+                    ..Default::default()
+                },
                 ..Default::default()
             });
             s.run(200);
@@ -2802,11 +3468,20 @@ mod tests {
         assert!(!sift_off.is_empty(), "the director told beats to compare");
         // Off-by-default byte-identical: waking the sift layer + the live system + all the graft
         // code changes NOTHING in the director until the graft flag is set.
-        assert_eq!(sift_off, graft_off, "a sift-on/graft-off run is byte-identical to a sift-off run");
+        assert_eq!(
+            sift_off, graft_off,
+            "a sift-on/graft-off run is byte-identical to a sift-off run"
+        );
         // Deterministic with the graft on (the RNG stream is untouched; only RNG-free selection changes).
-        assert_eq!(graft_on_a, graft_on_b, "the grafted director is reproducible");
+        assert_eq!(
+            graft_on_a, graft_on_b,
+            "the grafted director is reproducible"
+        );
         // And the graft bites: consulting the forming stories changes which beats are told.
-        assert_ne!(graft_on_a, graft_off, "the graft steers the director toward the world's forming stories");
+        assert_ne!(
+            graft_on_a, graft_off,
+            "the graft steers the director toward the world's forming stories"
+        );
     }
 
     #[test]
@@ -2829,14 +3504,22 @@ mod tests {
 
         // The avatar accuses the listener of heresy -> the listener forms a grudge against the
         // avatar (the intent's `Grudge(who: Listener, against: Speaker)` move).
-        assert!(sim.apply_conversational_intent(listener, "an_accusation_of_heresy"), "the avatar spoke");
+        assert!(
+            sim.apply_conversational_intent(listener, "an_accusation_of_heresy"),
+            "the avatar spoke"
+        );
 
-        assert!(sim.chronicle_len() > before, "the player's accusation was recorded as an episode");
+        assert!(
+            sim.chronicle_len() > before,
+            "the player's accusation was recorded as an episode"
+        );
         // And the sifter perceives the forming story the player just seeded — the avatar is in the
         // cast of a candidate, alongside the soul it turned against the player.
         let r = sim.retelling(0.0);
         assert!(
-            r.threads.iter().any(|t| t.cast.contains(&avatar) && t.cast.contains(&listener)),
+            r.threads
+                .iter()
+                .any(|t| t.cast.contains(&avatar) && t.cast.contains(&listener)),
             "the sifter perceives the grudge the player's words bred (avatar + listener in the cast)",
         );
 
@@ -2854,7 +3537,11 @@ mod tests {
         off.run(20);
         let l = off.any_npc().unwrap();
         assert!(off.apply_conversational_intent(l, "an_accusation_of_heresy"));
-        assert_eq!(off.chronicle_len(), 0, "no Chronicle when the sift layer is off");
+        assert_eq!(
+            off.chronicle_len(),
+            0,
+            "no Chronicle when the sift layer is off"
+        );
     }
 
     #[test]
@@ -2871,13 +3558,22 @@ mod tests {
             feuds: 8,
             director: true,
             dialogue: true,
-            director_cfg: DirectorConfig { beat_interval: 7, ..Default::default() },
+            director_cfg: DirectorConfig {
+                beat_interval: 7,
+                ..Default::default()
+            },
             sift: true,
             ..Default::default()
         });
         s.run(200);
-        assert!(s.sift_candidate_count() > 0, "the run produced stories to compare");
-        assert!(s.sift_paths_agree(), "incremental sifter must agree with the retrospective oracle");
+        assert!(
+            s.sift_candidate_count() > 0,
+            "the run produced stories to compare"
+        );
+        assert!(
+            s.sift_paths_agree(),
+            "incremental sifter must agree with the retrospective oracle"
+        );
     }
 
     #[test]
@@ -2890,7 +3586,10 @@ mod tests {
         sim.run(50);
         let mut now = sim.npc_positions();
         now.sort_by_key(|c| (c.col, c.row));
-        assert_ne!(now, spawn, "no NPC ever moved — the planner's Move step isn't taking effect");
+        assert_ne!(
+            now, spawn,
+            "no NPC ever moved — the planner's Move step isn't taking effect"
+        );
     }
 
     #[test]
@@ -2899,36 +3598,87 @@ mod tests {
         let before = sim.total_money();
         sim.run(120);
         // Exact: trade only moves coins; only death removes them.
-        assert!(sim.total_money() <= before, "money was created ({before} -> {})", sim.total_money());
+        assert!(
+            sim.total_money() <= before,
+            "money was created ({before} -> {})",
+            sim.total_money()
+        );
     }
 
     #[test]
     fn economy_is_deterministic() {
-        let mut a = Simulation::new(Setup { width: 40, height: 30, seed: 7, npcs: 40, ..Default::default() });
-        let mut b = Simulation::new(Setup { width: 40, height: 30, seed: 7, npcs: 40, ..Default::default() });
+        let mut a = Simulation::new(Setup {
+            width: 40,
+            height: 30,
+            seed: 7,
+            npcs: 40,
+            ..Default::default()
+        });
+        let mut b = Simulation::new(Setup {
+            width: 40,
+            height: 30,
+            seed: 7,
+            npcs: 40,
+            ..Default::default()
+        });
         a.run(80);
         b.run(80);
         assert_eq!(a.npc_count(), b.npc_count());
-        assert_eq!(a.total_money(), b.total_money(), "same seed must give the same economy");
+        assert_eq!(
+            a.total_money(),
+            b.total_money(),
+            "same seed must give the same economy"
+        );
     }
 
     // --- Tile features ---
 
     #[test]
     fn the_world_is_stocked_with_features() {
-        let a = Simulation::new(Setup { width: 48, height: 36, seed: 7, npcs: 20, ..Default::default() });
+        let a = Simulation::new(Setup {
+            width: 48,
+            height: 36,
+            seed: 7,
+            npcs: 20,
+            ..Default::default()
+        });
         let cat = a.feature_catalog();
         let feats = a.features();
-        assert!(feats.total() > 10, "the world should be richly stocked, got {}", feats.total());
-        assert!(feats.count_of(cat, Category::Community) > 0, "no settlements formed");
-        let to_explore = feats.count_of(cat, Category::Ruin) + feats.count_of(cat, Category::Wilderness);
+        assert!(
+            feats.total() > 10,
+            "the world should be richly stocked, got {}",
+            feats.total()
+        );
+        assert!(
+            feats.count_of(cat, Category::Community) > 0,
+            "no settlements formed"
+        );
+        let to_explore =
+            feats.count_of(cat, Category::Ruin) + feats.count_of(cat, Category::Wilderness);
         assert!(to_explore > 0, "no ruins or wonders to explore");
 
         // Deterministic: a second identical build places byte-identical features.
-        let b = Simulation::new(Setup { width: 48, height: 36, seed: 7, npcs: 20, ..Default::default() });
-        let va: Vec<_> = a.features().iter().map(|(i, f)| (i, f.kind, f.discovered)).collect();
-        let vb: Vec<_> = b.features().iter().map(|(i, f)| (i, f.kind, f.discovered)).collect();
-        assert_eq!(va, vb, "feature placement must be deterministic across builds");
+        let b = Simulation::new(Setup {
+            width: 48,
+            height: 36,
+            seed: 7,
+            npcs: 20,
+            ..Default::default()
+        });
+        let va: Vec<_> = a
+            .features()
+            .iter()
+            .map(|(i, f)| (i, f.kind, f.discovered))
+            .collect();
+        let vb: Vec<_> = b
+            .features()
+            .iter()
+            .map(|(i, f)| (i, f.kind, f.discovered))
+            .collect();
+        assert_eq!(
+            va, vb,
+            "feature placement must be deterministic across builds"
+        );
     }
 
     #[test]
@@ -2947,7 +3697,11 @@ mod tests {
         });
         let community_idx: std::collections::HashSet<usize> = {
             let cat = sim.feature_catalog();
-            sim.features().iter().filter(|(_, f)| cat.def(f.kind).category == Category::Community).map(|(i, _)| i).collect()
+            sim.features()
+                .iter()
+                .filter(|(_, f)| cat.def(f.kind).category == Category::Community)
+                .map(|(i, _)| i)
+                .collect()
         };
         let market_tiles: Vec<Coord> = {
             let mut q = sim.world.query::<(&Position, &Market)>();
@@ -2956,7 +3710,10 @@ mod tests {
         assert!(!market_tiles.is_empty(), "no markets were seated");
         let topo = sim.substrate().topology();
         for c in market_tiles {
-            assert!(community_idx.contains(&topo.index_of(c)), "a market was seated off any settlement at {c:?}");
+            assert!(
+                community_idx.contains(&topo.index_of(c)),
+                "a market was seated off any settlement at {c:?}"
+            );
         }
     }
 
@@ -2964,21 +3721,54 @@ mod tests {
     fn features_advertise_affordances() {
         // The bundled catalog gives wonders smart-object actions (forage, shelter,
         // bathe), so a world is stocked with places agents can *use*, not just see.
-        let a = Simulation::new(Setup { width: 48, height: 36, seed: 7, npcs: 20, ..Default::default() });
-        assert!(!a.affordances().is_empty(), "no feature advertised an affordance");
-        let b = Simulation::new(Setup { width: 48, height: 36, seed: 7, npcs: 20, ..Default::default() });
-        assert_eq!(a.affordances().len(), b.affordances().len(), "affordance build must be deterministic");
+        let a = Simulation::new(Setup {
+            width: 48,
+            height: 36,
+            seed: 7,
+            npcs: 20,
+            ..Default::default()
+        });
+        assert!(
+            !a.affordances().is_empty(),
+            "no feature advertised an affordance"
+        );
+        let b = Simulation::new(Setup {
+            width: 48,
+            height: 36,
+            seed: 7,
+            npcs: 20,
+            ..Default::default()
+        });
+        assert_eq!(
+            a.affordances().len(),
+            b.affordances().len(),
+            "affordance build must be deterministic"
+        );
     }
 
     #[test]
     fn worked_sites_stay_within_bounds() {
         // Depletion (use draws a site down) and regeneration (the land refills it)
         // keep every site's remaining within [0, capacity] over a long run.
-        let mut sim = Simulation::new(Setup { width: 40, height: 30, seed: 5, npcs: 36, warmup: 200, ..Default::default() });
+        let mut sim = Simulation::new(Setup {
+            width: 40,
+            height: 30,
+            seed: 5,
+            npcs: 36,
+            warmup: 200,
+            ..Default::default()
+        });
         sim.run(120);
         for s in sim.affordances() {
-            assert!(s.remaining >= 0.0, "affordance went negative ({})", s.remaining);
-            assert!(s.capacity == 0 || s.remaining <= s.capacity as f32, "affordance exceeded capacity");
+            assert!(
+                s.remaining >= 0.0,
+                "affordance went negative ({})",
+                s.remaining
+            );
+            assert!(
+                s.capacity == 0 || s.remaining <= s.capacity as f32,
+                "affordance exceeded capacity"
+            );
         }
     }
 
@@ -2998,19 +3788,31 @@ mod tests {
             ..Default::default()
         });
         sim.run(40); // a couple of faction turns
-        assert!(!sim.factions().is_empty(), "no factions formed around the courts");
+        assert!(
+            !sim.factions().is_empty(),
+            "no factions formed around the courts"
+        );
 
         sim.run(220); // many more turns — loyalty follows power, so blocs consolidate
         let factions: Vec<_> = sim.factions().to_vec();
         assert!(!factions.is_empty(), "the factions all collapsed");
         // Every surviving bloc clears the threshold and has its stats and a live head.
         for f in &factions {
-            assert!(f.members.len() >= 3 && f.force > 0.0, "a faction held below threshold: {f:?}");
-            assert!(f.head().is_some_and(|l| sim.is_alive(l)), "a faction's leader is dead but it persists");
+            assert!(
+                f.members.len() >= 3 && f.force > 0.0,
+                "a faction held below threshold: {f:?}"
+            );
+            assert!(
+                f.head().is_some_and(|l| sim.is_alive(l)),
+                "a faction's leader is dead but it persists"
+            );
         }
         // Preferential attachment should have grown a dominant bloc past the minimum.
         let largest = factions.iter().map(|f| f.members.len()).max().unwrap();
-        assert!(largest > 3, "expected a dominant bloc to consolidate, largest = {largest}");
+        assert!(
+            largest > 3,
+            "expected a dominant bloc to consolidate, largest = {largest}"
+        );
     }
 
     #[test]
@@ -3018,7 +3820,10 @@ mod tests {
         // Factions *act*: each turn members pay their leader tribute. That coin flows
         // up (never created — total money can only fall, as deaths remove it), leaving
         // at least one leader richer than its faction's average member.
-        let cfg = FactionConfig { tax_rate: 0.12, ..Default::default() };
+        let cfg = FactionConfig {
+            tax_rate: 0.12,
+            ..Default::default()
+        };
         let mut sim = Simulation::new(Setup {
             width: 48,
             height: 36,
@@ -3032,14 +3837,23 @@ mod tests {
         });
         let before = sim.total_money();
         sim.run(260);
-        assert!(sim.total_money() <= before, "tribute must not create money ({before} -> {})", sim.total_money());
+        assert!(
+            sim.total_money() <= before,
+            "tribute must not create money ({before} -> {})",
+            sim.total_money()
+        );
 
         let factions: Vec<_> = sim.factions().to_vec();
         assert!(!factions.is_empty(), "no factions formed to tax");
-        let leader_richer = factions
-            .iter()
-            .any(|f| f.head().and_then(|l| sim.money_of(l)).is_some_and(|m| m > f.wealth / f.members.len() as i64));
-        assert!(leader_richer, "tribute should leave a leader above its faction's average wealth");
+        let leader_richer = factions.iter().any(|f| {
+            f.head()
+                .and_then(|l| sim.money_of(l))
+                .is_some_and(|m| m > f.wealth / f.members.len() as i64)
+        });
+        assert!(
+            leader_richer,
+            "tribute should leave a leader above its faction's average wealth"
+        );
     }
 
     #[test]
@@ -3047,8 +3861,16 @@ mod tests {
         // A faction's government is set by the kind of court it forms around — a guild
         // is an oligarchy, a temple a democracy, a royal seat a monarchy. (Which kinds
         // actually form factions varies by world; here we check the rule itself.)
-        let mut sim =
-            Simulation::new(Setup { width: 48, height: 36, seed: 7, warmup: 200, npcs: 44, markets: 6, markets_on_settlements: true, ..Default::default() });
+        let mut sim = Simulation::new(Setup {
+            width: 48,
+            height: 36,
+            seed: 7,
+            warmup: 200,
+            npcs: 44,
+            markets: 6,
+            markets_on_settlements: true,
+            ..Default::default()
+        });
         sim.run(120);
         let cat = sim.feature_catalog();
         let factions = sim.factions();
@@ -3057,7 +3879,9 @@ mod tests {
             let court = sim
                 .features_at(f.seat)
                 .iter()
-                .find_map(|feat| (cat.def(feat.kind).category == Category::Court).then(|| cat.name(feat.kind)))
+                .find_map(|feat| {
+                    (cat.def(feat.kind).category == Category::Court).then(|| cat.name(feat.kind))
+                })
                 .expect("a faction sits on a court");
             let expected = match court {
                 "guild" | "thieves_guild" => Government::Oligarchy,
@@ -3072,8 +3896,16 @@ mod tests {
     fn people_can_hold_multiple_factions() {
         // Membership is no longer exclusive: someone within reach of two courts belongs
         // to both.
-        let mut sim =
-            Simulation::new(Setup { width: 48, height: 36, seed: 7, warmup: 200, npcs: 44, markets: 6, markets_on_settlements: true, ..Default::default() });
+        let mut sim = Simulation::new(Setup {
+            width: 48,
+            height: 36,
+            seed: 7,
+            warmup: 200,
+            npcs: 44,
+            markets: 6,
+            markets_on_settlements: true,
+            ..Default::default()
+        });
         sim.run(120);
         let mut q = sim.world.query_filtered::<&Allegiance, With<Npc>>();
         let multi = q.iter(&sim.world).any(|a| a.0.len() >= 2);
@@ -3084,7 +3916,10 @@ mod tests {
     fn war_makes_rivals_exclusive_and_costs_lives() {
         // With a low war threshold, an out-sized faction makes war on a weaker neighbour:
         // they become mutually exclusive (a law), and the war takes lives.
-        let cfg = FactionConfig { war_force_ratio: 1.1, ..Default::default() };
+        let cfg = FactionConfig {
+            war_force_ratio: 1.1,
+            ..Default::default()
+        };
         let mut sim = Simulation::new(Setup {
             width: 48,
             height: 36,
@@ -3106,11 +3941,17 @@ mod tests {
             sim.run(1);
             let factions = sim.factions();
             warred |= factions.iter().any(|f| !f.at_war.is_empty());
-            excluded |= factions.iter().any(|f| f.laws.iter().any(|l| matches!(l, Law::Exclude(_))));
+            excluded |= factions
+                .iter()
+                .any(|f| f.laws.iter().any(|l| matches!(l, Law::Exclude(_))));
         }
         assert!(warred, "no faction ever went to war");
         assert!(excluded, "war should impose mutual exclusion");
-        assert!(sim.npc_count() < before, "war (and enforcement) should have cost lives ({before} -> {})", sim.npc_count());
+        assert!(
+            sim.npc_count() < before,
+            "war (and enforcement) should have cost lives ({before} -> {})",
+            sim.npc_count()
+        );
     }
 
     #[test]
@@ -3118,7 +3959,10 @@ mod tests {
         // Command: a faction at war sets its keenest member on the enemy's leader — a
         // grudge granted through the ordinary avenge machinery. With no feuds seeded, any
         // grudge that appears is a war champion a faction drafted.
-        let cfg = FactionConfig { war_force_ratio: 1.1, ..Default::default() };
+        let cfg = FactionConfig {
+            war_force_ratio: 1.1,
+            ..Default::default()
+        };
         let mut sim = Simulation::new(Setup {
             width: 48,
             height: 36,
@@ -3146,18 +3990,31 @@ mod tests {
             }
         }
         assert!(warred, "no war broke out");
-        assert!(drafted, "war should have drafted a champion (a grudge against a rival)");
+        assert!(
+            drafted,
+            "war should have drafted a champion (a grudge against a rival)"
+        );
     }
 
     #[test]
     fn people_form_opinions_of_their_leaders() {
         // The opinion graph: serving a leader (and warring on rivals) leaves people with
         // real, directed opinions of the figures they have dealt with.
-        let mut sim =
-            Simulation::new(Setup { width: 48, height: 36, seed: 7, warmup: 200, npcs: 44, markets: 6, markets_on_settlements: true, ..Default::default() });
+        let mut sim = Simulation::new(Setup {
+            width: 48,
+            height: 36,
+            seed: 7,
+            warmup: 200,
+            npcs: 44,
+            markets: 6,
+            markets_on_settlements: true,
+            ..Default::default()
+        });
         sim.run(140);
         let mut q = sim.world.query_filtered::<&Opinion, With<Npc>>();
-        let formed = q.iter(&sim.world).any(|o| o.0.values().any(|&v| v.abs() > 0.05));
+        let formed = q
+            .iter(&sim.world)
+            .any(|o| o.0.values().any(|&v| v.abs() > 0.05));
         assert!(formed, "no one formed an opinion of a leader");
     }
 
@@ -3186,18 +4043,30 @@ mod tests {
                 sim.detained_count() > 0
             })
         };
-        assert!([1, 2, 5].into_iter().any(jails_someone), "a no-kill faction should have jailed a grudge-bearing member");
+        assert!(
+            [1, 2, 5].into_iter().any(jails_someone),
+            "a no-kill faction should have jailed a grudge-bearing member"
+        );
     }
 
     #[test]
     fn factions_are_deterministic() {
         let build = || {
             let mut s = Simulation::new(Setup {
-                width: 48, height: 36, seed: 7, warmup: 200, npcs: 40, markets: 6, markets_on_settlements: true,
+                width: 48,
+                height: 36,
+                seed: 7,
+                warmup: 200,
+                npcs: 40,
+                markets: 6,
+                markets_on_settlements: true,
                 ..Default::default()
             });
             s.run(80);
-            s.factions().iter().map(|f| (f.seat.col, f.seat.row, f.members.len())).collect::<Vec<_>>()
+            s.factions()
+                .iter()
+                .map(|f| (f.seat.col, f.seat.row, f.members.len()))
+                .collect::<Vec<_>>()
         };
         assert_eq!(build(), build(), "same seed must give the same factions");
     }
@@ -3209,27 +4078,54 @@ mod tests {
         // The verification harness: across a long simulation, no step may create
         // money, grow the population, lose affordance uses, or price a good out of
         // band. A trip would mean a bug wearing the costume of emergence.
-        let mut sim = Simulation::new(Setup { width: 48, height: 36, seed: 9, npcs: 48, warmup: 200, ..Default::default() });
+        let mut sim = Simulation::new(Setup {
+            width: 48,
+            height: 36,
+            seed: 9,
+            npcs: 48,
+            warmup: 200,
+            ..Default::default()
+        });
         let mut prev = sim.census();
         for _ in 0..150 {
             sim.run(1);
             let now = sim.census();
             let violations = check(&prev, &now);
-            assert!(violations.is_empty(), "invariant broken at tick {}: {violations:?}", now.tick);
+            assert!(
+                violations.is_empty(),
+                "invariant broken at tick {}: {violations:?}",
+                now.tick
+            );
             prev = now;
         }
         // And the run was a real economy: specialists meant more than one trade is
         // actually practised (the emergent division of labour).
-        assert!(prev.trades_in_use() >= 2, "expected a division of labour, professions = {:?}", prev.professions);
+        assert!(
+            prev.trades_in_use() >= 2,
+            "expected a division of labour, professions = {:?}",
+            prev.professions
+        );
     }
 
     #[test]
     fn the_census_reads_the_world() {
-        let mut sim = Simulation::new(Setup { width: 48, height: 36, seed: 3, npcs: 30, ..Default::default() });
+        let mut sim = Simulation::new(Setup {
+            width: 48,
+            height: 36,
+            seed: 3,
+            npcs: 30,
+            ..Default::default()
+        });
         let c = sim.census();
         assert_eq!(c.population, 30, "census should count the living");
-        assert!(c.money > 0 && c.markets > 0, "an economy should have coins and markets");
-        assert!(c.features > 0 && c.affordance_sites > 0, "the world should be stocked and afford actions");
+        assert!(
+            c.money > 0 && c.markets > 0,
+            "an economy should have coins and markets"
+        );
+        assert!(
+            c.features > 0 && c.affordance_sites > 0,
+            "the world should be stocked and afford actions"
+        );
     }
 
     #[test]
@@ -3237,7 +4133,14 @@ mod tests {
         // The discovery system's invariant: after a tick, no Landmark or Hidden
         // feature stays latent on a hex an NPC occupies — a turn there finds it.
         // (Secrets need more than presence, so they may remain.)
-        let mut sim = Simulation::new(Setup { width: 40, height: 30, seed: 5, warmup: 200, npcs: 40, ..Default::default() });
+        let mut sim = Simulation::new(Setup {
+            width: 40,
+            height: 30,
+            seed: 5,
+            warmup: 200,
+            npcs: 40,
+            ..Default::default()
+        });
         sim.run(120);
         let occupied: Vec<Coord> = {
             let mut q = sim.world.query_filtered::<&Position, With<Npc>>();
@@ -3250,7 +4153,10 @@ mod tests {
             for f in feats.at_index(topo.index_of(c)) {
                 let tier = cat.def(f.kind).discovery;
                 if matches!(tier, Discovery::Landmark | Discovery::Hidden) {
-                    assert!(f.discovered, "an NPC stands on an undiscovered {tier:?} feature");
+                    assert!(
+                        f.discovered,
+                        "an NPC stands on an undiscovered {tier:?} feature"
+                    );
                 }
             }
         }
@@ -3286,7 +4192,10 @@ mod tests {
             director,
             // A brisker cadence so a story of many varied beats is told without a
             // marathon run (keeps the test suite quick).
-            director_cfg: DirectorConfig { beat_interval: 9, ..Default::default() },
+            director_cfg: DirectorConfig {
+                beat_interval: 9,
+                ..Default::default()
+            },
             ..Default::default()
         })
     }
@@ -3295,12 +4204,29 @@ mod tests {
     fn the_director_sleeps_unless_woken() {
         // Off by default: no protagonist, no beats told, no gratuitous suffering — a
         // world before this layer existed.
-        let mut sim =
-            Simulation::new(Setup { width: 48, height: 36, seed: 11, warmup: 200, npcs: 40, ..Default::default() });
+        let mut sim = Simulation::new(Setup {
+            width: 48,
+            height: 36,
+            seed: 11,
+            warmup: 200,
+            npcs: 40,
+            ..Default::default()
+        });
         sim.run(80);
-        assert!(sim.protagonist().is_none(), "no protagonist should be tagged when the director sleeps");
-        assert_eq!(sim.director_beats_fired(), 0, "a sleeping director tells no story");
-        assert_eq!(sim.gratuitous_total(), 0.0, "a sleeping director authors no suffering");
+        assert!(
+            sim.protagonist().is_none(),
+            "no protagonist should be tagged when the director sleeps"
+        );
+        assert_eq!(
+            sim.director_beats_fired(),
+            0,
+            "a sleeping director tells no story"
+        );
+        assert_eq!(
+            sim.gratuitous_total(),
+            0.0,
+            "a sleeping director authors no suffering"
+        );
     }
 
     #[test]
@@ -3312,9 +4238,18 @@ mod tests {
         sim.run(200);
         let told = sim.director_beats_fired();
         let distinct = sim.director_distinct_beats();
-        assert!(told >= 8, "the director should have told a story of several beats (told {told})");
-        assert!(distinct >= 5, "the story should be varied, not one beat on repeat (distinct {distinct}/{told})");
-        assert!(sim.gratuitous_total() > 0.0, "telling its story should author gratuitous suffering");
+        assert!(
+            told >= 8,
+            "the director should have told a story of several beats (told {told})"
+        );
+        assert!(
+            distinct >= 5,
+            "the story should be varied, not one beat on repeat (distinct {distinct}/{told})"
+        );
+        assert!(
+            sim.gratuitous_total() > 0.0,
+            "telling its story should author gratuitous suffering"
+        );
     }
 
     #[test]
@@ -3327,13 +4262,35 @@ mod tests {
         let mut sim = staged_seeded(true, 11, 56);
         sim.run(240);
         let manufactured_grudges = !sim.grudges().is_empty();
-        let log: Vec<&str> = sim.director_log().iter().map(|(_, id)| id.as_str()).collect();
-        let touched_world = log.iter().any(|id| matches!(*id, "the_famine" | "the_long_winter" | "a_loved_one_falls"));
-        let touched_politics =
-            log.iter().any(|id| matches!(*id, "the_drums_of_war" | "the_faction_turns_persecutor" | "the_mob_demands_blood" | "a_defection_sown"));
-        assert!(manufactured_grudges, "the director should have manufactured grudges between people");
-        assert!(touched_world, "the director should have struck the world (a disaster), not only people");
-        assert!(touched_politics, "the director should have worked the faction layer (a political beat)");
+        let log: Vec<&str> = sim
+            .director_log()
+            .iter()
+            .map(|(_, id)| id.as_str())
+            .collect();
+        let touched_world = log
+            .iter()
+            .any(|id| matches!(*id, "the_famine" | "the_long_winter" | "a_loved_one_falls"));
+        let touched_politics = log.iter().any(|id| {
+            matches!(
+                *id,
+                "the_drums_of_war"
+                    | "the_faction_turns_persecutor"
+                    | "the_mob_demands_blood"
+                    | "a_defection_sown"
+            )
+        });
+        assert!(
+            manufactured_grudges,
+            "the director should have manufactured grudges between people"
+        );
+        assert!(
+            touched_world,
+            "the director should have struck the world (a disaster), not only people"
+        );
+        assert!(
+            touched_politics,
+            "the director should have worked the faction layer (a political beat)"
+        );
     }
 
     /// A *freed* world — the configuration the player would reach through ordinary life
@@ -3364,18 +4321,24 @@ mod tests {
             warmup: 200,
             npcs: 40,
             markets: 6,
-            markets_on_settlements: false,                                  // scattered
-            throne: false,                                                  // no coveted prize
+            markets_on_settlements: false, // scattered
+            throne: false,                 // no coveted prize
             ambitious: 0,
             feuds: 0,
-            initial_food: 30,                                               // deep larders — surplus
+            initial_food: 30, // deep larders — surplus
             initial_market_stock: 80,
-            faction_cfg: FactionConfig { period: 0, ..Default::default() }, // stateless — no blocs to set alight
+            faction_cfg: FactionConfig {
+                period: 0,
+                ..Default::default()
+            }, // stateless — no blocs to set alight
             goals,
             norms,
             registry: reg,
             director: true,
-            director_cfg: DirectorConfig { beat_interval: 9, ..Default::default() },
+            director_cfg: DirectorConfig {
+                beat_interval: 9,
+                ..Default::default()
+            },
             ..Default::default()
         })
     }
@@ -3397,12 +4360,18 @@ mod tests {
         let f_grat = freed.gratuitous_total();
         let f_told = freed.director_beats_fired();
 
-        assert!(v_grat > 0.0 && v_told > 5, "the harsh world should feed the director (told {v_told}, grat {v_grat:.0})");
+        assert!(
+            v_grat > 0.0 && v_told > 5,
+            "the harsh world should feed the director (told {v_told}, grat {v_grat:.0})"
+        );
         assert!(
             f_grat < 0.3 * v_grat,
             "a freed world should quiet the director: gratuitous {f_grat:.0} vs {v_grat:.0} (beats {f_told} vs {v_told})"
         );
-        assert!(freed.npc_count() > 0, "and the freed world lives on — its own life, uncharged");
+        assert!(
+            freed.npc_count() > 0,
+            "and the freed world lives on — its own life, uncharged"
+        );
     }
 
     #[test]
@@ -3413,7 +4382,11 @@ mod tests {
         // proof the storylets compose rather than fire in isolation.
         let mut sim = staged(true);
         sim.run(360);
-        let log: std::collections::HashSet<&str> = sim.director_log().iter().map(|(_, id)| id.as_str()).collect();
+        let log: std::collections::HashSet<&str> = sim
+            .director_log()
+            .iter()
+            .map(|(_, id)| id.as_str())
+            .collect();
         let chained = [
             "the_tyrants_reign",
             "the_revolt",
@@ -3451,7 +4424,8 @@ mod tests {
         sim.run(320);
 
         // The arc moves through its phases — the cadence is not a flat sequence.
-        let phases: std::collections::HashSet<Phase> = sim.director_cadence().iter().map(|c| c.phase).collect();
+        let phases: std::collections::HashSet<Phase> =
+            sim.director_cadence().iter().map(|c| c.phase).collect();
         assert!(
             phases.len() >= 3 && phases.contains(&Phase::Setup),
             "threads should groom (Setup) and move through several phases, saw {phases:?}"
@@ -3469,7 +4443,10 @@ mod tests {
         // Staged experience counts the joy too, so it exceeds the suffering-only total.
         let (staged, grat) = (sim.director_staged_total(), sim.gratuitous_total());
         assert!(grat > 0.0, "the season should author some suffering");
-        assert!(staged > grat, "staged experience (joy + suffering) should exceed suffering alone ({staged:.0} vs {grat:.0})");
+        assert!(
+            staged > grat,
+            "staged experience (joy + suffering) should exceed suffering alone ({staged:.0} vs {grat:.0})"
+        );
     }
 
     #[test]
@@ -3482,13 +4459,17 @@ mod tests {
         let mut sim = staged(true);
         sim.run(480);
 
-        let mut counts: std::collections::HashMap<Register, usize> = std::collections::HashMap::new();
+        let mut counts: std::collections::HashMap<Register, usize> =
+            std::collections::HashMap::new();
         for c in sim.director_cadence() {
             *counts.entry(c.register).or_insert(0) += 1;
         }
         let betrayal = counts.get(&Register::Betrayal).copied().unwrap_or(0);
         let top = counts.values().copied().max().unwrap_or(0);
-        assert!(betrayal > 0 && betrayal == top, "betrayal should top the season's registers (got {counts:?})");
+        assert!(
+            betrayal > 0 && betrayal == top,
+            "betrayal should top the season's registers (got {counts:?})"
+        );
 
         // A **collision** — a climax timed onto a high (the beloved dies at the wedding) — is
         // doubly emergent: a thread must reach its climax *and* the protagonist be up at that
@@ -3500,7 +4481,10 @@ mod tests {
             s.run(600);
             s.director_cadence().iter().any(|c| c.collision)
         });
-        assert!(collided, "the director should time a climax onto a high in at least one season (a collision)");
+        assert!(
+            collided,
+            "the director should time a climax onto a high in at least one season (a collision)"
+        );
     }
 
     // --- Emergent dialogue ---
@@ -3523,7 +4507,10 @@ mod tests {
             goals,
             registry: reg,
             director: true,
-            director_cfg: DirectorConfig { beat_interval: 9, ..Default::default() },
+            director_cfg: DirectorConfig {
+                beat_interval: 9,
+                ..Default::default()
+            },
             dialogue: true,
             dialogue_cfg: DialogueConfig::default(),
             ..Default::default()
@@ -3533,10 +4520,20 @@ mod tests {
     #[test]
     fn dialogue_sleeps_unless_woken() {
         // Off by default: not a word spoken, the run unchanged from before this layer.
-        let mut sim =
-            Simulation::new(Setup { width: 44, height: 32, seed: 11, warmup: 200, npcs: 40, ..Default::default() });
+        let mut sim = Simulation::new(Setup {
+            width: 44,
+            height: 32,
+            seed: 11,
+            warmup: 200,
+            npcs: 40,
+            ..Default::default()
+        });
         sim.run(60);
-        assert_eq!(sim.dialogue_count(), 0, "a sleeping dialogue layer speaks nothing");
+        assert_eq!(
+            sim.dialogue_count(),
+            0,
+            "a sleeping dialogue layer speaks nothing"
+        );
     }
 
     #[test]
@@ -3546,17 +4543,32 @@ mod tests {
         // every line grounded in who is speaking and to whom.
         let mut sim = chatty(11);
         sim.run(220);
-        assert!(sim.dialogue_count() > 20, "a peopled, dramatic world should speak (said {})", sim.dialogue_count());
-        let acts: std::collections::HashSet<SpeechAct> = sim.dialogue_log().iter().map(|u| u.act).collect();
+        assert!(
+            sim.dialogue_count() > 20,
+            "a peopled, dramatic world should speak (said {})",
+            sim.dialogue_count()
+        );
+        let acts: std::collections::HashSet<SpeechAct> =
+            sim.dialogue_log().iter().map(|u| u.act).collect();
         assert!(acts.len() >= 4, "the talk should be varied, saw {acts:?}");
-        let grievance = sim.dialogue_log().iter().any(|u| matches!(u.act, SpeechAct::Accuse | SpeechAct::Threaten));
-        let warmth = sim
+        let grievance = sim
             .dialogue_log()
             .iter()
-            .any(|u| matches!(u.act, SpeechAct::Greet | SpeechAct::Confide | SpeechAct::Console | SpeechAct::Praise));
-        assert!(grievance && warmth, "grievance and warmth should both emerge (grievance {grievance}, warmth {warmth})");
+            .any(|u| matches!(u.act, SpeechAct::Accuse | SpeechAct::Threaten));
+        let warmth = sim.dialogue_log().iter().any(|u| {
+            matches!(
+                u.act,
+                SpeechAct::Greet | SpeechAct::Confide | SpeechAct::Console | SpeechAct::Praise
+            )
+        });
         assert!(
-            sim.dialogue_log().iter().any(|u| u.surface.contains(&u.listener_name)),
+            grievance && warmth,
+            "grievance and warmth should both emerge (grievance {grievance}, warmth {warmth})"
+        );
+        assert!(
+            sim.dialogue_log()
+                .iter()
+                .any(|u| u.surface.contains(&u.listener_name)),
             "the words are grounded — a line names the soul it is spoken to"
         );
     }
@@ -3571,23 +4583,47 @@ mod tests {
         sim.run(120);
         sim.spawn_player(None); // the avatar lands where the people are — a soul stands near
         let avatar = sim.player_avatar().expect("an avatar is in the world");
-        let (npc, _) = sim.player_nearby_npcs().first().copied().expect("a soul stands within reach");
+        let (npc, _) = sim
+            .player_nearby_npcs()
+            .first()
+            .copied()
+            .expect("a soul stands within reach");
 
         // The menu is the full repertoire — the player may attempt any verb, attributes or no.
         let menu = sim.player_intents();
-        assert_eq!(menu.len(), dialogue::IntentBook::bundled().0.len(), "the player is offered every verb");
+        assert_eq!(
+            menu.len(),
+            dialogue::IntentBook::bundled().0.len(),
+            "the player is offered every verb"
+        );
 
         // The avatar has no opinion of this NPC; an attribute-scored mind would never *want*
         // to accuse out of nowhere — but the player can choose to. The choice drives the act.
         let before = sim.dialogue_count();
-        let (line, _reply) = sim.player_talk(npc, "an_accusation").expect("the avatar speaks the chosen line");
+        let (line, _reply) = sim
+            .player_talk(npc, "an_accusation")
+            .expect("the avatar speaks the chosen line");
         assert_eq!(line.speaker, avatar, "the player spoke as themselves");
-        assert_eq!(line.act, SpeechAct::Accuse, "the player's *choice* set the act, not the avatar's mood");
-        assert!(line.surface.contains(&line.listener_name), "the words name the soul addressed: {:?}", line.surface);
-        assert!(sim.dialogue_count() > before, "the line joins the conversation");
+        assert_eq!(
+            line.act,
+            SpeechAct::Accuse,
+            "the player's *choice* set the act, not the avatar's mood"
+        );
+        assert!(
+            line.surface.contains(&line.listener_name),
+            "the words name the soul addressed: {:?}",
+            line.surface
+        );
+        assert!(
+            sim.dialogue_count() > before,
+            "the line joins the conversation"
+        );
 
         // And it cost exactly the turn-based price elsewhere proven: the world moved on.
-        assert!(!sim.player_traveling(), "speaking is its own action, not a journey");
+        assert!(
+            !sim.player_traveling(),
+            "speaking is its own action, not a journey"
+        );
     }
 
     #[test]
@@ -3598,11 +4634,20 @@ mod tests {
             let mut s = chatty(11);
             s.run(120);
             s.spawn_player(None);
-            let npc = s.player_nearby_npcs().first().copied().expect("a soul stands near").0;
+            let npc = s
+                .player_nearby_npcs()
+                .first()
+                .copied()
+                .expect("a soul stands near")
+                .0;
             let (line, reply) = s.player_talk(npc, "a_greeting").expect("the avatar greets");
             (line.surface, reply.map(|r| r.surface))
         };
-        assert_eq!(run(), run(), "the same words, chosen the same way, render the same");
+        assert_eq!(
+            run(),
+            run(),
+            "the same words, chosen the same way, render the same"
+        );
     }
 
     #[test]
@@ -3623,7 +4668,10 @@ mod tests {
         let run = || {
             let mut s = chatty(11);
             s.run(120);
-            s.dialogue_log().iter().map(|u| u.surface.clone()).collect::<Vec<_>>()
+            s.dialogue_log()
+                .iter()
+                .map(|u| u.surface.clone())
+                .collect::<Vec<_>>()
         };
         assert_eq!(run(), run(), "same seed must speak the same words");
     }
@@ -3650,7 +4698,9 @@ mod tests {
 
     /// A reachable tile a few hexes east of `from` to set out for.
     fn nearby_target(sim: &mut Simulation, from: Coord) -> Option<Coord> {
-        (1..16).map(|d| Coord::new(from.col + d, from.row)).find(|&c| sim.player_travel_to(c))
+        (1..16)
+            .map(|d| Coord::new(from.col + d, from.row))
+            .find(|&c| sim.player_travel_to(c))
     }
 
     #[test]
@@ -3658,7 +4708,10 @@ mod tests {
         // Off by default: no avatar, no fog lifted, the run as it was before this layer.
         let mut sim = walker(7);
         sim.run(30);
-        assert!(sim.player_position().is_none(), "no avatar without spawning one");
+        assert!(
+            sim.player_position().is_none(),
+            "no avatar without spawning one"
+        );
         assert!(sim.player_view().is_none(), "nothing to look through");
         assert_eq!(sim.player_explored_count(), 0, "no avatar, no map revealed");
     }
@@ -3679,7 +4732,11 @@ mod tests {
             sim.step();
             day += 1;
         }
-        assert_eq!(sim.player_position(), Some(target), "the avatar reaches where it set out for");
+        assert_eq!(
+            sim.player_position(),
+            Some(target),
+            "the avatar reaches where it set out for"
+        );
         assert!(
             sim.player_explored_count() > seen0,
             "walking should lift more fog ({seen0} -> {})",
@@ -3705,9 +4762,21 @@ mod tests {
         let day0 = sim.tick();
 
         assert!(sim.player_wait(), "a spawned avatar can wait");
-        assert_eq!(sim.player_position(), Some(here), "waiting does not move the avatar");
-        assert_eq!(sim.tick(), day0 + 1, "waiting advances the world exactly one tick");
-        assert_eq!(sim.player_explored_count(), seen0, "standing still reveals no new ground");
+        assert_eq!(
+            sim.player_position(),
+            Some(here),
+            "waiting does not move the avatar"
+        );
+        assert_eq!(
+            sim.tick(),
+            day0 + 1,
+            "waiting advances the world exactly one tick"
+        );
+        assert_eq!(
+            sim.player_explored_count(),
+            seen0,
+            "standing still reveals no new ground"
+        );
         assert!(!sim.player_traveling(), "waiting sets no journey");
     }
 
@@ -3719,10 +4788,15 @@ mod tests {
         let water = {
             let gw = sim.substrate();
             let (topo, sea) = (gw.topology(), gw.params().sea_level);
-            (0..topo.len()).map(|i| topo.coord(i)).find(|&c| gw.elevation(c) < sea)
+            (0..topo.len())
+                .map(|i| topo.coord(i))
+                .find(|&c| gw.elevation(c) < sea)
         };
         if let Some(w) = water {
-            assert!(!sim.player_travel_to(w), "there is no walking route onto the ocean");
+            assert!(
+                !sim.player_travel_to(w),
+                "there is no walking route onto the ocean"
+            );
         }
     }
 
@@ -3741,6 +4815,10 @@ mod tests {
             }
             (s.player_position(), s.player_explored_count(), target)
         };
-        assert_eq!(run(), run(), "same seed must walk the same path and reveal the same map");
+        assert_eq!(
+            run(),
+            run(),
+            "same seed must walk the same path and reveal the same map"
+        );
     }
 }

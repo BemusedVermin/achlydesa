@@ -267,7 +267,10 @@ fn uncover(world: &mut World, avatar: Entity, at: Coord) {
         let topo = world.resource::<Substrate>().0.topology();
         let sight = world.resource::<PlayerState>().sight;
         let here = topo.index_of(at);
-        let ring_idx: Vec<usize> = ring(topo, at, sight).iter().map(|c| topo.index_of(*c)).collect();
+        let ring_idx: Vec<usize> = ring(topo, at, sight)
+            .iter()
+            .map(|c| topo.index_of(*c))
+            .collect();
         (here, ring_idx, sight)
     };
     if let Some(mut k) = world.get_mut::<Known>(avatar) {
@@ -283,16 +286,20 @@ fn uncover(world: &mut World, avatar: Entity, at: Coord) {
     // Off by default, so a world without the RPG layer reveals exactly what it did before.
     if world.resource::<PlayerState>().perceptive {
         let lore = world.resource::<PlayerKnowledge>().lore.clone();
-        let found: Vec<FeatureId> = world.resource_scope::<Features, Vec<FeatureId>>(|w, mut feat| {
-            match w.get_resource::<FeatureCatalog>() {
-                Some(cat) => feat.search_at_index(cat, here, &lore),
-                None => Vec::new(),
-            }
-        });
+        let found: Vec<FeatureId> =
+            world.resource_scope::<Features, Vec<FeatureId>>(|w, mut feat| {
+                match w.get_resource::<FeatureCatalog>() {
+                    Some(cat) => feat.search_at_index(cat, here, &lore),
+                    None => Vec::new(),
+                }
+            });
         if !found.is_empty() {
             let reveals: Vec<String> = {
                 let cat = world.resource::<FeatureCatalog>();
-                found.iter().flat_map(|k| cat.def(*k).reveals.iter().cloned()).collect()
+                found
+                    .iter()
+                    .flat_map(|k| cat.def(*k).reveals.iter().cloned())
+                    .collect()
             };
             let mut kn = world.resource_mut::<PlayerKnowledge>();
             for r in reveals {
@@ -300,7 +307,10 @@ fn uncover(world: &mut World, avatar: Entity, at: Coord) {
             }
         }
     }
-    world.resource_mut::<PlayerState>().explored.extend(ring_idx);
+    world
+        .resource_mut::<PlayerState>()
+        .explored
+        .extend(ring_idx);
 }
 
 /// Place the avatar at `at` and reveal its surroundings. Replaces any prior avatar.
@@ -339,7 +349,10 @@ pub fn view(world: &mut World) -> Option<PlayerView> {
     };
     let nearby: Vec<(Entity, Coord)> = {
         let topo = world.resource::<Substrate>().0.topology();
-        all_npcs.into_iter().filter(|(_, c)| sight_set.contains(&topo.index_of(*c))).collect()
+        all_npcs
+            .into_iter()
+            .filter(|(_, c)| sight_set.contains(&topo.index_of(*c)))
+            .collect()
     };
 
     let gw = &world.resource::<Substrate>().0;
@@ -348,10 +361,20 @@ pub fn view(world: &mut World) -> Option<PlayerView> {
     let known = world.get::<Known>(avatar);
     let info = |c: Coord| tile_info(gw, features, catalog, known, c);
     let here = info(pos);
-    let surroundings: Vec<TileInfo> = sight_tiles.iter().filter(|&&c| c != pos).map(|&c| info(c)).collect();
+    let surroundings: Vec<TileInfo> = sight_tiles
+        .iter()
+        .filter(|&&c| c != pos)
+        .map(|&c| info(c))
+        .collect();
     let explored = world.resource::<PlayerState>().explored.len();
 
-    Some(PlayerView { pos, here, surroundings, nearby, explored })
+    Some(PlayerView {
+        pos,
+        here,
+        surroundings,
+        nearby,
+        explored,
+    })
 }
 
 fn tile_info(
@@ -368,7 +391,10 @@ fn tile_info(
             .at_index(i)
             .iter()
             // A landmark is seen by anyone; a hidden/secret place only once visited.
-            .filter(|ft| cat.def(ft.kind).discovery == Discovery::Landmark || known.is_some_and(|k| k.0.contains(&i)))
+            .filter(|ft| {
+                cat.def(ft.kind).discovery == Discovery::Landmark
+                    || known.is_some_and(|k| k.0.contains(&i))
+            })
             .map(|ft| cat.def(ft.kind).name.clone())
             .collect(),
         _ => Vec::new(),
@@ -404,7 +430,9 @@ pub(crate) fn player_travel(
     if state.path.is_empty() {
         return;
     }
-    let Ok((mut pos, mut known)) = avatars.get_mut(avatar) else { return };
+    let Ok((mut pos, mut known)) = avatars.get_mut(avatar) else {
+        return;
+    };
     let topo = substrate.0.topology();
     let sight = state.sight;
 
@@ -417,7 +445,11 @@ pub(crate) fn player_travel(
             state.travel_residual += 1.0;
             let mut hexes = Vec::new();
             while let Some(&next) = state.path.front() {
-                let c = tc.0.get(topo.index_of(next)).copied().unwrap_or(1.0).max(0.01);
+                let c =
+                    tc.0.get(topo.index_of(next))
+                        .copied()
+                        .unwrap_or(1.0)
+                        .max(0.01);
                 if state.travel_residual + 1e-6 >= c {
                     state.travel_residual -= c;
                     hexes.push(state.path.pop_front().unwrap());
@@ -475,8 +507,12 @@ pub(crate) fn player_travel(
 /// there is no avatar, or nothing the player can yet find here).
 pub fn search(world: &mut World) -> SearchOutcome {
     let mut out = SearchOutcome::default();
-    let Some(avatar) = world.resource::<PlayerState>().avatar else { return out };
-    let Some(at) = world.get::<Position>(avatar).map(|p| p.0) else { return out };
+    let Some(avatar) = world.resource::<PlayerState>().avatar else {
+        return out;
+    };
+    let Some(at) = world.get::<Position>(avatar).map(|p| p.0) else {
+        return out;
+    };
     let i = world.resource::<Substrate>().0.topology().index_of(at);
     let lore = world.resource::<PlayerKnowledge>().lore.clone();
 
@@ -496,7 +532,10 @@ pub fn search(world: &mut World) -> SearchOutcome {
         for kind in &found {
             out.found.push(cat.def(*kind).name.clone());
         }
-        found.iter().flat_map(|k| cat.def(*k).reveals.iter().cloned()).collect()
+        found
+            .iter()
+            .flat_map(|k| cat.def(*k).reveals.iter().cloned())
+            .collect()
     };
     let mut kn = world.resource_mut::<PlayerKnowledge>();
     for r in reveals {
@@ -509,10 +548,17 @@ pub fn search(world: &mut World) -> SearchOutcome {
 
 /// Whether searching the avatar's current tile would find anything, given the lore it holds.
 pub fn find_state(world: &World) -> FindState {
-    let Some(avatar) = world.resource::<PlayerState>().avatar else { return FindState::Nothing };
-    let Some(at) = world.get::<Position>(avatar).map(|p| p.0) else { return FindState::Nothing };
+    let Some(avatar) = world.resource::<PlayerState>().avatar else {
+        return FindState::Nothing;
+    };
+    let Some(at) = world.get::<Position>(avatar).map(|p| p.0) else {
+        return FindState::Nothing;
+    };
     let i = world.resource::<Substrate>().0.topology().index_of(at);
-    let (Some(feat), Some(cat)) = (world.get_resource::<Features>(), world.get_resource::<FeatureCatalog>()) else {
+    let (Some(feat), Some(cat)) = (
+        world.get_resource::<Features>(),
+        world.get_resource::<FeatureCatalog>(),
+    ) else {
         return FindState::Nothing;
     };
     feat.find_state_at_index(cat, i, &world.resource::<PlayerKnowledge>().lore)

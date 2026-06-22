@@ -53,7 +53,10 @@ fn world(seed: u64) -> Simulation {
         goals,
         registry: reg,
         director: true,
-        director_cfg: DirectorConfig { beat_interval: 9, ..Default::default() },
+        director_cfg: DirectorConfig {
+            beat_interval: 9,
+            ..Default::default()
+        },
         // The dialogue layer is on so the director's `Voice` beats actually produce lines for
         // the LLM to re-voice — but we never print the ambient chatter, only Γ's own lines.
         dialogue: true,
@@ -66,13 +69,19 @@ fn world(seed: u64) -> Simulation {
 /// SLM, keyed by utterance tick. Falls back to the grammar surface for any line the model can't
 /// serve. Returns `(map tick→line, a status note for the header)`.
 #[cfg(feature = "voice")]
-fn voice_the_directors_lines(forced: &[Utterance]) -> (std::collections::HashMap<usize, String>, String) {
+fn voice_the_directors_lines(
+    forced: &[Utterance],
+) -> (std::collections::HashMap<usize, String>, String) {
     use agents::dialogue::state_hash;
     use std::collections::HashMap;
     use voice::{Voice, VoiceStatus};
 
     // Indexed by occurrence (not by meaning), so a recurring betrayal gets its own line.
-    let mut lines: HashMap<usize, String> = forced.iter().enumerate().map(|(i, u)| (i, u.surface.clone())).collect();
+    let mut lines: HashMap<usize, String> = forced
+        .iter()
+        .enumerate()
+        .map(|(i, u)| (i, u.surface.clone()))
+        .collect();
     if forced.is_empty() {
         return (lines, "the director voiced no lines this season".into());
     }
@@ -85,9 +94,13 @@ fn voice_the_directors_lines(forced: &[Utterance]) -> (std::collections::HashMap
         waited += 1;
     }
     let note = match v.status() {
-        VoiceStatus::Ready => "the director's lines re-voiced by the on-device LLM (per-occurrence, so repeats differ)",
+        VoiceStatus::Ready => {
+            "the director's lines re-voiced by the on-device LLM (per-occurrence, so repeats differ)"
+        }
         VoiceStatus::Off => "LLM disabled in voice.ron — director's lines on the grammar floor",
-        VoiceStatus::Failed(ref e) => return (lines, format!("LLM unavailable ({e}) — grammar floor")),
+        VoiceStatus::Failed(ref e) => {
+            return (lines, format!("LLM unavailable ({e}) — grammar floor"));
+        }
         VoiceStatus::Loading => "LLM still loading — director's lines on the grammar floor",
     };
     if v.status() != VoiceStatus::Ready {
@@ -118,9 +131,18 @@ fn voice_the_directors_lines(forced: &[Utterance]) -> (std::collections::HashMap
 
 /// Without the `voice` feature there is no LLM — the director's lines stay on the grammar floor.
 #[cfg(not(feature = "voice"))]
-fn voice_the_directors_lines(forced: &[Utterance]) -> (std::collections::HashMap<usize, String>, String) {
-    let lines = forced.iter().enumerate().map(|(i, u)| (i, u.surface.clone())).collect();
-    (lines, "built --no-default-features — the SLM is compiled out, grammar floor".into())
+fn voice_the_directors_lines(
+    forced: &[Utterance],
+) -> (std::collections::HashMap<usize, String>, String) {
+    let lines = forced
+        .iter()
+        .enumerate()
+        .map(|(i, u)| (i, u.surface.clone()))
+        .collect();
+    (
+        lines,
+        "built --no-default-features — the SLM is compiled out, grammar floor".into(),
+    )
 }
 
 fn main() {
@@ -133,13 +155,24 @@ fn main() {
     let proto_name = sim.protagonist().map(|p| sim.display_name(p));
 
     // ONLY the director's lines (Effect::Voice) — never the ambient population chatter.
-    let forced: Vec<Utterance> = sim.dialogue_log().iter().filter(|u| u.forced).cloned().collect();
+    let forced: Vec<Utterance> = sim
+        .dialogue_log()
+        .iter()
+        .filter(|u| u.forced)
+        .cloned()
+        .collect();
     let (voiced, note) = voice_the_directors_lines(&forced);
 
     let mut out = String::new();
-    let _ = writeln!(out, "ACHLYDESA — the season the director staged (seed {seed}, {days} days)");
+    let _ = writeln!(
+        out,
+        "ACHLYDESA — the season the director staged (seed {seed}, {days} days)"
+    );
     if let Some(name) = &proto_name {
-        let _ = writeln!(out, "  the drama is woven around {name} — and whoever Γ makes you love");
+        let _ = writeln!(
+            out,
+            "  the drama is woven around {name} — and whoever Γ makes you love"
+        );
     }
     let _ = writeln!(
         out,
@@ -147,7 +180,10 @@ fn main() {
         sim.director_beats_fired(),
         sim.director_distinct_beats(),
         forced.len(),
-        sim.director_cadence().iter().filter(|c| c.collision).count(),
+        sim.director_cadence()
+            .iter()
+            .filter(|c| c.collision)
+            .count(),
         note,
     );
 
@@ -156,7 +192,11 @@ fn main() {
     // or before its tick.
     let beats: Vec<_> = sim.director_cadence().to_vec();
     for (bi, c) in beats.iter().enumerate() {
-        let mark = if c.collision { "   \u{2190} collision (timed onto a high)" } else { "" };
+        let mark = if c.collision {
+            "   \u{2190} collision (timed onto a high)"
+        } else {
+            ""
+        };
         let _ = writeln!(
             out,
             "  day {:>4}  [{:<11} {:<7}]  {}{}",
@@ -168,9 +208,20 @@ fn main() {
         );
         // Any director-voiced line whose tick falls in this beat's window (up to the next beat).
         let next_tick = beats.get(bi + 1).map(|n| n.tick).unwrap_or(u64::MAX);
-        for (fi, u) in forced.iter().enumerate().filter(|(_, u)| u.tick >= c.tick && u.tick < next_tick) {
-            let line = voiced.get(&fi).cloned().unwrap_or_else(|| u.surface.clone());
-            let _ = writeln!(out, "            \u{201c}{}\u{201d}  \u{2014} {} to {}", line, u.speaker_name, u.listener_name);
+        for (fi, u) in forced
+            .iter()
+            .enumerate()
+            .filter(|(_, u)| u.tick >= c.tick && u.tick < next_tick)
+        {
+            let line = voiced
+                .get(&fi)
+                .cloned()
+                .unwrap_or_else(|| u.surface.clone());
+            let _ = writeln!(
+                out,
+                "            \u{201c}{}\u{201d}  \u{2014} {} to {}",
+                line, u.speaker_name, u.listener_name
+            );
         }
     }
 
@@ -178,7 +229,9 @@ fn main() {
     let path = "achlydesa_story.txt";
     match std::fs::write(path, &out) {
         Ok(()) => {
-            let abs = std::fs::canonicalize(path).map(|p| p.display().to_string()).unwrap_or_else(|_| path.to_string());
+            let abs = std::fs::canonicalize(path)
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|_| path.to_string());
             println!("\nWritten to {abs}");
         }
         Err(e) => eprintln!("(could not write {path}: {e})"),

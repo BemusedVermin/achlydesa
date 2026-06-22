@@ -42,7 +42,12 @@ pub struct EconConfig {
 
 impl Default for EconConfig {
     fn default() -> Self {
-        Self { price_floor_frac: 0.1, price_ceil_frac: 10.0, trade_lot: 5, price_smoothing: 0.15 }
+        Self {
+            price_floor_frac: 0.1,
+            price_ceil_frac: 10.0,
+            trade_lot: 5,
+            price_smoothing: 0.15,
+        }
     }
 }
 
@@ -159,7 +164,14 @@ pub struct DialogueConfig {
 
 impl Default for DialogueConfig {
     fn default() -> Self {
-        Self { enabled: false, cooldown: 6, appeal_floor: 0.18, memory_cap: 16, forget_rate: 0.01, echo_penalty: 0.5 }
+        Self {
+            enabled: false,
+            cooldown: 6,
+            appeal_floor: 0.18,
+            memory_cap: 16,
+            forget_rate: 0.01,
+            echo_penalty: 0.5,
+        }
     }
 }
 
@@ -429,7 +441,10 @@ impl Default for FeatureConfig {
 /// compile time. A shipped binary that wants overrides should be handed an
 /// explicit path instead; absent the folder, the in-code defaults stand.
 pub fn config_dir() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("assets").join("config")
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("assets")
+        .join("config")
 }
 
 /// Load one tunable: its built-in [`Default`], with `assets/config/<file>`
@@ -528,7 +543,14 @@ pub struct SiftConfig {
 
 impl Default for SiftConfig {
     fn default() -> Self {
-        Self { enabled: false, ring_cap: 4096, graft: false, max_bias: 3.0, min_interest: 0.5, manufactured_floor: 1 }
+        Self {
+            enabled: false,
+            ring_cap: 4096,
+            graft: false,
+            max_bias: 3.0,
+            min_interest: 0.5,
+            manufactured_floor: 1,
+        }
     }
 }
 
@@ -546,10 +568,16 @@ mod tests {
         // The `assets/config/*.ron` files are generated from these same defaults
         // (see `generate_default_config_files`), so loading them must reproduce
         // the defaults exactly — the round-trip that keeps file and code in sync.
-        assert_eq!(econ().price_floor_frac, EconConfig::default().price_floor_frac);
+        assert_eq!(
+            econ().price_floor_frac,
+            EconConfig::default().price_floor_frac
+        );
         assert_eq!(needs().hunger_rate, NeedsConfig::default().hunger_rate);
         assert_eq!(fauna().herd_cap, FaunaConfig::default().herd_cap);
-        assert_eq!(director().beat_interval, DirectorConfig::default().beat_interval);
+        assert_eq!(
+            director().beat_interval,
+            DirectorConfig::default().beat_interval
+        );
         assert_eq!(faction().period, FactionConfig::default().period);
         assert_eq!(feature().density, FeatureConfig::default().density);
         assert_eq!(params().ticks_per_year, Params::default().ticks_per_year);
@@ -564,7 +592,10 @@ mod tests {
         // fall back to the default thanks to `#[serde(default)]`.
         let econ: EconConfig = crate::parse("(trade_lot: 99)").unwrap();
         assert_eq!(econ.trade_lot, 99);
-        assert_eq!(econ.price_floor_frac, EconConfig::default().price_floor_frac);
+        assert_eq!(
+            econ.price_floor_frac,
+            EconConfig::default().price_floor_frac
+        );
     }
 
     /// (Re)generate `assets/config/*.ron` from the in-code [`Default`]s. Not a
@@ -577,7 +608,8 @@ mod tests {
         let dir = config_dir();
         std::fs::create_dir_all(&dir).expect("create assets/config");
         fn write<T: Serialize>(dir: &Path, file: &str, val: &T) {
-            let body = ron::ser::to_string_pretty(val, PrettyConfig::new()).expect("serialize config");
+            let body =
+                ron::ser::to_string_pretty(val, PrettyConfig::new()).expect("serialize config");
             std::fs::write(dir.join(file), format!("{body}\n")).expect("write config file");
         }
         write(&dir, "params.ron", &Params::default());

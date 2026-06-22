@@ -12,8 +12,8 @@ use candle_core::{Device, Tensor};
 use candle_transformers::generation::LogitsProcessor;
 use candle_transformers::models::quantized_qwen2::ModelWeights;
 use config::VoiceConfig;
-use std::cell::RefCell;
 use hf_hub::api::sync::Api;
+use std::cell::RefCell;
 use tokenizers::Tokenizer;
 
 /// A loaded on-device model. Owns the weights, tokenizer, and sampling knobs. The weights
@@ -61,22 +61,39 @@ impl CandleModel {
             .get("tokenizer.json")
             .with_context(|| format!("fetch tokenizer.json from '{}'", cfg.tokenizer_repo))?;
 
-        let tokenizer = Tokenizer::from_file(&tok_path).map_err(|e| anyhow!("load tokenizer: {e}"))?;
+        let tokenizer =
+            Tokenizer::from_file(&tok_path).map_err(|e| anyhow!("load tokenizer: {e}"))?;
 
-        let mut file = std::fs::File::open(&gguf_path).with_context(|| format!("open {gguf_path:?}"))?;
-        let content = gguf_file::Content::read(&mut file).with_context(|| format!("read GGUF {gguf_path:?}"))?;
-        let model = ModelWeights::from_gguf(content, &mut file, &device).context("build model from GGUF")?;
+        let mut file =
+            std::fs::File::open(&gguf_path).with_context(|| format!("open {gguf_path:?}"))?;
+        let content = gguf_file::Content::read(&mut file)
+            .with_context(|| format!("read GGUF {gguf_path:?}"))?;
+        let model = ModelWeights::from_gguf(content, &mut file, &device)
+            .context("build model from GGUF")?;
 
-        let eos = ["<|im_end|>", "<|endoftext|>"].iter().filter_map(|t| tokenizer.token_to_id(t)).collect();
+        let eos = ["<|im_end|>", "<|endoftext|>"]
+            .iter()
+            .filter_map(|t| tokenizer.token_to_id(t))
+            .collect();
 
-        Ok(Self { model: RefCell::new(model), tokenizer, device, eos, temperature: cfg.temperature, max_tokens: cfg.max_tokens })
+        Ok(Self {
+            model: RefCell::new(model),
+            tokenizer,
+            device,
+            eos,
+            temperature: cfg.temperature,
+            max_tokens: cfg.max_tokens,
+        })
     }
 
     /// The greedy/seeded autoregressive loop. `prompt` is the fully-formatted ChatML string;
     /// the returned text is the assistant turn only, trimmed. Errors propagate so the public
     /// [`agents::TextGen`] wrapper can fall back to the grammar.
     fn run(&self, prompt: &str, seed: u64) -> Result<String> {
-        let encoding = self.tokenizer.encode(prompt, false).map_err(|e| anyhow!("encode: {e}"))?;
+        let encoding = self
+            .tokenizer
+            .encode(prompt, false)
+            .map_err(|e| anyhow!("encode: {e}"))?;
         let prompt_ids = encoding.get_ids();
         if prompt_ids.is_empty() {
             return Ok(String::new());
@@ -106,7 +123,10 @@ impl CandleModel {
             pos += 1;
         }
 
-        let text = self.tokenizer.decode(&out, true).map_err(|e| anyhow!("decode: {e}"))?;
+        let text = self
+            .tokenizer
+            .decode(&out, true)
+            .map_err(|e| anyhow!("decode: {e}"))?;
         Ok(text.trim().to_string())
     }
 }

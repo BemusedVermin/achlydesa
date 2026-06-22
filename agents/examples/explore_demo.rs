@@ -38,7 +38,11 @@ fn world() -> Simulation {
 
 fn describe(sim: &mut Simulation) {
     let Some(v) = sim.player_view() else { return };
-    let feats = if v.here.features.is_empty() { String::new() } else { format!(" — {}", v.here.features.join(", ")) };
+    let feats = if v.here.features.is_empty() {
+        String::new()
+    } else {
+        format!(" — {}", v.here.features.join(", "))
+    };
     println!(
         "  at ({:>2},{:>2})  {:<8} elev {:>5.0}m  green {:.2}  {} souls in sight  {} tiles seen{}",
         v.pos.col,
@@ -56,7 +60,13 @@ fn describe(sim: &mut Simulation) {
 /// outward until something on foot answers.
 fn far_target(sim: &mut Simulation, from: Coord) -> Option<Coord> {
     for d in 0..20 {
-        for &(dc, dr) in &[(20 + d, 0), (20 + d, 6), (-(20 + d), -4), (0, 14 + d), (16 + d, -10)] {
+        for &(dc, dr) in &[
+            (20 + d, 0),
+            (20 + d, 6),
+            (-(20 + d), -4),
+            (0, 14 + d),
+            (16 + d, -10),
+        ] {
             let c = Coord::new(from.col + dc, (from.row + dr).clamp(0, 35));
             if sim.player_travel_to(c) {
                 return Some(c);
@@ -78,7 +88,10 @@ fn main() {
         println!("\n  (no reachable far shore from here — an island start)");
         return;
     };
-    println!("\nIt sets out for ({},{}), across the land:\n", target.col, target.row);
+    println!(
+        "\nIt sets out for ({},{}), across the land:\n",
+        target.col, target.row
+    );
 
     let mut day = 0;
     while sim.player_traveling() && day < 400 {
@@ -92,12 +105,20 @@ fn main() {
     println!("\nArrived after {day} days. What it has come to know:\n");
     describe(&mut sim);
     if let Some(v) = sim.player_view() {
-        let seen_feats: Vec<&str> = v.surroundings.iter().flat_map(|t| t.features.iter().map(String::as_str)).collect();
+        let seen_feats: Vec<&str> = v
+            .surroundings
+            .iter()
+            .flat_map(|t| t.features.iter().map(String::as_str))
+            .collect();
         println!(
             "\n  It has lifted the fog from {} of the world's tiles. In view now: {} other bodies{}.",
             sim.player_explored_count(),
             v.nearby.len(),
-            if seen_feats.is_empty() { String::new() } else { format!(", and these places: {}", seen_feats.join(", ")) },
+            if seen_feats.is_empty() {
+                String::new()
+            } else {
+                format!(", and these places: {}", seen_feats.join(", "))
+            },
         );
     }
 }

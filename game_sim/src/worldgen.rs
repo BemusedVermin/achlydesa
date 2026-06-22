@@ -336,7 +336,11 @@ fn orographic_precipitation(topo: &Topology, p: &Params, elevation: &[f32]) -> V
                     rise += align * (elevation[i] - elevation[l.to]).max(0.0);
                 }
             }
-            let incoming = if weight > 0.0 { inflow / weight } else { moisture[i] };
+            let incoming = if weight > 0.0 {
+                inflow / weight
+            } else {
+                moisture[i]
+            };
             let upslope = if weight > 0.0 { rise / weight } else { 0.0 };
             let rainout = (p.wg_precip_base + p.wg_orographic * upslope).min(1.0);
             let rain = incoming * rainout;
@@ -375,7 +379,9 @@ impl PartialOrd for FloodCell {
 impl Ord for FloodCell {
     fn cmp(&self, o: &Self) -> Ordering {
         // Reversed elevation so `BinaryHeap` (a max-heap) pops the lowest.
-        o.elev.total_cmp(&self.elev).then_with(|| o.idx.cmp(&self.idx))
+        o.elev
+            .total_cmp(&self.elev)
+            .then_with(|| o.idx.cmp(&self.idx))
     }
 }
 
@@ -396,14 +402,22 @@ fn priority_flood(topo: &Topology, p: &Params, elevation: &[f32]) -> (Vec<f32>, 
         if elevation[i] < p.sea_level {
             closed[i] = true;
             receiver[i] = i;
-            heap.push(FloodCell { elev: filled[i], idx: i });
+            heap.push(FloodCell {
+                elev: filled[i],
+                idx: i,
+            });
         }
     }
     if heap.is_empty() {
-        let lo = (0..n).min_by(|&a, &b| elevation[a].total_cmp(&elevation[b])).unwrap();
+        let lo = (0..n)
+            .min_by(|&a, &b| elevation[a].total_cmp(&elevation[b]))
+            .unwrap();
         closed[lo] = true;
         receiver[lo] = lo;
-        heap.push(FloodCell { elev: filled[lo], idx: lo });
+        heap.push(FloodCell {
+            elev: filled[lo],
+            idx: lo,
+        });
     }
 
     while let Some(FloodCell { idx: c, .. }) = heap.pop() {
@@ -415,7 +429,10 @@ fn priority_flood(topo: &Topology, p: &Params, elevation: &[f32]) -> (Vec<f32>, 
             filled[nb] = filled[nb].max(filled[c] + p.fill_epsilon);
             receiver[nb] = c;
             closed[nb] = true;
-            heap.push(FloodCell { elev: filled[nb], idx: nb });
+            heap.push(FloodCell {
+                elev: filled[nb],
+                idx: nb,
+            });
         }
     }
     (filled, receiver)
@@ -462,7 +479,8 @@ fn stream_power_erode(
             continue;
         }
         let slope = (filled[i] - filled[r]).max(0.0);
-        let incision = p.stream_power_k * acc[i].powf(p.stream_power_m) * slope.powf(p.stream_power_n);
+        let incision =
+            p.stream_power_k * acc[i].powf(p.stream_power_m) * slope.powf(p.stream_power_n);
         let headroom = (elevation[i] - elevation[r]).max(0.0);
         delta[i] = incision.min(headroom * 0.5);
     }
@@ -624,7 +642,11 @@ mod tests {
         let p = Params::default();
         let g = generate(&topo, &p, &mut SplitMix64::new(7));
         let plate_of = assign_plates(&topo, &seed_plates(&topo, &p, &mut SplitMix64::new(7)));
-        let (_, stress) = boundary_field(&topo, &plate_of, &seed_plates(&topo, &p, &mut SplitMix64::new(7)));
+        let (_, stress) = boundary_field(
+            &topo,
+            &plate_of,
+            &seed_plates(&topo, &p, &mut SplitMix64::new(7)),
+        );
 
         let mean = |pred: &dyn Fn(usize) -> bool| -> f32 {
             let cells: Vec<usize> = topo
@@ -656,6 +678,9 @@ mod tests {
             .collect();
         let max = land.iter().cloned().fold(0.0_f32, f32::max);
         let mean = land.iter().sum::<f32>() / land.len() as f32;
-        assert!(max > 3.0 * mean, "expected wet/dry contrast (max {max}, mean {mean})");
+        assert!(
+            max > 3.0 * mean,
+            "expected wet/dry contrast (max {max}, mean {mean})"
+        );
     }
 }

@@ -126,12 +126,16 @@ impl Faction {
 
     /// Does a law of this faction forbid the act `(predicate, value)`?
     pub fn forbids(&self, act: (PredicateId, i64)) -> bool {
-        self.laws.iter().any(|l| matches!(l, Law::Taboo(p, v) if (*p, *v) == act))
+        self.laws
+            .iter()
+            .any(|l| matches!(l, Law::Taboo(p, v) if (*p, *v) == act))
     }
 
     /// Does a law of this faction bar belonging to the faction seated at `seat`?
     pub fn excludes(&self, seat: Coord) -> bool {
-        self.laws.iter().any(|l| matches!(l, Law::Exclude(s) if *s == seat))
+        self.laws
+            .iter()
+            .any(|l| matches!(l, Law::Exclude(s) if *s == seat))
     }
 }
 
@@ -181,7 +185,9 @@ fn government_for(court: &str) -> Government {
 /// forbid killing — the `avenge` act, `alive(foe) = 0`.
 fn taboo_for(court: &str, reg: &Registry) -> Option<Law> {
     match court {
-        "temple" | "druid_circle" | "royal_court" => reg.predicate_id("alive").map(|p| Law::Taboo(p, 0)),
+        "temple" | "druid_circle" | "royal_court" => {
+            reg.predicate_id("alive").map(|p| Law::Taboo(p, 0))
+        }
         _ => None,
     }
 }
@@ -238,11 +244,18 @@ fn elect(gov: Government, members: &[MemberInfo], council_size: usize) -> SmallV
             }
         }
         Government::Democracy => {
-            let total_dist =
-                |i: usize| -> f32 { members.iter().map(|m| trait_distance(&members[i].personality, &m.personality)).sum() };
+            let total_dist = |i: usize| -> f32 {
+                members
+                    .iter()
+                    .map(|m| trait_distance(&members[i].personality, &m.personality))
+                    .sum()
+            };
             let rep = (0..members.len())
                 .min_by(|&a, &b| {
-                    total_dist(a).partial_cmp(&total_dist(b)).unwrap().then(members[a].entity.cmp(&members[b].entity))
+                    total_dist(a)
+                        .partial_cmp(&total_dist(b))
+                        .unwrap()
+                        .then(members[a].entity.cmp(&members[b].entity))
                 })
                 .unwrap();
             out.push(members[rep].entity);
@@ -284,16 +297,23 @@ pub(crate) fn faction_turn(
     }
     let tick = substrate.0.tick();
     let topo = substrate.0.topology();
-    let (Some(catalog), Some(features)) = (catalog, features) else { return };
+    let (Some(catalog), Some(features)) = (catalog, features) else {
+        return;
+    };
     // Where everyone stands, so a war-death / execution / inherited grudge gets a place. Read-only.
-    let pos_of: std::collections::HashMap<Entity, Coord> = npcs.iter().map(|q| (q.0, q.1.0)).collect();
+    let pos_of: std::collections::HashMap<Entity, Coord> =
+        npcs.iter().map(|q| (q.0, q.1.0)).collect();
 
     // Court seats and what each court kind implies.
     let mut seats: Vec<Coord> = Vec::new();
     let mut native_gov: Vec<Government> = Vec::new();
     let mut native_taboo: Vec<Option<Law>> = Vec::new();
     for i in topo.indices() {
-        if let Some(f) = features.at_index(i).iter().find(|f| catalog.def(f.kind).category == Category::Court) {
+        if let Some(f) = features
+            .at_index(i)
+            .iter()
+            .find(|f| catalog.def(f.kind).category == Category::Court)
+        {
             let name = catalog.name(f.kind);
             seats.push(topo.coord(i));
             native_gov.push(government_for(name));
@@ -308,7 +328,10 @@ pub(crate) fn faction_turn(
         return;
     }
 
-    let old: HashMap<Coord, Faction> = std::mem::take(&mut factions.0).into_iter().map(|f| (f.seat, f)).collect();
+    let old: HashMap<Coord, Faction> = std::mem::take(&mut factions.0)
+        .into_iter()
+        .map(|f| (f.seat, f))
+        .collect();
     let prev_force: HashMap<Coord, f32> = old.iter().map(|(&s, f)| (s, f.force)).collect();
     let max_force = old.values().map(|f| f.force).fold(1.0, f32::max);
     let ambition_id = reg.trait_id("ambition");
@@ -345,7 +368,9 @@ pub(crate) fn faction_turn(
     let mut members: Vec<Vec<MemberInfo>> = vec![Vec::new(); seats.len()];
     let mut new_bonds: HashMap<Entity, SmallVec<[Bond; 4]>> = HashMap::new();
     for (e, pos, inv, pers, alleg, grievance, detained, opinion) in &npcs {
-        let ambition = ambition_id.and_then(|a| pers.0.get(a).copied()).unwrap_or(0.0);
+        let ambition = ambition_id
+            .and_then(|a| pers.0.get(a).copied())
+            .unwrap_or(0.0);
         let money = inv.money + money_delta.get(&e).copied().unwrap_or(0);
         let mut ranked: Vec<(usize, f32)> = Vec::new();
         for (si, &seat) in seats.iter().enumerate() {
@@ -355,7 +380,10 @@ pub(crate) fn faction_turn(
             }
             let mut pull = (1.0 + prev_force.get(&seat).copied().unwrap_or(0.0)) / (1.0 + d as f32);
             if alleg.belongs_to(seat) {
-                let loy = loyalty.get(&(e, seat)).copied().unwrap_or(config.loyalty_base);
+                let loy = loyalty
+                    .get(&(e, seat))
+                    .copied()
+                    .unwrap_or(config.loyalty_base);
                 pull *= 0.5 + config.loyalty_inertia * loy;
             }
             // Drawn toward a court led by someone it respects, repelled from one it loathes.
@@ -364,7 +392,11 @@ pub(crate) fn faction_turn(
             }
             ranked.push((si, pull));
         }
-        ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap().then(seats[a.0].col.cmp(&seats[b.0].col)));
+        ranked.sort_by(|a, b| {
+            b.1.partial_cmp(&a.1)
+                .unwrap()
+                .then(seats[a.0].col.cmp(&seats[b.0].col))
+        });
         let mut chosen: SmallVec<[usize; 4]> = SmallVec::new();
         for &(si, _) in &ranked {
             if chosen.len() >= config.max_factions {
@@ -373,7 +405,8 @@ pub(crate) fn faction_turn(
             let seat = seats[si];
             let conflict = chosen.iter().any(|&cj| {
                 let cs = seats[cj];
-                old.get(&seat).is_some_and(|f| f.excludes(cs)) || old.get(&cs).is_some_and(|f| f.excludes(seat))
+                old.get(&seat).is_some_and(|f| f.excludes(cs))
+                    || old.get(&cs).is_some_and(|f| f.excludes(seat))
             });
             if !conflict {
                 chosen.push(si);
@@ -383,7 +416,10 @@ pub(crate) fn faction_turn(
         for &si in &chosen {
             let seat = seats[si];
             let loy = if alleg.belongs_to(seat) {
-                loyalty.get(&(e, seat)).copied().unwrap_or(config.loyalty_base)
+                loyalty
+                    .get(&(e, seat))
+                    .copied()
+                    .unwrap_or(config.loyalty_base)
             } else {
                 config.loyalty_base
             };
@@ -407,8 +443,12 @@ pub(crate) fn faction_turn(
             continue;
         }
         let seat = seats[si];
-        let gov = old.get(&seat).map(|f| f.government).unwrap_or(native_gov[si]);
-        let mut laws: SmallVec<[Law; 4]> = old.get(&seat).map(|f| f.laws.clone()).unwrap_or_default();
+        let gov = old
+            .get(&seat)
+            .map(|f| f.government)
+            .unwrap_or(native_gov[si]);
+        let mut laws: SmallVec<[Law; 4]> =
+            old.get(&seat).map(|f| f.laws.clone()).unwrap_or_default();
         if let Some(t) = native_taboo[si]
             && !laws.contains(&t)
         {
@@ -446,7 +486,14 @@ pub(crate) fn faction_turn(
             if !built[a].at_war.contains(&sb)
                 && let Some(c) = chronicle.as_deref_mut()
             {
-                c.record(tick, EpisodeKind::WarDeclared, [built[a].head(), built[b].head(), None], sa, None, 0);
+                c.record(
+                    tick,
+                    EpisodeKind::WarDeclared,
+                    [built[a].head(), built[b].head(), None],
+                    sa,
+                    None,
+                    0,
+                );
             }
             for (x, y) in [(a, b), (b, a)] {
                 let yseat = built[y].seat;
@@ -462,7 +509,12 @@ pub(crate) fn faction_turn(
             if let Some(victim) = members[pos_of_seat(built[weak].seat)]
                 .iter()
                 .filter(|m| !built[weak].leaders.contains(&m.entity))
-                .min_by(|x, y| x.ambition.partial_cmp(&y.ambition).unwrap().then(x.entity.cmp(&y.entity)))
+                .min_by(|x, y| {
+                    x.ambition
+                        .partial_cmp(&y.ambition)
+                        .unwrap()
+                        .then(x.entity.cmp(&y.entity))
+                })
                 .map(|m| m.entity)
             {
                 casualties.push(victim);
@@ -495,7 +547,11 @@ pub(crate) fn faction_turn(
     let mut champions: Vec<(Entity, Entity)> = Vec::new();
     for f in &built {
         for &enemy_seat in &f.at_war {
-            let Some(enemy_head) = built.iter().find(|g| g.seat == enemy_seat).and_then(|g| g.head()) else {
+            let Some(enemy_head) = built
+                .iter()
+                .find(|g| g.seat == enemy_seat)
+                .and_then(|g| g.head())
+            else {
                 continue;
             };
             let group = &members[pos_of_seat(f.seat)];
@@ -503,8 +559,13 @@ pub(crate) fn faction_turn(
                 .iter()
                 .filter(|m| !f.leaders.contains(&m.entity) && !m.grievance)
                 .max_by(|a, b| {
-                    let zeal = |m: &MemberInfo| loyalty.get(&(m.entity, f.seat)).copied().unwrap_or(0.0) + m.ambition;
-                    zeal(a).partial_cmp(&zeal(b)).unwrap().then(a.entity.cmp(&b.entity))
+                    let zeal = |m: &MemberInfo| {
+                        loyalty.get(&(m.entity, f.seat)).copied().unwrap_or(0.0) + m.ambition
+                    };
+                    zeal(a)
+                        .partial_cmp(&zeal(b))
+                        .unwrap()
+                        .then(a.entity.cmp(&b.entity))
                 })
                 .map(|m| m.entity);
             if let Some(champ) = champ {
@@ -526,20 +587,27 @@ pub(crate) fn faction_turn(
         // Opinion: warm toward the head of each bloc it serves (toward how it feels —
         // its loyalty); sour toward the heads it is set against in war; then fade all.
         for bond in &bonds {
-            let Some(f) = built.iter().find(|f| f.seat == bond.seat) else { continue };
+            let Some(f) = built.iter().find(|f| f.seat == bond.seat) else {
+                continue;
+            };
             if let Some(head) = f.head()
                 && head != e
             {
                 let target = (bond.loyalty - config.loyalty_base) * 2.0;
                 let cur = opinion.of(head);
-                opinion.0.insert(head, (cur + config.opinion_gain * (target - cur)).clamp(-1.0, 1.0));
+                opinion.0.insert(
+                    head,
+                    (cur + config.opinion_gain * (target - cur)).clamp(-1.0, 1.0),
+                );
             }
             for &enemy_seat in &f.at_war {
                 if let Some(eh) = head_at(enemy_seat)
                     && eh != e
                 {
                     let cur = opinion.of(eh);
-                    opinion.0.insert(eh, (cur - config.war_enmity).clamp(-1.0, 1.0));
+                    opinion
+                        .0
+                        .insert(eh, (cur - config.war_enmity).clamp(-1.0, 1.0));
                 }
             }
         }
@@ -557,11 +625,20 @@ pub(crate) fn faction_turn(
         if let Some(c) = chronicle.as_deref_mut()
             && let Some(&at) = pos_of.get(&champ)
         {
-            c.record(tick, EpisodeKind::GrievanceFormed, [Some(champ), Some(enemy), None], at, None, 0);
+            c.record(
+                tick,
+                EpisodeKind::GrievanceFormed,
+                [Some(champ), Some(enemy), None],
+                at,
+                None,
+                0,
+            );
         }
     }
     for e in detain {
-        commands.entity(e).insert(Detained { ticks: config.detain_ticks });
+        commands.entity(e).insert(Detained {
+            ticks: config.detain_ticks,
+        });
     }
     for e in casualties.into_iter().chain(executed) {
         // A death by war or the headsman — `parties[0]` the dead, placed where they stood.
@@ -576,7 +653,10 @@ pub(crate) fn faction_turn(
 }
 
 /// Tick down detentions; release anyone whose term is up.
-pub(crate) fn detention_countdown(mut commands: Commands, mut held: Query<(Entity, &mut Detained)>) {
+pub(crate) fn detention_countdown(
+    mut commands: Commands,
+    mut held: Query<(Entity, &mut Detained)>,
+) {
     for (e, mut d) in &mut held {
         if d.ticks <= 1 {
             commands.entity(e).remove::<Detained>();

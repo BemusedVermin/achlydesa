@@ -60,7 +60,10 @@ fn volatile_world() -> Simulation {
         goals,
         registry: reg,
         director: true,
-        director_cfg: DirectorConfig { beat_interval: 10, ..Default::default() },
+        director_cfg: DirectorConfig {
+            beat_interval: 10,
+            ..Default::default()
+        },
         ..Default::default()
     })
 }
@@ -82,12 +85,18 @@ fn freed_world() -> Simulation {
         ambitious: 0,
         initial_food: 30,
         initial_market_stock: 80,
-        faction_cfg: FactionConfig { period: 0, ..Default::default() },
+        faction_cfg: FactionConfig {
+            period: 0,
+            ..Default::default()
+        },
         goals,
         norms,
         registry: reg,
         director: true,
-        director_cfg: DirectorConfig { beat_interval: 10, ..Default::default() },
+        director_cfg: DirectorConfig {
+            beat_interval: 10,
+            ..Default::default()
+        },
         ..Default::default()
     })
 }
@@ -97,18 +106,27 @@ fn freed_world() -> Simulation {
 fn register_histogram(sim: &Simulation) -> Vec<(Register, usize)> {
     let mut counts: BTreeMap<String, (Register, usize)> = BTreeMap::new();
     for c in sim.director_cadence() {
-        let e = counts.entry(format!("{:?}", c.register)).or_insert((c.register, 0));
+        let e = counts
+            .entry(format!("{:?}", c.register))
+            .or_insert((c.register, 0));
         e.1 += 1;
     }
     let mut v: Vec<(Register, usize)> = counts.into_values().collect();
-    v.sort_by(|a, b| b.1.cmp(&a.1).then(format!("{:?}", a.0).cmp(&format!("{:?}", b.0))));
+    v.sort_by(|a, b| {
+        b.1.cmp(&a.1)
+            .then(format!("{:?}", a.0).cmp(&format!("{:?}", b.0)))
+    });
     v
 }
 
 fn readout(label: &str, sim: &mut Simulation) {
     let proto = sim.protagonist();
     let proto_prom = proto.map_or(0.0, |p| sim.director_prominence(p));
-    let collisions = sim.director_cadence().iter().filter(|c| c.collision).count();
+    let collisions = sim
+        .director_cadence()
+        .iter()
+        .filter(|c| c.collision)
+        .count();
     println!(
         "  {label:<10} beats {:>3} ({:>2} distinct)  suffering {:>5.0}  staged {:>5.0}  collisions {:>2}  proto-prominence {:.2}  ambition {:.2}  vengeance {:.2}  alive {}",
         sim.director_beats_fired(),
@@ -127,8 +145,13 @@ fn main() {
     let mut volatile = volatile_world();
     volatile.run(700);
 
-    println!("A world the director feeds on — the season it staged (first 28 beats, with its hidden cadence):\n");
-    println!("  {:>4}  {:<26} {:<11} {:<7} thread  prom   collision", "day", "beat", "register", "phase");
+    println!(
+        "A world the director feeds on — the season it staged (first 28 beats, with its hidden cadence):\n"
+    );
+    println!(
+        "  {:>4}  {:<26} {:<11} {:<7} thread  prom   collision",
+        "day", "beat", "register", "phase"
+    );
     for c in volatile.director_cadence().iter().take(28) {
         println!(
             "  {:>4}  {:<26} {:<11} {:<7} #{:<4}  {:>4.1}   {}",
@@ -138,10 +161,16 @@ fn main() {
             format!("{:?}", c.phase),
             c.thread,
             c.lead_prominence,
-            if c.collision { "← collision (timed onto a high)" } else { "" },
+            if c.collision {
+                "← collision (timed onto a high)"
+            } else {
+                ""
+            },
         );
     }
-    println!("\n  The registers it reached for, most-told first (betrayal dominates *emergently*):");
+    println!(
+        "\n  The registers it reached for, most-told first (betrayal dominates *emergently*):"
+    );
     for (reg, n) in register_histogram(&volatile) {
         println!("    {:<12} {n:>3}", format!("{reg:?}"));
     }
@@ -151,7 +180,9 @@ fn main() {
     // The same omnipotent director, a world it can find no purchase in.
     let mut freed = freed_world();
     freed.run(700);
-    println!("\nThe SAME director, loosed on a freed world (provisioned, forgiving, stateless, unthroned):\n");
+    println!(
+        "\nThe SAME director, loosed on a freed world (provisioned, forgiving, stateless, unthroned):\n"
+    );
     readout("freed:", &mut freed);
     println!(
         "\n  It is not disabled and its library is whole — it surveys every {} days and finds\n  little above its impact floor worth telling. The world authors its own, owned life.",

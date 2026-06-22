@@ -154,7 +154,15 @@ pub struct DataFiles<'a> {
 
 impl Default for DataFiles<'_> {
     fn default() -> Self {
-        Self { goods: "[]", skills: "[]", recipes: "[]", traits: "[]", moods: "[]", predicates: "[]", verbs: "[]" }
+        Self {
+            goods: "[]",
+            skills: "[]",
+            recipes: "[]",
+            traits: "[]",
+            moods: "[]",
+            predicates: "[]",
+            verbs: "[]",
+        }
     }
 }
 
@@ -267,7 +275,10 @@ impl Registry {
         let verbs = verb_defs
             .into_iter()
             .map(|v| {
-                let p = predicate_ids.get(&v.predicate).copied().ok_or(LoadError::UnknownPredicate(v.predicate))?;
+                let p = predicate_ids
+                    .get(&v.predicate)
+                    .copied()
+                    .ok_or(LoadError::UnknownPredicate(v.predicate))?;
                 Ok((v.name, (p, v.value)))
             })
             .collect::<Result<HashMap<_, _>, LoadError>>()?;
@@ -275,30 +286,55 @@ impl Registry {
             .iter()
             .map(|m| match &m.opposes {
                 None => Ok(None),
-                Some(n) => mood_ids.get(n).copied().map(Some).ok_or_else(|| LoadError::UnknownMood(n.clone())),
+                Some(n) => mood_ids
+                    .get(n)
+                    .copied()
+                    .map(Some)
+                    .ok_or_else(|| LoadError::UnknownMood(n.clone())),
             })
             .collect::<Result<Vec<_>, _>>()?;
         let mood_shapes = moods
             .iter()
             .map(|m| match &m.shapes {
                 None => Ok(None),
-                Some(n) => trait_ids.get(n).copied().map(|t| Some((t, m.shape_rate))).ok_or_else(|| LoadError::UnknownTrait(n.clone())),
+                Some(n) => trait_ids
+                    .get(n)
+                    .copied()
+                    .map(|t| Some((t, m.shape_rate)))
+                    .ok_or_else(|| LoadError::UnknownTrait(n.clone())),
             })
             .collect::<Result<Vec<_>, _>>()?;
         let trait_opposes = traits
             .iter()
             .map(|t| match &t.opposes {
                 None => Ok(None),
-                Some(n) => trait_ids.get(n).copied().map(Some).ok_or_else(|| LoadError::UnknownTrait(n.clone())),
+                Some(n) => trait_ids
+                    .get(n)
+                    .copied()
+                    .map(Some)
+                    .ok_or_else(|| LoadError::UnknownTrait(n.clone())),
             })
             .collect::<Result<Vec<_>, _>>()?;
-        let good = |name: &str| good_ids.get(name).copied().ok_or_else(|| LoadError::UnknownGood(name.to_owned()));
-        let skill = |name: &str| skill_ids.get(name).copied().ok_or_else(|| LoadError::UnknownSkill(name.to_owned()));
+        let good = |name: &str| {
+            good_ids
+                .get(name)
+                .copied()
+                .ok_or_else(|| LoadError::UnknownGood(name.to_owned()))
+        };
+        let skill = |name: &str| {
+            skill_ids
+                .get(name)
+                .copied()
+                .ok_or_else(|| LoadError::UnknownSkill(name.to_owned()))
+        };
 
         let mut recipes = Vec::with_capacity(raw.len());
         for r in raw {
             let resolve = |pairs: Vec<(String, u32)>| {
-                pairs.into_iter().map(|(n, q)| good(&n).map(|id| (id, q))).collect::<Result<Vec<_>, _>>()
+                pairs
+                    .into_iter()
+                    .map(|(n, q)| good(&n).map(|id| (id, q)))
+                    .collect::<Result<Vec<_>, _>>()
             };
             recipes.push(Recipe {
                 skill: skill(&r.skill)?,
@@ -466,7 +502,13 @@ mod tests {
         let skills = r#"[(name: "mining", gain: 0.03, cap: 6.0)]"#;
         let recipes = r#"[(name: "mine", skill: "mining", inputs: [], outputs: [("ore", 1)],
             resource: Some(Minerals), min_resource: 0.1, deplete: 0.02, effort: 1.5)]"#;
-        let reg = Registry::from_ron(DataFiles { goods, skills, recipes, ..Default::default() }).unwrap();
+        let reg = Registry::from_ron(DataFiles {
+            goods,
+            skills,
+            recipes,
+            ..Default::default()
+        })
+        .unwrap();
         let mine = &reg.recipes()[0];
         assert_eq!(mine.resource, Some(ResourceKind::Minerals));
         assert!(mine.deplete > 0.0);
@@ -478,7 +520,15 @@ mod tests {
         let skills = r#"[(name: "farming", gain: 0.02, cap: 5.0)]"#;
         let recipes = r#"[(name: "bake", skill: "baking", inputs: [], outputs: [("grain", 1)],
             resource: None, min_resource: 0.0, deplete: 0.0, effort: 1.0)]"#;
-        assert!(matches!(Registry::from_ron(DataFiles { goods, skills, recipes, ..Default::default() }), Err(LoadError::UnknownSkill(_))));
+        assert!(matches!(
+            Registry::from_ron(DataFiles {
+                goods,
+                skills,
+                recipes,
+                ..Default::default()
+            }),
+            Err(LoadError::UnknownSkill(_))
+        ));
     }
 
     #[test]
@@ -487,7 +537,15 @@ mod tests {
         let skills = r#"[(name: "baking", gain: 0.02, cap: 5.0)]"#;
         let recipes = r#"[(name: "bake", skill: "baking", inputs: [("flour", 1)],
             outputs: [("grain", 1)], resource: None, min_resource: 0.0, deplete: 0.0, effort: 1.0)]"#;
-        assert!(matches!(Registry::from_ron(DataFiles { goods, skills, recipes, ..Default::default() }), Err(LoadError::UnknownGood(_))));
+        assert!(matches!(
+            Registry::from_ron(DataFiles {
+                goods,
+                skills,
+                recipes,
+                ..Default::default()
+            }),
+            Err(LoadError::UnknownGood(_))
+        ));
     }
 
     #[test]

@@ -21,7 +21,14 @@ const FOG: [u8; 4] = [14, 16, 22, 255];
 
 /// Render a `w`×`h` window of the explored world centred on `center` (world units) at `world_per_px`
 /// zoom (smaller = more zoomed in). The avatar's pip is drawn when it falls inside the window.
-pub fn render(sim: &Simulation, center: Vec2, world_per_px: f32, avatar: Coord, w: u32, h: u32) -> Image {
+pub fn render(
+    sim: &Simulation,
+    center: Vec2,
+    world_per_px: f32,
+    avatar: Coord,
+    w: u32,
+    h: u32,
+) -> Image {
     let mut buf = vec![0u8; (w * h * 4) as usize];
     for px in buf.chunks_exact_mut(4) {
         px.copy_from_slice(&FOG);
@@ -35,7 +42,8 @@ pub fn render(sim: &Simulation, center: Vec2, world_per_px: f32, avatar: Coord, 
     let to_px = |p: Vec2| half + (p - center) / wpp;
     let hex_r = (layout::HEX_R / wpp) * 1.05; // a hair of overlap so the hexes tile seamlessly
     let cull = hex_r + 2.0;
-    let inside = |p: Vec2| p.x >= -cull && p.y >= -cull && p.x <= w as f32 + cull && p.y <= h as f32 + cull;
+    let inside =
+        |p: Vec2| p.x >= -cull && p.y >= -cull && p.x <= w as f32 + cull && p.y <= h as f32 + cull;
 
     let explored = sim.player_explored();
     // Tiles in the window.
@@ -50,9 +58,20 @@ pub fn render(sim: &Simulation, center: Vec2, world_per_px: f32, avatar: Coord, 
     for &c in &explored {
         let p = to_px(tile_world(c.col, c.row));
         if inside(p)
-            && let Some(category) = sim.features_at(c).iter().find(|f| f.discovered).map(|f| cat.def(f.kind).category)
+            && let Some(category) = sim
+                .features_at(c)
+                .iter()
+                .find(|f| f.discovered)
+                .map(|f| cat.def(f.kind).category)
         {
-            disc(&mut buf, w, h, p, (hex_r * 0.42).max(1.5), marker_rgb(category));
+            disc(
+                &mut buf,
+                w,
+                h,
+                p,
+                (hex_r * 0.42).max(1.5),
+                marker_rgb(category),
+            );
         }
     }
     // Recent drama the avatar can sense — a crimson pip drawing the eye toward unrest (drawn even
@@ -84,7 +103,10 @@ fn tile_rgb(sim: &Simulation, c: Coord, sea: f32) -> [u8; 3] {
         palette::water_rgb(((sea - elev) / DEPTH_SCALE).clamp(0.0, 1.0))
     } else {
         let fert = gw.carrying_capacity(c).clamp(0.0, 1.0);
-        palette::snow_blend(palette::ground_rgb(terrain, gw.biome(c).formation(), fert), elev - sea)
+        palette::snow_blend(
+            palette::ground_rgb(terrain, gw.biome(c).formation(), fert),
+            elev - sea,
+        )
     };
     [to8(rgb[0]), to8(rgb[1]), to8(rgb[2])]
 }
@@ -105,7 +127,11 @@ fn to8(x: f32) -> u8 {
 
 fn image_from(data: Vec<u8>, w: u32, h: u32) -> Image {
     Image::new(
-        Extent3d { width: w, height: h, depth_or_array_layers: 1 },
+        Extent3d {
+            width: w,
+            height: h,
+            depth_or_array_layers: 1,
+        },
         TextureDimension::D2,
         data,
         TextureFormat::Rgba8UnormSrgb,
@@ -179,8 +205,14 @@ fn disc(buf: &mut [u8], w: u32, h: u32, c: Vec2, r: f32, rgb: [u8; 3]) {
 }
 
 fn ring(buf: &mut [u8], w: u32, h: u32, c: Vec2, r: f32, rgb: [u8; 3]) {
-    let (x0, x1) = ((c.x - r - 1.0).floor() as i32, (c.x + r + 1.0).ceil() as i32);
-    let (y0, y1) = ((c.y - r - 1.0).floor() as i32, (c.y + r + 1.0).ceil() as i32);
+    let (x0, x1) = (
+        (c.x - r - 1.0).floor() as i32,
+        (c.x + r + 1.0).ceil() as i32,
+    );
+    let (y0, y1) = (
+        (c.y - r - 1.0).floor() as i32,
+        (c.y + r + 1.0).ceil() as i32,
+    );
     for y in y0..=y1 {
         for x in x0..=x1 {
             let d = Vec2::new(x as f32 + 0.5 - c.x, y as f32 + 0.5 - c.y).length();

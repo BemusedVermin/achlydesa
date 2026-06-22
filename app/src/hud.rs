@@ -20,8 +20,8 @@ use bevy::ui::widget::{ImageNode, NodeImageMode};
 use bevy::ui::{BorderRadius, GlobalZIndex, Overflow, UiScale};
 
 use crate::Game;
-use agents::FindState;
 use crate::minimap;
+use agents::FindState;
 
 // ── Frame geometry (reference pixels, against REF_W×REF_H) ───────────────────────────────────────
 
@@ -136,7 +136,9 @@ impl ActionKind {
 /// The uniform scale for the frame at this window size — the largest that keeps the reference
 /// layout fitting both axes, so every tray/font/bar grows at the same ratio.
 pub fn ui_scale_for(window: &Window) -> f32 {
-    (window.width() / REF_W).min(window.height() / REF_H).max(0.1)
+    (window.width() / REF_W)
+        .min(window.height() / REF_H)
+        .max(0.1)
 }
 
 /// Drive the global [`UiScale`] from the window so the frame scales as one (only on real change,
@@ -153,14 +155,22 @@ pub fn scale_ui(windows: Query<&Window>, mut ui_scale: ResMut<UiScale>) {
 /// same scale [`scale_ui`] applies, since a `Px` value occupies `px * ui_scale` in cursor space.
 pub fn in_center(window: &Window, p: Vec2) -> bool {
     let s = ui_scale_for(window);
-    p.x >= LEFT_W * s && p.x <= window.width() - RIGHT_W * s && p.y >= TOP_H * s && p.y <= window.height() - BOTTOM_H * s
+    p.x >= LEFT_W * s
+        && p.x <= window.width() - RIGHT_W * s
+        && p.y >= TOP_H * s
+        && p.y <= window.height() - BOTTOM_H * s
 }
 
 // ── Spawn the frame ──────────────────────────────────────────────────────────────────────────────
 
 fn tray_bg(grassy: &Handle<Image>) -> (ImageNode, BorderColor) {
     (
-        ImageNode { image: grassy.clone(), image_mode: NodeImageMode::Stretch, color: TRAY_TINT, ..default() },
+        ImageNode {
+            image: grassy.clone(),
+            image_mode: NodeImageMode::Stretch,
+            color: TRAY_TINT,
+            ..default()
+        },
         BorderColor::all(FRAME_EDGE),
     )
 }
@@ -221,7 +231,11 @@ pub fn spawn(commands: &mut Commands, f: &ThemeFonts, grassy: Handle<Image>) {
                     d.spawn((
                         PortraitInitial(i),
                         Text::new(""),
-                        TextFont { font: f.serif.clone(), font_size: PORTRAIT_D * 0.34, ..default() },
+                        TextFont {
+                            font: f.serif.clone(),
+                            font_size: PORTRAIT_D * 0.34,
+                            ..default()
+                        },
                         TextColor(theme::HEADING),
                     ));
                 });
@@ -264,7 +278,11 @@ pub fn spawn(commands: &mut Commands, f: &ThemeFonts, grassy: Handle<Image>) {
                 .with_children(|b| {
                     b.spawn((
                         Text::new(*label),
-                        TextFont { font: f.serif.clone(), font_size: theme::T_TITLE, ..default() },
+                        TextFont {
+                            font: f.serif.clone(),
+                            font_size: theme::T_TITLE,
+                            ..default()
+                        },
                         TextColor(TRAY_TEXT),
                     ));
                 });
@@ -312,7 +330,11 @@ pub fn spawn(commands: &mut Commands, f: &ThemeFonts, grassy: Handle<Image>) {
                     b.spawn((
                         ActionLabel(a),
                         Text::new(a.label()),
-                        TextFont { font: f.mono.clone(), font_size: theme::T_BODY, ..default() },
+                        TextFont {
+                            font: f.mono.clone(),
+                            font_size: theme::T_BODY,
+                            ..default()
+                        },
                         TextColor(TRAY_TEXT),
                     ));
                 });
@@ -341,54 +363,75 @@ pub fn spawn(commands: &mut Commands, f: &ThemeFonts, grassy: Handle<Image>) {
         ))
         .with_children(|t| {
             // Vitals column.
-            t.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(theme::SP_XS), width: px(300.0), ..default() })
-                .with_children(|col| {
-                    for v in VITALS {
-                        col.spawn(Node {
-                            flex_direction: FlexDirection::Row,
-                            align_items: AlignItems::Center,
-                            column_gap: px(theme::SP_SM),
+            t.spawn(Node {
+                flex_direction: FlexDirection::Column,
+                row_gap: px(theme::SP_XS),
+                width: px(300.0),
+                ..default()
+            })
+            .with_children(|col| {
+                for v in VITALS {
+                    col.spawn(Node {
+                        flex_direction: FlexDirection::Row,
+                        align_items: AlignItems::Center,
+                        column_gap: px(theme::SP_SM),
+                        ..default()
+                    })
+                    .with_children(|row| {
+                        row.spawn(Node {
+                            width: px(78.0),
                             ..default()
                         })
-                        .with_children(|row| {
-                            row.spawn(Node { width: px(78.0), ..default() }).with_children(|lbl| {
-                                lbl.spawn((
-                                    Text::new(v.label()),
-                                    TextFont { font: f.mono.clone(), font_size: theme::T_MICRO, ..default() },
-                                    TextColor(TRAY_TEXT),
-                                ));
-                            });
-                            row.spawn((
-                                Node {
-                                    width: px(190.0),
-                                    height: px(12.0),
-                                    border_radius: BorderRadius::all(px(6.0)),
-                                    overflow: Overflow::clip(),
+                        .with_children(|lbl| {
+                            lbl.spawn((
+                                Text::new(v.label()),
+                                TextFont {
+                                    font: f.mono.clone(),
+                                    font_size: theme::T_MICRO,
                                     ..default()
                                 },
-                                BackgroundColor(Color::srgba(0.03, 0.04, 0.06, 0.85)),
-                            ))
-                            .with_children(|track| {
-                                track.spawn((
-                                    VitalFill(v),
-                                    Node {
-                                        width: Val::Percent(100.0),
-                                        height: Val::Percent(100.0),
-                                        border_radius: BorderRadius::all(px(6.0)),
-                                        ..default()
-                                    },
-                                    BackgroundColor(v.color()),
-                                ));
-                            });
+                                TextColor(TRAY_TEXT),
+                            ));
                         });
-                    }
-                });
+                        row.spawn((
+                            Node {
+                                width: px(190.0),
+                                height: px(12.0),
+                                border_radius: BorderRadius::all(px(6.0)),
+                                overflow: Overflow::clip(),
+                                ..default()
+                            },
+                            BackgroundColor(Color::srgba(0.03, 0.04, 0.06, 0.85)),
+                        ))
+                        .with_children(|track| {
+                            track.spawn((
+                                VitalFill(v),
+                                Node {
+                                    width: Val::Percent(100.0),
+                                    height: Val::Percent(100.0),
+                                    border_radius: BorderRadius::all(px(6.0)),
+                                    ..default()
+                                },
+                                BackgroundColor(v.color()),
+                            ));
+                        });
+                    });
+                }
+            });
             // One-line status (the HUD's Help kind) on the tray.
             t.spawn((
                 crate::HudKind::Help,
-                Node { flex_grow: 1.0, max_width: px(560.0), ..default() },
+                Node {
+                    flex_grow: 1.0,
+                    max_width: px(560.0),
+                    ..default()
+                },
                 Text::new(""),
-                TextFont { font: f.mono.clone(), font_size: theme::T_LABEL, ..default() },
+                TextFont {
+                    font: f.mono.clone(),
+                    font_size: theme::T_LABEL,
+                    ..default()
+                },
                 TextColor(theme::TEXT_DIM),
             ));
         });
@@ -396,7 +439,11 @@ pub fn spawn(commands: &mut Commands, f: &ThemeFonts, grassy: Handle<Image>) {
     // ── Circular minimap, tucked into the bottom-right corner (above the trays). ──
     commands.spawn((
         HudMinimap,
-        ImageNode { image: Handle::default(), image_mode: NodeImageMode::Stretch, ..default() },
+        ImageNode {
+            image: Handle::default(),
+            image_mode: NodeImageMode::Stretch,
+            ..default()
+        },
         Node {
             position_type: PositionType::Absolute,
             right: px(theme::SP_SM),
@@ -422,10 +469,18 @@ pub fn spawn(commands: &mut Commands, f: &ThemeFonts, grassy: Handle<Image>) {
     };
     commands.spawn((
         crate::HudKind::Look,
-        Node { left: px(LEFT_W + theme::SP_MD), top: px(TOP_H + theme::SP_MD), ..panel(360.0) },
+        Node {
+            left: px(LEFT_W + theme::SP_MD),
+            top: px(TOP_H + theme::SP_MD),
+            ..panel(360.0)
+        },
         theme::panel_chrome(),
         Text::new(""),
-        TextFont { font: f.mono.clone(), font_size: theme::T_BODY, ..default() },
+        TextFont {
+            font: f.mono.clone(),
+            font_size: theme::T_BODY,
+            ..default()
+        },
         TextColor(theme::TEXT),
     ));
 
@@ -452,7 +507,11 @@ pub fn spawn(commands: &mut Commands, f: &ThemeFonts, grassy: Handle<Image>) {
                 BackgroundColor(Color::srgba(0.04, 0.05, 0.08, 0.72)),
                 BorderColor::all(theme::AWE),
                 Text::new(""),
-                TextFont { font: f.serif.clone(), font_size: theme::T_BODY, ..default() },
+                TextFont {
+                    font: f.serif.clone(),
+                    font_size: theme::T_BODY,
+                    ..default()
+                },
                 TextColor(theme::AWE),
                 TextLayout::new_with_justify(Justify::Center),
                 GlobalZIndex(6),
@@ -466,7 +525,13 @@ pub fn spawn(commands: &mut Commands, f: &ThemeFonts, grassy: Handle<Image>) {
 /// initial, and a gold ring on the avatar. Unused slots hide.
 pub fn update_portraits(
     game: NonSend<Game>,
-    mut discs: Query<(&PortraitSlot, &Interaction, &mut BackgroundColor, &mut BorderColor, &mut Visibility)>,
+    mut discs: Query<(
+        &PortraitSlot,
+        &Interaction,
+        &mut BackgroundColor,
+        &mut BorderColor,
+        &mut Visibility,
+    )>,
     mut inits: Query<(&PortraitInitial, &mut Text)>,
 ) {
     let avatar = game.sim.player_avatar();
@@ -480,7 +545,11 @@ pub fn update_portraits(
         .map(|i| {
             members.get(i).map(|&e| {
                 let name = game.sim.display_name(e);
-                let init = name.chars().next().map(|c| c.to_uppercase().to_string()).unwrap_or_else(|| "?".into());
+                let init = name
+                    .chars()
+                    .next()
+                    .map(|c| c.to_uppercase().to_string())
+                    .unwrap_or_else(|| "?".into());
                 let seed = format!("{}/{}", game.sim.archetype_of(e).unwrap_or(""), name);
                 (init, archetype_tint(&seed), Some(e) == avatar)
             })
@@ -494,14 +563,23 @@ pub fn update_portraits(
                 bg.0 = *tint;
                 // Gold ring on the avatar; companions' rings brighten on hover to read as clickable.
                 let hot = matches!(interaction, Interaction::Hovered | Interaction::Pressed);
-                let ring = if *is_av { theme::AWE } else if hot { theme::HEADING } else { theme::BORDER };
+                let ring = if *is_av {
+                    theme::AWE
+                } else if hot {
+                    theme::HEADING
+                } else {
+                    theme::BORDER
+                };
                 *border = BorderColor::all(ring);
             }
             None => *vis = Visibility::Hidden,
         }
     }
     for (init, mut text) in &mut inits {
-        text.0 = data[init.0].as_ref().map(|(s, _, _)| s.clone()).unwrap_or_default();
+        text.0 = data[init.0]
+            .as_ref()
+            .map(|(s, _, _)| s.clone())
+            .unwrap_or_default();
     }
 }
 
@@ -566,7 +644,12 @@ fn enabled(c: &ActionCtx, a: ActionKind) -> bool {
 /// Recolour the action buttons each frame: dim when invalid, lit on hover, and grey their labels.
 pub fn update_action_buttons(
     mut game: NonSendMut<Game>,
-    mut buttons: Query<(&ActionButton, &Interaction, &mut BackgroundColor, &mut BorderColor)>,
+    mut buttons: Query<(
+        &ActionButton,
+        &Interaction,
+        &mut BackgroundColor,
+        &mut BorderColor,
+    )>,
     mut labels: Query<(&ActionLabel, &mut TextColor)>,
 ) {
     let ctx = action_ctx(&mut game);
@@ -579,20 +662,35 @@ pub fn update_action_buttons(
         } else {
             BTN_BG
         };
-        *border = BorderColor::all(if on { theme::BORDER } else { Color::srgba(0.20, 0.22, 0.26, 0.4) });
+        *border = BorderColor::all(if on {
+            theme::BORDER
+        } else {
+            Color::srgba(0.20, 0.22, 0.26, 0.4)
+        });
     }
     for (l, mut col) in &mut labels {
-        col.0 = if enabled(&ctx, l.0) { TRAY_TEXT } else { theme::TEXT_FAINT };
+        col.0 = if enabled(&ctx, l.0) {
+            TRAY_TEXT
+        } else {
+            theme::TEXT_FAINT
+        };
     }
 }
 
 /// Invoke a tile action when its button is pressed (ignoring disabled actions, and never while the
 /// pause menu owns the screen). Mirrors the keyboard verbs via the shared `crate::do_*` helpers.
-pub fn action_button_click(mut game: NonSendMut<Game>, q: Query<(&ActionButton, &Interaction), Changed<Interaction>>) {
+pub fn action_button_click(
+    mut game: NonSendMut<Game>,
+    q: Query<(&ActionButton, &Interaction), Changed<Interaction>>,
+) {
     if game.paused || game.convo.is_some() || game.talk_choices.is_some() {
         return;
     }
-    let Some(a) = q.iter().find(|(_, i)| **i == Interaction::Pressed).map(|(b, _)| b.0) else {
+    let Some(a) = q
+        .iter()
+        .find(|(_, i)| **i == Interaction::Pressed)
+        .map(|(b, _)| b.0)
+    else {
         return;
     };
     let ctx = action_ctx(&mut game);
@@ -625,8 +723,15 @@ pub fn action_button_click(mut game: NonSendMut<Game>, q: Query<(&ActionButton, 
 
 /// Clicking a top-tab opens the parchment menu at that tab. The Character tab always opens on the
 /// avatar (clearing any companion the portraits had focused).
-pub fn top_tab_click(mut game: NonSendMut<Game>, q: Query<(&TopTab, &Interaction), Changed<Interaction>>) {
-    if let Some(i) = q.iter().find(|(_, it)| **it == Interaction::Pressed).map(|(t, _)| t.0) {
+pub fn top_tab_click(
+    mut game: NonSendMut<Game>,
+    q: Query<(&TopTab, &Interaction), Changed<Interaction>>,
+) {
+    if let Some(i) = q
+        .iter()
+        .find(|(_, it)| **it == Interaction::Pressed)
+        .map(|(t, _)| t.0)
+    {
         if i == 1 {
             game.sheet_subject = None;
         }
@@ -636,8 +741,15 @@ pub fn top_tab_click(mut game: NonSendMut<Game>, q: Query<(&TopTab, &Interaction
 }
 
 /// Clicking a portrait opens the Character tab on that soul (the avatar or a companion).
-pub fn portrait_click(mut game: NonSendMut<Game>, q: Query<(&PortraitSlot, &Interaction), Changed<Interaction>>) {
-    let Some(slot) = q.iter().find(|(_, i)| **i == Interaction::Pressed).map(|(s, _)| s.0) else {
+pub fn portrait_click(
+    mut game: NonSendMut<Game>,
+    q: Query<(&PortraitSlot, &Interaction), Changed<Interaction>>,
+) {
+    let Some(slot) = q
+        .iter()
+        .find(|(_, i)| **i == Interaction::Pressed)
+        .map(|(s, _)| s.0)
+    else {
         return;
     };
     let mut members: Vec<Entity> = Vec::new();
@@ -658,14 +770,25 @@ const HUD_WPP: f32 = 0.5;
 
 /// Re-render the always-on corner minimap when new ground is uncovered or the avatar moves. The
 /// window is centred on the avatar, so the minimap tracks the player.
-pub fn update_hud_minimap(mut game: NonSendMut<Game>, mut images: ResMut<Assets<Image>>, mut q: Query<&mut ImageNode, With<HudMinimap>>) {
+pub fn update_hud_minimap(
+    mut game: NonSendMut<Game>,
+    mut images: ResMut<Assets<Image>>,
+    mut q: Query<&mut ImageNode, With<HudMinimap>>,
+) {
     let count = game.sim.player_explored_count();
     let avatar = game.avatar_pos;
     if count == game.last_hud_explored && avatar == game.last_hud_avatar {
         return;
     }
     let center = crate::layout::tile_world(avatar.col, avatar.row);
-    let img = minimap::render(&game.sim, center, HUD_WPP, avatar, MINIMAP_D as u32, MINIMAP_D as u32);
+    let img = minimap::render(
+        &game.sim,
+        center,
+        HUD_WPP,
+        avatar,
+        MINIMAP_D as u32,
+        MINIMAP_D as u32,
+    );
     let handle = images.add(img);
     if let Ok(mut node) = q.single_mut() {
         node.image = handle;

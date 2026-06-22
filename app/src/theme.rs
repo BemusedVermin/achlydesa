@@ -81,11 +81,18 @@ impl ThemeFonts {
     /// `AssetServer::load`) keeps the HUD path-independent and matches the project's
     /// bake-content-in convention (cf. `Bundled`).
     pub fn embed(fonts: &mut Assets<Font>) -> Self {
-        let serif = Font::try_from_bytes(include_bytes!("../../assets/fonts/EBGaramond-SemiBold.ttf").to_vec())
-            .expect("bundled EB Garamond is a valid font");
-        let mono = Font::try_from_bytes(include_bytes!("../../assets/fonts/CourierPrime-Regular.ttf").to_vec())
-            .expect("bundled Courier Prime is a valid font");
-        Self { serif: fonts.add(serif), mono: fonts.add(mono) }
+        let serif = Font::try_from_bytes(
+            include_bytes!("../../assets/fonts/EBGaramond-SemiBold.ttf").to_vec(),
+        )
+        .expect("bundled EB Garamond is a valid font");
+        let mono = Font::try_from_bytes(
+            include_bytes!("../../assets/fonts/CourierPrime-Regular.ttf").to_vec(),
+        )
+        .expect("bundled Courier Prime is a valid font");
+        Self {
+            serif: fonts.add(serif),
+            mono: fonts.add(mono),
+        }
     }
 }
 
@@ -111,7 +118,13 @@ pub fn panel_chrome() -> impl Bundle {
     (
         BackgroundColor(INK),
         BorderColor::all(BORDER),
-        BoxShadow::new(Color::srgba(0.0, 0.0, 0.0, 0.45), Val::Px(0.0), Val::Px(4.0), Val::Px(0.0), Val::Px(14.0)),
+        BoxShadow::new(
+            Color::srgba(0.0, 0.0, 0.0, 0.45),
+            Val::Px(0.0),
+            Val::Px(4.0),
+            Val::Px(0.0),
+            Val::Px(14.0),
+        ),
     )
 }
 
@@ -132,7 +145,12 @@ pub fn chip_node() -> impl Bundle {
 /// A thin horizontal divider for separating sections inside a panel.
 pub fn divider() -> impl Bundle {
     (
-        Node { width: Val::Percent(100.0), height: Val::Px(1.0), margin: UiRect::axes(Val::Px(0.0), Val::Px(SP_XS)), ..default() },
+        Node {
+            width: Val::Percent(100.0),
+            height: Val::Px(1.0),
+            margin: UiRect::axes(Val::Px(0.0), Val::Px(SP_XS)),
+            ..default()
+        },
         BackgroundColor(BORDER),
     )
 }
@@ -143,12 +161,28 @@ pub fn divider() -> impl Bundle {
 
 /// A serif run (EB Garamond) at an explicit size + colour — for headings and titled accents.
 pub fn serif(f: &ThemeFonts, s: impl Into<String>, size: f32, color: Color) -> impl Bundle {
-    (Text::new(s), TextFont { font: f.serif.clone(), font_size: size, ..default() }, TextColor(color))
+    (
+        Text::new(s),
+        TextFont {
+            font: f.serif.clone(),
+            font_size: size,
+            ..default()
+        },
+        TextColor(color),
+    )
 }
 
 /// A monospace run (Courier Prime) at an explicit size + colour — for body, labels, accents.
 pub fn mono(f: &ThemeFonts, s: impl Into<String>, size: f32, color: Color) -> impl Bundle {
-    (Text::new(s), TextFont { font: f.mono.clone(), font_size: size, ..default() }, TextColor(color))
+    (
+        Text::new(s),
+        TextFont {
+            font: f.mono.clone(),
+            font_size: size,
+            ..default()
+        },
+        TextColor(color),
+    )
 }
 
 /// A page/title display line — serif, largest, warm.

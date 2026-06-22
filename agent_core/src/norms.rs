@@ -90,10 +90,22 @@ impl Norms {
             .into_iter()
             .map(|d| {
                 let act = reg.verb(&d.act).ok_or(NormError::UnknownVerb(d.act))?;
-                let when = d.when.map(|c| c.resolve(reg)).transpose().map_err(NormError::Condition)?;
-                let defiance =
-                    d.defiance.map(|t| reg.trait_id(&t).ok_or(NormError::UnknownTrait(t))).transpose()?;
-                Ok(Norm { act, modality: d.modality, weight: d.weight, when, defiance })
+                let when = d
+                    .when
+                    .map(|c| c.resolve(reg))
+                    .transpose()
+                    .map_err(NormError::Condition)?;
+                let defiance = d
+                    .defiance
+                    .map(|t| reg.trait_id(&t).ok_or(NormError::UnknownTrait(t)))
+                    .transpose()?;
+                Ok(Norm {
+                    act,
+                    modality: d.modality,
+                    weight: d.weight,
+                    when,
+                    defiance,
+                })
             })
             .collect::<Result<Vec<_>, NormError>>()?;
         Ok(Norms(norms))
@@ -102,7 +114,10 @@ impl Norms {
     /// The norms that bear on `act` in state `s` — those regulating it whose `when`
     /// holds (an unconditional norm always holds).
     fn applicable(&self, act: (PredicateId, i64), s: &PlanState, reg: &Registry) -> Vec<&Norm> {
-        self.0.iter().filter(|n| n.act == act && n.when.as_ref().is_none_or(|c| c.satisfied(s, reg))).collect()
+        self.0
+            .iter()
+            .filter(|n| n.act == act && n.when.as_ref().is_none_or(|c| c.satisfied(s, reg)))
+            .collect()
     }
 
     /// Whether the prohibitions on an act are *justified* away in this context: a
@@ -116,7 +131,9 @@ impl Norms {
     /// generalises to conjunctions.)
     fn justified(in_force: &[&Norm]) -> bool {
         let spec = |n: &&Norm| u32::from(n.when.is_some());
-        let strongest = |keep: fn(Modality) -> bool| in_force.iter().filter(|n| keep(n.modality)).map(spec).max();
+        let strongest = |keep: fn(Modality) -> bool| {
+            in_force.iter().filter(|n| keep(n.modality)).map(spec).max()
+        };
         let forbid = strongest(|m| m == Modality::Forbidden);
         let allow = strongest(|m| matches!(m, Modality::Permitted | Modality::Obliged));
         allow.is_some_and(|a| forbid.is_none_or(|f| a >= f))
@@ -145,7 +162,11 @@ impl Norms {
         for n in &in_force {
             match n.modality {
                 Modality::Forbidden if !justified => {
-                    let defiance = n.defiance.and_then(|t| personality.get(t)).copied().unwrap_or(0.0);
+                    let defiance = n
+                        .defiance
+                        .and_then(|t| personality.get(t))
+                        .copied()
+                        .unwrap_or(0.0);
                     pressure += n.weight * (1.0 - defiance.clamp(0.0, 1.0));
                 }
                 Modality::Obliged => pressure -= n.weight,
@@ -291,9 +312,11 @@ mod tests {
         // The taboo is resisted by vengeance: the meek feel its full weight, the
         // vengeful barely feel it.
         let reg = Registry::bundled();
-        let norms =
-            Norms::from_ron(r#"[(act: "avenge", modality: Forbidden, defiance: Some("vengeance"))]"#, &reg)
-                .unwrap();
+        let norms = Norms::from_ron(
+            r#"[(act: "avenge", modality: Forbidden, defiance: Some("vengeance"))]"#,
+            &reg,
+        )
+        .unwrap();
         let s = state(&reg, empty_facts(&reg));
         let mut meek = vec![0.0; reg.trait_count()];
         meek[reg.trait_id("vengeance").unwrap()] = 0.0;
@@ -307,7 +330,8 @@ mod tests {
     fn an_obligation_presses_the_act() {
         // A duty pulls the act toward being done — a negative sanction.
         let reg = Registry::bundled();
-        let norms = Norms::from_ron(r#"[(act: "rule", modality: Obliged, weight: 0.5)]"#, &reg).unwrap();
+        let norms =
+            Norms::from_ron(r#"[(act: "rule", modality: Obliged, weight: 0.5)]"#, &reg).unwrap();
         let s = state(&reg, empty_facts(&reg));
         assert_eq!(norms.sanction(reg.verb("rule"), &s, &reg, &[]), -0.5);
     }
@@ -368,14 +392,23 @@ mod tests {
         // A vengeful soul barely *feels* the taboo (sanction near zero), yet the act
         // is still socially forbidden — a transgression, however willing the hand.
         let reg = Registry::bundled();
-        let norms =
-            Norms::from_ron(r#"[(act: "avenge", modality: Forbidden, defiance: Some("vengeance"))]"#, &reg)
-                .unwrap();
+        let norms = Norms::from_ron(
+            r#"[(act: "avenge", modality: Forbidden, defiance: Some("vengeance"))]"#,
+            &reg,
+        )
+        .unwrap();
         let s = state(&reg, empty_facts(&reg));
         let mut vengeful = vec![0.0; reg.trait_count()];
         vengeful[reg.trait_id("vengeance").unwrap()] = 1.0;
-        assert_eq!(norms.sanction(reg.verb("avenge"), &s, &reg, &vengeful), 0.0, "feels no deterrence");
-        assert!(norms.forbids(reg.verb("avenge"), &s, &reg), "but it is still forbidden");
+        assert_eq!(
+            norms.sanction(reg.verb("avenge"), &s, &reg, &vengeful),
+            0.0,
+            "feels no deterrence"
+        );
+        assert!(
+            norms.forbids(reg.verb("avenge"), &s, &reg),
+            "but it is still forbidden"
+        );
     }
 
     #[test]
@@ -396,7 +429,10 @@ mod tests {
         // waking another soul is forbidden.
         let reg = Registry::bundled();
         let law = Norms::bundled(&reg);
-        assert!(!law.0.is_empty(), "the Archon Law should be authored in norms.ron");
+        assert!(
+            !law.0.is_empty(),
+            "the Archon Law should be authored in norms.ron"
+        );
         let s = state(&reg, empty_facts(&reg));
         assert!(
             law.sanction(reg.verb("awaken"), &s, &reg, &[]) > 0.0,

@@ -53,12 +53,20 @@ fn relation_noun(rel: &str) -> &str {
 /// Assemble the ChatML prompt for `u`, optionally answering `prev` (the line just said to the
 /// speaker). Conveys the grounded facts as notes only — never a draft sentence to copy.
 pub fn build_chatml(u: &Utterance, prev: Option<&str>) -> String {
-    let motive = if u.motive.is_empty() { "an unremarkable soul".to_string() } else { format!("a {} soul", u.motive.join(", ")) };
+    let motive = if u.motive.is_empty() {
+        "an unremarkable soul".to_string()
+    } else {
+        format!("a {} soul", u.motive.join(", "))
+    };
 
     let mut notes = String::new();
     notes.push_str(&format!("You are {}, {}. ", u.speaker_name, motive));
     notes.push_str(&format!("Mood: {}. ", u.mood_word));
-    notes.push_str(&format!("Toward {}, you feel {}. ", u.listener_name, relation_noun(u.relation_word)));
+    notes.push_str(&format!(
+        "Toward {}, you feel {}. ",
+        u.listener_name,
+        relation_noun(u.relation_word)
+    ));
     if let Some(prev) = prev.map(str::trim).filter(|p| !p.is_empty()) {
         notes.push_str(&format!("{} just said: \"{}\" ", u.listener_name, prev));
     }
@@ -66,9 +74,16 @@ pub fn build_chatml(u: &Utterance, prev: Option<&str>) -> String {
         Some(r) => format!(", about {r}"),
         None => String::new(),
     };
-    notes.push_str(&format!("You move to {} {}{}.", u.act.key(), u.listener_name, about));
+    notes.push_str(&format!(
+        "You move to {} {}{}.",
+        u.act.key(),
+        u.listener_name,
+        about
+    ));
 
-    format!("<|im_start|>system\n{SYSTEM}<|im_end|>\n<|im_start|>user\nNotes: {notes}<|im_end|>\n<|im_start|>assistant\n")
+    format!(
+        "<|im_start|>system\n{SYSTEM}<|im_end|>\n<|im_start|>user\nNotes: {notes}<|im_end|>\n<|im_start|>assistant\n"
+    )
 }
 
 // =====================================================================================
@@ -99,10 +114,20 @@ conversation give you; invent no new facts, names, places, or events.\n\nYour ch
 pub fn build_chat(card: &str, history: &[ChatTurn], player_msg: &str) -> String {
     let mut s = format!("<|im_start|>system\n{CHAT_SYSTEM}{card}<|im_end|>\n");
     for turn in history {
-        let role = if turn.from_player { "user" } else { "assistant" };
-        s.push_str(&format!("<|im_start|>{role}\n{}<|im_end|>\n", turn.text.trim()));
+        let role = if turn.from_player {
+            "user"
+        } else {
+            "assistant"
+        };
+        s.push_str(&format!(
+            "<|im_start|>{role}\n{}<|im_end|>\n",
+            turn.text.trim()
+        ));
     }
-    s.push_str(&format!("<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n", player_msg.trim()));
+    s.push_str(&format!(
+        "<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
+        player_msg.trim()
+    ));
     s
 }
 
@@ -121,5 +146,7 @@ pub fn build_classify(name: &str, message: &str, labels: &[&str]) -> String {
         "A traveller says to {name}: \"{}\"\nAllowed labels: {allowed}, none.\nWhich one best fits the traveller's intent toward {name}? Answer with a single label.",
         message.trim()
     );
-    format!("<|im_start|>system\n{CLASSIFY_SYSTEM}<|im_end|>\n<|im_start|>user\n{user}<|im_end|>\n<|im_start|>assistant\n")
+    format!(
+        "<|im_start|>system\n{CLASSIFY_SYSTEM}<|im_end|>\n<|im_start|>user\n{user}<|im_end|>\n<|im_start|>assistant\n"
+    )
 }

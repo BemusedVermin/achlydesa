@@ -9,7 +9,9 @@
 //!
 //! `cargo run -p agents --example dialogue_demo --release`
 
-use agents::{DialogueConfig, DirectorConfig, Goals, Registry, Setup, Simulation, TextGen, Utterance};
+use agents::{
+    DialogueConfig, DirectorConfig, Goals, Registry, Setup, Simulation, TextGen, Utterance,
+};
 
 fn throne_goals(reg: &Registry) -> Goals {
     Goals::from_ron(
@@ -46,7 +48,10 @@ fn world() -> Simulation {
         goals,
         registry: reg,
         director: true,
-        director_cfg: DirectorConfig { beat_interval: 9, ..Default::default() },
+        director_cfg: DirectorConfig {
+            beat_interval: 9,
+            ..Default::default()
+        },
         dialogue: true,
         dialogue_cfg: DialogueConfig::default(),
         ..Default::default()
@@ -66,7 +71,11 @@ impl TextGen for DemoModel {
 }
 
 fn line(u: &Utterance) -> String {
-    let voice = if u.forced { "  (the director's hand)" } else { "" };
+    let voice = if u.forced {
+        "  (the director's hand)"
+    } else {
+        ""
+    };
     format!(
         "  day {:>4}  {:>8} → {:<8}  [{:?}]  {}{}",
         u.tick, u.speaker_name, u.listener_name, u.act, u.surface, voice
@@ -78,17 +87,29 @@ fn main() {
     sim.run(500);
 
     let log = sim.dialogue_log();
-    println!("The world spoke {} lines. A scene from the middle of it:\n", log.len());
+    println!(
+        "The world spoke {} lines. A scene from the middle of it:\n",
+        log.len()
+    );
     for u in log.iter().skip(log.len().saturating_sub(150)).take(26) {
         println!("{}", line(u));
     }
 
     // Show the words are grounded: the accusations carry real motive and standing.
-    if let Some(u) = log.iter().rev().find(|u| matches!(u.act, agents::SpeechAct::Accuse | agents::SpeechAct::Threaten)) {
+    if let Some(u) = log.iter().rev().find(|u| {
+        matches!(
+            u.act,
+            agents::SpeechAct::Accuse | agents::SpeechAct::Threaten
+        )
+    }) {
         println!(
             "\n  A grounded line — {} ({}) {} {}:\n    \"{}\"",
             u.speaker_name,
-            if u.motive.is_empty() { "plain" } else { &u.motive[0] },
+            if u.motive.is_empty() {
+                "plain"
+            } else {
+                &u.motive[0]
+            },
             u.relation_word,
             u.listener_name,
             u.surface,
@@ -103,7 +124,10 @@ fn main() {
     if let Some((listener, _)) = sim.player_nearby_npcs().first().copied() {
         let lname = sim.display_name(listener);
         let menu = sim.player_intents();
-        println!("\n  A soul, {lname}, stands within reach. The player may say any of {} things — a few:", menu.len());
+        println!(
+            "\n  A soul, {lname}, stands within reach. The player may say any of {} things — a few:",
+            menu.len()
+        );
         for id in menu.iter().take(5) {
             println!("    {id}");
         }
@@ -120,6 +144,9 @@ fn main() {
     // The SLM realizer seam (out of band): swap the surface generator for the foreground.
     let mut realizer = agents::SlmRealizer::new(DemoModel);
     if let Some(u) = sim.dialogue_log().last() {
-        println!("\n  The same line through the optional SLM realizer (grammar fallback shown):\n    \"{}\"", realizer.realize(u));
+        println!(
+            "\n  The same line through the optional SLM realizer (grammar fallback shown):\n    \"{}\"",
+            realizer.realize(u)
+        );
     }
 }

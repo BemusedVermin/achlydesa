@@ -89,12 +89,21 @@ pub enum Need {
 /// [`Deed`], so the two seams stay separate.
 #[derive(Clone, Copy, Debug)]
 pub enum AffordEffect {
-    Relieve { need: Need, amount: i32 },
-    Yield { good: GoodId, units: u32, skill: Option<usize> },
+    Relieve {
+        need: Need,
+        amount: i32,
+    },
+    Yield {
+        good: GoodId,
+        units: u32,
+        skill: Option<usize>,
+    },
     /// Teach a calling — a guild or master lifts a skill the agent lacks above zero,
     /// so trades it could never run become possible. Occupational mobility: the one
     /// way a born calling widens.
-    Teach { skill: usize },
+    Teach {
+        skill: usize,
+    },
 }
 
 /// A place-based affordance available to the planner: standing on `at`, the agent
@@ -201,9 +210,17 @@ pub enum Step {
     /// Run recipe `i` from the registry.
     Make(usize),
     /// Buy `units` of a good at a known market.
-    Buy { good: GoodId, units: u32, market: usize },
+    Buy {
+        good: GoodId,
+        units: u32,
+        market: usize,
+    },
     /// Sell `units` of a good at a known market.
-    Sell { good: GoodId, units: u32, market: usize },
+    Sell {
+        good: GoodId,
+        units: u32,
+        market: usize,
+    },
     /// Walk to an adjacent tile.
     Move(Coord),
     /// Perform deed `i` (sets an abstract fact; must be at the deed's tile).
@@ -231,7 +248,10 @@ impl GoodSel {
     /// How many matching units are held.
     fn count(self, s: &PlanState, reg: &Registry) -> u32 {
         match self {
-            GoodSel::Edible => (0..reg.good_count()).filter(|&g| reg.good(g).nutrition > 0.0).map(|g| s.stock[g]).sum(),
+            GoodSel::Edible => (0..reg.good_count())
+                .filter(|&g| reg.good(g).nutrition > 0.0)
+                .map(|g| s.stock[g])
+                .sum(),
             GoodSel::Named(id) => s.stock[id],
         }
     }
@@ -273,14 +293,20 @@ impl Condition {
     pub fn deficit(&self, s: &PlanState, reg: &Registry) -> f32 {
         let frac = |short: f32, target: f32| (short.max(0.0) / target.max(1.0)).clamp(0.0, 1.0);
         match *self {
-            Condition::Sustenance { at_least } => frac((at_least - s.sustenance) as f32, at_least as f32),
+            Condition::Sustenance { at_least } => {
+                frac((at_least - s.sustenance) as f32, at_least as f32)
+            }
             Condition::Rest { at_least } => frac((at_least - s.rest) as f32, at_least as f32),
             Condition::Money { at_least } => frac((at_least - s.money) as f32, at_least as f32),
             Condition::Holding { good, at_least } => {
                 frac(at_least as f32 - good.count(s, reg) as f32, at_least as f32)
             }
             Condition::Fact { .. } => {
-                if self.satisfied(s, reg) { 0.0 } else { 1.0 }
+                if self.satisfied(s, reg) {
+                    0.0
+                } else {
+                    1.0
+                }
             }
         }
     }
@@ -295,10 +321,13 @@ impl Condition {
         const HOLD_STEP: u32 = 3;
         const MONEY_STEP: i64 = 80;
         match *self {
-            Condition::Holding { good, at_least } => {
-                Condition::Holding { good, at_least: at_least.min(good.count(s, reg) + HOLD_STEP) }
-            }
-            Condition::Money { at_least } => Condition::Money { at_least: at_least.min(s.money + MONEY_STEP) },
+            Condition::Holding { good, at_least } => Condition::Holding {
+                good,
+                at_least: at_least.min(good.count(s, reg) + HOLD_STEP),
+            },
+            Condition::Money { at_least } => Condition::Money {
+                at_least: at_least.min(s.money + MONEY_STEP),
+            },
             other => other,
         }
     }
@@ -311,8 +340,12 @@ impl Condition {
             Condition::Sustenance { at_least } => {
                 (at_least - s.sustenance).max(0) as f32 / best_food_gain(s, ctx).max(1.0)
             }
-            Condition::Rest { at_least } => (at_least - s.rest).max(0) as f32 / ctx.needs_cfg.rest_recovery.max(1.0),
-            Condition::Money { at_least } => (at_least - s.money).max(0) as f32 / best_coin_gain(s, ctx).max(1.0),
+            Condition::Rest { at_least } => {
+                (at_least - s.rest).max(0) as f32 / ctx.needs_cfg.rest_recovery.max(1.0)
+            }
+            Condition::Money { at_least } => {
+                (at_least - s.money).max(0) as f32 / best_coin_gain(s, ctx).max(1.0)
+            }
             Condition::Holding { good, at_least } => {
                 let short = at_least.saturating_sub(good.count(s, ctx.reg)) as f32;
                 short / best_acquire(good, ctx).max(1.0)
@@ -372,7 +405,10 @@ fn best_food_gain(s: &PlanState, ctx: &PlanCtx) -> f32 {
         .iter()
         .filter(|a| a.available && a.at == s.pos)
         .filter_map(|a| match a.effect {
-            AffordEffect::Relieve { need: Need::Sustenance, amount } => Some(amount as f32),
+            AffordEffect::Relieve {
+                need: Need::Sustenance,
+                amount,
+            } => Some(amount as f32),
             _ => None,
         })
         .fold(0.0, f32::max);
@@ -422,7 +458,10 @@ fn best_acquire(sel: GoodSel, ctx: &PlanCtx) -> f32 {
             _ => None,
         })
         .fold(0.0, f32::max);
-    produce.max(afforded).max(ctx.econ.trade_lot as f32).max(1.0)
+    produce
+        .max(afforded)
+        .max(ctx.econ.trade_lot as f32)
+        .max(1.0)
 }
 
 /// Output multiplier from a recipe's natural resource at this tile (`1` for a
@@ -441,7 +480,8 @@ fn resource_scale(s: &PlanState, ctx: &PlanCtx, r: &Recipe) -> Option<f32> {
 /// far in this plan? The state-aware companion to [`PlanCtx::can_practise`] (which
 /// knows only the born callings, for the heuristics that have no plan state to hand).
 fn practises(ctx: &PlanCtx, s: &PlanState, skill: usize) -> bool {
-    ctx.skills.get(skill).is_some_and(|&v| v > 0.0) || s.learned.get(skill).copied().unwrap_or(0) > 0
+    ctx.skills.get(skill).is_some_and(|&v| v > 0.0)
+        || s.learned.get(skill).copied().unwrap_or(0) > 0
 }
 
 /// Apply a step to a state, returning the resulting state and its action cost, or
@@ -463,7 +503,8 @@ fn apply(step: Step, s: &PlanState, ctx: &PlanCtx) -> Option<(PlanState, f32)> {
             if (ctx.resources)(s.pos)[ResourceKind::Vegetation.idx()] <= 0.0 {
                 return None;
             }
-            next.sustenance = (s.sustenance + ctx.needs_cfg.eat_grass_relief.round() as i32).min(100);
+            next.sustenance =
+                (s.sustenance + ctx.needs_cfg.eat_grass_relief.round() as i32).min(100);
             cost = 1.0;
         }
         Step::Rest => {
@@ -488,7 +529,11 @@ fn apply(step: Step, s: &PlanState, ctx: &PlanCtx) -> Option<(PlanState, f32)> {
             }
             cost = r.effort;
         }
-        Step::Buy { good, units, market } => {
+        Step::Buy {
+            good,
+            units,
+            market,
+        } => {
             let m = &ctx.markets[market];
             if !ctx.at_market(s.pos, m) || m.stock[good] < units {
                 return None;
@@ -501,7 +546,11 @@ fn apply(step: Step, s: &PlanState, ctx: &PlanCtx) -> Option<(PlanState, f32)> {
             next.stock[good] += units;
             cost = 1.0;
         }
-        Step::Sell { good, units, market } => {
+        Step::Sell {
+            good,
+            units,
+            market,
+        } => {
             let m = &ctx.markets[market];
             if !ctx.at_market(s.pos, m) || s.stock[good] < units {
                 return None;
@@ -604,8 +653,16 @@ fn successors(s: &PlanState, ctx: &PlanCtx) -> Vec<(Step, PlanState, f32)> {
             continue;
         }
         for g in 0..ctx.reg.good_count() {
-            push(Step::Buy { good: g, units: lot.min(m.stock[g]), market });
-            push(Step::Sell { good: g, units: lot.min(s.stock[g]), market });
+            push(Step::Buy {
+                good: g,
+                units: lot.min(m.stock[g]),
+                market,
+            });
+            push(Step::Sell {
+                good: g,
+                units: lot.min(s.stock[g]),
+                market,
+            });
         }
     }
 
@@ -667,7 +724,10 @@ pub fn plan(condition: &Condition, start: &PlanState, ctx: &PlanCtx) -> Vec<Step
                 return Vec::new();
             }
             budget -= 1;
-            successors(s, ctx).into_iter().map(|(_, next, cost)| (next, key(cost))).collect::<Vec<_>>()
+            successors(s, ctx)
+                .into_iter()
+                .map(|(_, next, cost)| (next, key(cost)))
+                .collect::<Vec<_>>()
         },
         |s| {
             let h = key(condition.heuristic(s, ctx));
@@ -702,19 +762,30 @@ fn approach(start: &PlanState, tile: Coord, ctx: &PlanCtx) -> Vec<Step> {
                 return Vec::new();
             }
             budget -= 1;
-            successors(s, ctx).into_iter().map(|(_, next, cost)| (next, key(cost))).collect::<Vec<_>>()
+            successors(s, ctx)
+                .into_iter()
+                .map(|(_, next, cost)| (next, key(cost)))
+                .collect::<Vec<_>>()
         },
         |s| key(tile_distance(s.pos, tile)),
         |s| s.pos == tile,
     );
-    found.map(|(states, _)| steps_between(&states, ctx)).unwrap_or_default()
+    found
+        .map(|(states, _)| steps_between(&states, ctx))
+        .unwrap_or_default()
 }
 
 /// Recover the action taken between each consecutive pair of states A\* hands back.
 fn steps_between(states: &[PlanState], ctx: &PlanCtx) -> Vec<Step> {
     states
         .windows(2)
-        .map(|w| successors(&w[0], ctx).into_iter().find(|(_, next, _)| *next == w[1]).map(|(s, _, _)| s).unwrap())
+        .map(|w| {
+            successors(&w[0], ctx)
+                .into_iter()
+                .find(|(_, next, _)| *next == w[1])
+                .map(|(s, _, _)| s)
+                .unwrap()
+        })
         .collect()
 }
 
@@ -726,7 +797,12 @@ mod tests {
     /// A market snapshot whose price basis equals its stock (no smoothing lag — the
     /// scenario sets the price directly through the stock it hands in).
     fn market(pos: Coord, stock: Vec<u32>, money: i64) -> MarketSnapshot {
-        MarketSnapshot { pos, price_basis: stock.clone(), stock, money }
+        MarketSnapshot {
+            pos,
+            price_basis: stock.clone(),
+            stock,
+            money,
+        }
     }
 
     /// A tiny test world: a row of tiles `0..n`, with the resources, markets, and
@@ -778,13 +854,28 @@ mod tests {
 
         /// Build this world's planning context and run `f` against it.
         fn with_ctx<R>(&self, f: impl FnOnce(&PlanCtx) -> R) -> R {
-            let resources = |c: Coord| self.resources.get(c.col as usize).copied().unwrap_or([0.0; ResourceKind::COUNT]);
+            let resources = |c: Coord| {
+                self.resources
+                    .get(c.col as usize)
+                    .copied()
+                    .unwrap_or([0.0; ResourceKind::COUNT])
+            };
             // A simple line graph: col c borders c-1 and c+1 within range, cached
             // up front so `neighbors` hands back a borrowed slice (as in the sim).
-            let n = self.resources.len().max(self.deeds.iter().map(|d| d.at.col as usize + 1).max().unwrap_or(0));
+            let n = self.resources.len().max(
+                self.deeds
+                    .iter()
+                    .map(|d| d.at.col as usize + 1)
+                    .max()
+                    .unwrap_or(0),
+            );
             let adjacency: Vec<Vec<Coord>> = (0..n as i32)
                 .map(|col| {
-                    [col - 1, col + 1].into_iter().filter(|&x| (0..n as i32).contains(&x)).map(|x| Coord::new(x, 0)).collect()
+                    [col - 1, col + 1]
+                        .into_iter()
+                        .filter(|&x| (0..n as i32).contains(&x))
+                        .map(|x| Coord::new(x, 0))
+                        .collect()
                 })
                 .collect();
             let neighbors = |c: Coord| adjacency[c.col as usize].as_slice();
@@ -837,20 +928,37 @@ mod tests {
         w.facts = 1;
         w.budget = 4; // can't see all 12 tiles ahead at once
         w.resources = vec![[0.0; ResourceKind::COUNT]; 13];
-        w.deeds = vec![Deed { at: TestWorld::at(12), fact: 0, value: 1 }];
+        w.deeds = vec![Deed {
+            at: TestWorld::at(12),
+            fact: 0,
+            value: 1,
+        }];
         let goal = Condition::Fact { fact: 0, equals: 1 };
 
         let mut s = w.state(100, 0, w.empty_stock(), 0);
         let mut legs = 0;
         while !goal.satisfied(&s, &w.reg) && legs < 100 {
             let plan = w.plan(goal, s.clone());
-            assert!(!plan.is_empty(), "a reachable deed must always yield progress (at col {})", s.pos.col);
+            assert!(
+                !plan.is_empty(),
+                "a reachable deed must always yield progress (at col {})",
+                s.pos.col
+            );
             // Carry out one step of the leg, as the act phase would, then replan.
-            s = w.with_ctx(|ctx| apply(plan[0], &s, ctx)).expect("planned step applies").0;
+            s = w
+                .with_ctx(|ctx| apply(plan[0], &s, ctx))
+                .expect("planned step applies")
+                .0;
             legs += 1;
         }
-        assert!(goal.satisfied(&s, &w.reg), "incremental approach should reach and do the distant deed");
-        assert!(s.pos.col == 12, "the agent should have walked all the way to the deed tile");
+        assert!(
+            goal.satisfied(&s, &w.reg),
+            "incremental approach should reach and do the distant deed"
+        );
+        assert!(
+            s.pos.col == 12,
+            "the agent should have walked all the way to the deed tile"
+        );
     }
 
     #[test]
@@ -860,7 +968,10 @@ mod tests {
         let bread = w.reg.good_id("bread").unwrap();
         let mut stock = w.empty_stock();
         stock[bread] = 3;
-        let p = w.plan(Condition::Sustenance { at_least: 70 }, w.state(10, 0, stock, 0));
+        let p = w.plan(
+            Condition::Sustenance { at_least: 70 },
+            w.state(10, 0, stock, 0),
+        );
         assert_eq!(p.first(), Some(&Step::Eat(bread)), "plan: {p:?}");
     }
 
@@ -874,15 +985,34 @@ mod tests {
         let skills = r#"[(name: "baking", gain: 0.02, cap: 5.0)]"#;
         let recipes = r#"[(name: "bake", skill: "baking", inputs: [("flour", 2)],
             outputs: [("loaf", 1)], resource: None, min_resource: 0.0, deplete: 0.0, effort: 1.0)]"#;
-        let mut w = TestWorld::with_reg(Registry::from_ron(DataFiles { goods, skills, recipes, ..Default::default() }).unwrap());
+        let mut w = TestWorld::with_reg(
+            Registry::from_ron(DataFiles {
+                goods,
+                skills,
+                recipes,
+                ..Default::default()
+            })
+            .unwrap(),
+        );
         w.resources = vec![[0.0; ResourceKind::COUNT]];
-        let (flour, loaf) = (w.reg.good_id("flour").unwrap(), w.reg.good_id("loaf").unwrap());
-        let bake = w.reg.recipes().iter().position(|r| r.name == "bake").unwrap();
+        let (flour, loaf) = (
+            w.reg.good_id("flour").unwrap(),
+            w.reg.good_id("loaf").unwrap(),
+        );
+        let bake = w
+            .reg
+            .recipes()
+            .iter()
+            .position(|r| r.name == "bake")
+            .unwrap();
         let mut stock = w.empty_stock();
         stock[flour] = 4;
         // Mildly hungry: a single loaf (50) clears the sate target, so the whole
         // plan is exactly bake-then-eat.
-        let p = w.plan(Condition::Sustenance { at_least: 70 }, w.state(30, 0, stock, 0));
+        let p = w.plan(
+            Condition::Sustenance { at_least: 70 },
+            w.state(30, 0, stock, 0),
+        );
         assert_eq!(p, vec![Step::Make(bake), Step::Eat(loaf)], "plan: {p:?}");
     }
 
@@ -896,10 +1026,17 @@ mod tests {
         let mut mstock = vec![0; w.reg.good_count()];
         mstock[bread] = 50;
         w.markets = vec![market(TestWorld::at(2), mstock, 100_000)];
-        let p = w.plan(Condition::Sustenance { at_least: 70 }, w.state(10, 1000, w.empty_stock(), 0));
-        assert!(p.iter().any(|s| matches!(s, Step::Move(_))), "should walk toward the market: {p:?}");
+        let p = w.plan(
+            Condition::Sustenance { at_least: 70 },
+            w.state(10, 1000, w.empty_stock(), 0),
+        );
         assert!(
-            p.iter().any(|s| matches!(s, Step::Buy { good, .. } if *good == bread)),
+            p.iter().any(|s| matches!(s, Step::Move(_))),
+            "should walk toward the market: {p:?}"
+        );
+        assert!(
+            p.iter()
+                .any(|s| matches!(s, Step::Buy { good, .. } if *good == bread)),
             "should buy bread: {p:?}"
         );
         assert!(p.contains(&Step::Eat(bread)), "should end up eating: {p:?}");
@@ -916,9 +1053,16 @@ mod tests {
         let mut mstock = vec![0; w.reg.good_count()];
         mstock[bread] = 50;
         w.markets = vec![market(TestWorld::at(0), mstock, 100_000)];
-        let p = w.plan(Condition::Holding { good: GoodSel::Edible, at_least: 6 }, w.state(100, 1000, w.empty_stock(), 0));
+        let p = w.plan(
+            Condition::Holding {
+                good: GoodSel::Edible,
+                at_least: 6,
+            },
+            w.state(100, 1000, w.empty_stock(), 0),
+        );
         assert!(
-            p.iter().any(|s| matches!(s, Step::Buy { good, .. } if *good == bread)),
+            p.iter()
+                .any(|s| matches!(s, Step::Buy { good, .. } if *good == bread)),
             "should buy bread to restock: {p:?}"
         );
     }
@@ -931,12 +1075,25 @@ mod tests {
         res[ResourceKind::Fertility.idx()] = 3.0;
         w.resources = vec![res];
         let grain = w.reg.good_id("grain").unwrap();
-        let farm = w.reg.recipes().iter().position(|r| r.name == "farm").unwrap();
-        w.markets = vec![market(TestWorld::at(0), vec![20; w.reg.good_count()], 100_000)];
-        let p = w.plan(Condition::Money { at_least: 30 }, w.state(100, 0, w.empty_stock(), 0));
+        let farm = w
+            .reg
+            .recipes()
+            .iter()
+            .position(|r| r.name == "farm")
+            .unwrap();
+        w.markets = vec![market(
+            TestWorld::at(0),
+            vec![20; w.reg.good_count()],
+            100_000,
+        )];
+        let p = w.plan(
+            Condition::Money { at_least: 30 },
+            w.state(100, 0, w.empty_stock(), 0),
+        );
         assert!(p.contains(&Step::Make(farm)), "should farm: {p:?}");
         assert!(
-            p.iter().any(|s| matches!(s, Step::Sell { good, .. } if *good == grain)),
+            p.iter()
+                .any(|s| matches!(s, Step::Sell { good, .. } if *good == grain)),
             "should sell grain: {p:?}"
         );
     }
@@ -958,12 +1115,18 @@ mod tests {
         ];
         // Start with little money; the target is only reachable by buying low
         // here and selling high two tiles over.
-        let p = w.plan(Condition::Money { at_least: 300 }, w.state(100, 100, w.empty_stock(), 0));
+        let p = w.plan(
+            Condition::Money { at_least: 300 },
+            w.state(100, 100, w.empty_stock(), 0),
+        );
         assert!(
             p.iter().any(|s| matches!(s, Step::Buy { market: 0, .. })),
             "should buy at the cheap market: {p:?}"
         );
-        assert!(p.iter().any(|s| matches!(s, Step::Move(_))), "should travel: {p:?}");
+        assert!(
+            p.iter().any(|s| matches!(s, Step::Move(_))),
+            "should travel: {p:?}"
+        );
         assert!(
             p.iter().any(|s| matches!(s, Step::Sell { market: 1, .. })),
             "should sell at the dear market: {p:?}"
@@ -979,10 +1142,25 @@ mod tests {
         let mut w = TestWorld::new();
         w.resources = vec![[0.0; ResourceKind::COUNT]; 4];
         w.facts = 1;
-        w.deeds = vec![Deed { at: TestWorld::at(3), fact: 0, value: 1 }];
-        let p = w.plan(Condition::Fact { fact: 0, equals: 1 }, w.state(100, 0, w.empty_stock(), 0));
-        assert_eq!(p.last(), Some(&Step::Do(0)), "plan should end by seizing the throne: {p:?}");
-        assert_eq!(p.iter().filter(|s| matches!(s, Step::Move(_))).count(), 3, "should walk three tiles: {p:?}");
+        w.deeds = vec![Deed {
+            at: TestWorld::at(3),
+            fact: 0,
+            value: 1,
+        }];
+        let p = w.plan(
+            Condition::Fact { fact: 0, equals: 1 },
+            w.state(100, 0, w.empty_stock(), 0),
+        );
+        assert_eq!(
+            p.last(),
+            Some(&Step::Do(0)),
+            "plan should end by seizing the throne: {p:?}"
+        );
+        assert_eq!(
+            p.iter().filter(|s| matches!(s, Step::Move(_))).count(),
+            3,
+            "should walk three tiles: {p:?}"
+        );
     }
 
     #[test]
@@ -995,13 +1173,25 @@ mod tests {
         w.affordances = vec![Affordance {
             at: TestWorld::at(3),
             tile: 3,
-            effect: AffordEffect::Relieve { need: Need::Sustenance, amount: 60 },
+            effect: AffordEffect::Relieve {
+                need: Need::Sustenance,
+                amount: 60,
+            },
             available: true,
             needs_discovery: false,
         }];
-        let p = w.plan(Condition::Sustenance { at_least: 70 }, w.state(20, 0, w.empty_stock(), 0));
-        assert!(p.iter().any(|s| matches!(s, Step::Move(_))), "should walk toward the oasis: {p:?}");
-        assert!(p.contains(&Step::Use(0)), "should forage at the oasis: {p:?}");
+        let p = w.plan(
+            Condition::Sustenance { at_least: 70 },
+            w.state(20, 0, w.empty_stock(), 0),
+        );
+        assert!(
+            p.iter().any(|s| matches!(s, Step::Move(_))),
+            "should walk toward the oasis: {p:?}"
+        );
+        assert!(
+            p.contains(&Step::Use(0)),
+            "should forage at the oasis: {p:?}"
+        );
     }
 
     #[test]
@@ -1015,14 +1205,26 @@ mod tests {
             w.affordances = vec![Affordance {
                 at: TestWorld::at(3),
                 tile: 3,
-                effect: AffordEffect::Relieve { need: Need::Sustenance, amount: 60 },
+                effect: AffordEffect::Relieve {
+                    need: Need::Sustenance,
+                    amount: 60,
+                },
                 available: true,
                 needs_discovery: true,
             }];
-            w.plan(Condition::Sustenance { at_least: 70 }, w.state(20, 0, w.empty_stock(), 0))
+            w.plan(
+                Condition::Sustenance { at_least: 70 },
+                w.state(20, 0, w.empty_stock(), 0),
+            )
         };
-        assert!(!make(Some(vec![])).contains(&Step::Use(0)), "an unknown hidden site must not be used");
-        assert!(make(Some(vec![3])).contains(&Step::Use(0)), "once discovered, the site is usable");
+        assert!(
+            !make(Some(vec![])).contains(&Step::Use(0)),
+            "an unknown hidden site must not be used"
+        );
+        assert!(
+            make(Some(vec![3])).contains(&Step::Use(0)),
+            "once discovered, the site is usable"
+        );
     }
 
     #[test]
@@ -1035,12 +1237,25 @@ mod tests {
         w.affordances = vec![Affordance {
             at: TestWorld::at(2),
             tile: 2,
-            effect: AffordEffect::Yield { good: grain, units: 3, skill: None },
+            effect: AffordEffect::Yield {
+                good: grain,
+                units: 3,
+                skill: None,
+            },
             available: true,
             needs_discovery: false,
         }];
-        let p = w.plan(Condition::Holding { good: GoodSel::Named(grain), at_least: 3 }, w.state(100, 0, w.empty_stock(), 0));
-        assert!(p.contains(&Step::Use(0)), "should gather grain at the yield site: {p:?}");
+        let p = w.plan(
+            Condition::Holding {
+                good: GoodSel::Named(grain),
+                at_least: 3,
+            },
+            w.state(100, 0, w.empty_stock(), 0),
+        );
+        assert!(
+            p.contains(&Step::Use(0)),
+            "should gather grain at the yield site: {p:?}"
+        );
     }
 
     #[test]
@@ -1052,12 +1267,21 @@ mod tests {
         w.affordances = vec![Affordance {
             at: TestWorld::at(3),
             tile: 3,
-            effect: AffordEffect::Relieve { need: Need::Sustenance, amount: 60 },
+            effect: AffordEffect::Relieve {
+                need: Need::Sustenance,
+                amount: 60,
+            },
             available: false,
             needs_discovery: false,
         }];
-        let p = w.plan(Condition::Sustenance { at_least: 70 }, w.state(20, 0, w.empty_stock(), 0));
-        assert!(!p.contains(&Step::Use(0)), "a worked-out site must not be used: {p:?}");
+        let p = w.plan(
+            Condition::Sustenance { at_least: 70 },
+            w.state(20, 0, w.empty_stock(), 0),
+        );
+        assert!(
+            !p.contains(&Step::Use(0)),
+            "a worked-out site must not be used: {p:?}"
+        );
     }
 
     #[test]
@@ -1069,20 +1293,41 @@ mod tests {
         let mut res = [0.0; ResourceKind::COUNT];
         res[ResourceKind::Fertility.idx()] = 3.0;
         w.resources = vec![res];
-        let farm = w.reg.recipes().iter().position(|r| r.name == "farm").unwrap();
+        let farm = w
+            .reg
+            .recipes()
+            .iter()
+            .position(|r| r.name == "farm")
+            .unwrap();
         let farming = w.reg.skill_id("farming").unwrap();
         let baking = w.reg.skill_id("baking").unwrap();
-        w.markets = vec![market(TestWorld::at(0), vec![20; w.reg.good_count()], 100_000)];
+        w.markets = vec![market(
+            TestWorld::at(0),
+            vec![20; w.reg.good_count()],
+            100_000,
+        )];
 
         w.skills = vec![0.0; w.reg.skill_count()];
         w.skills[farming] = 1.0;
-        let farmer = w.plan(Condition::Money { at_least: 30 }, w.state(100, 0, w.empty_stock(), 0));
-        assert!(farmer.contains(&Step::Make(farm)), "a farmer should farm: {farmer:?}");
+        let farmer = w.plan(
+            Condition::Money { at_least: 30 },
+            w.state(100, 0, w.empty_stock(), 0),
+        );
+        assert!(
+            farmer.contains(&Step::Make(farm)),
+            "a farmer should farm: {farmer:?}"
+        );
 
         w.skills = vec![0.0; w.reg.skill_count()];
         w.skills[baking] = 1.0;
-        let baker = w.plan(Condition::Money { at_least: 30 }, w.state(100, 0, w.empty_stock(), 0));
-        assert!(!baker.contains(&Step::Make(farm)), "a baker cannot farm: {baker:?}");
+        let baker = w.plan(
+            Condition::Money { at_least: 30 },
+            w.state(100, 0, w.empty_stock(), 0),
+        );
+        assert!(
+            !baker.contains(&Step::Make(farm)),
+            "a baker cannot farm: {baker:?}"
+        );
     }
 
     #[test]
@@ -1094,8 +1339,16 @@ mod tests {
         w.resources = vec![[0.0; ResourceKind::COUNT]; 3];
         let baking = w.reg.skill_id("baking").unwrap();
         let farming = w.reg.skill_id("farming").unwrap();
-        let (grain, bread) = (w.reg.good_id("grain").unwrap(), w.reg.good_id("bread").unwrap());
-        let bake = w.reg.recipes().iter().position(|r| r.name == "bake").unwrap();
+        let (grain, bread) = (
+            w.reg.good_id("grain").unwrap(),
+            w.reg.good_id("bread").unwrap(),
+        );
+        let bake = w
+            .reg
+            .recipes()
+            .iter()
+            .position(|r| r.name == "bake")
+            .unwrap();
         w.skills = vec![0.0; w.reg.skill_count()];
         w.skills[farming] = 1.0; // a farmer — cannot bake
         w.affordances = vec![Affordance {
@@ -1107,9 +1360,21 @@ mod tests {
         }];
         let mut stock = w.empty_stock();
         stock[grain] = 4;
-        let p = w.plan(Condition::Holding { good: GoodSel::Named(bread), at_least: 1 }, w.state(100, 0, stock, 0));
-        assert!(p.contains(&Step::Use(0)), "should apprentice at the guild: {p:?}");
-        assert!(p.contains(&Step::Make(bake)), "and then bake what it learned: {p:?}");
+        let p = w.plan(
+            Condition::Holding {
+                good: GoodSel::Named(bread),
+                at_least: 1,
+            },
+            w.state(100, 0, stock, 0),
+        );
+        assert!(
+            p.contains(&Step::Use(0)),
+            "should apprentice at the guild: {p:?}"
+        );
+        assert!(
+            p.contains(&Step::Make(bake)),
+            "and then bake what it learned: {p:?}"
+        );
     }
 
     #[test]
@@ -1119,9 +1384,14 @@ mod tests {
         let grain = w.reg.good_id("grain").unwrap();
         let mut stock = w.empty_stock();
         stock[grain] = 4;
-        let a = w.plan(Condition::Sustenance { at_least: 70 }, w.state(10, 0, stock.clone(), 0));
-        let b = w.plan(Condition::Sustenance { at_least: 70 }, w.state(10, 0, stock, 0));
+        let a = w.plan(
+            Condition::Sustenance { at_least: 70 },
+            w.state(10, 0, stock.clone(), 0),
+        );
+        let b = w.plan(
+            Condition::Sustenance { at_least: 70 },
+            w.state(10, 0, stock, 0),
+        );
         assert_eq!(a, b);
     }
-
 }

@@ -84,11 +84,23 @@ pub enum Party {
 #[derive(Deserialize, Clone, Debug)]
 pub enum Move {
     /// Move `who`'s opinion of `toward` by `delta` (clamped `-1..1`).
-    Turn { who: Party, toward: Party, delta: f32 },
+    Turn {
+        who: Party,
+        toward: Party,
+        delta: f32,
+    },
     /// Shift a mood of `who` by `delta` (clamped `0..1`).
-    Stir { who: Party, mood: String, delta: f32 },
+    Stir {
+        who: Party,
+        mood: String,
+        delta: f32,
+    },
     /// Shift a trait of `who` by `delta` (clamped `0..1`).
-    Sway { who: Party, trait_name: String, delta: f32 },
+    Sway {
+        who: Party,
+        trait_name: String,
+        delta: f32,
+    },
     /// `who` comes to bear `against` a grudge — words that harden into a feud.
     Grudge { who: Party, against: Party },
 }
@@ -149,15 +161,24 @@ impl ConsiderationDef {
     fn resolve(self, reg: &Registry) -> Result<Consideration, String> {
         let input = match self.input {
             InputDef::Deficit => Input::Deficit,
-            InputDef::Trait(n) => Input::Trait(reg.trait_id(&n).ok_or_else(|| format!("unknown trait '{n}'"))?),
-            InputDef::Mood(n) => Input::Mood(reg.mood_id(&n).ok_or_else(|| format!("unknown mood '{n}'"))?),
+            InputDef::Trait(n) => Input::Trait(
+                reg.trait_id(&n)
+                    .ok_or_else(|| format!("unknown trait '{n}'"))?,
+            ),
+            InputDef::Mood(n) => Input::Mood(
+                reg.mood_id(&n)
+                    .ok_or_else(|| format!("unknown mood '{n}'"))?,
+            ),
             InputDef::Sanction => Input::Sanction,
             InputDef::OpinionOf => Input::OpinionOf,
             InputDef::GrievanceAgainst => Input::GrievanceAgainst,
             InputDef::SharedHistory => Input::SharedHistory,
             InputDef::Prominence => Input::Prominence,
         };
-        Ok(Consideration { input, curve: self.curve })
+        Ok(Consideration {
+            input,
+            curve: self.curve,
+        })
     }
 }
 
@@ -179,17 +200,31 @@ impl IntentBook {
             for m in &d.moves {
                 match m {
                     Move::Stir { mood, .. } => {
-                        reg.mood_id(mood).ok_or_else(|| format!("intent '{}': unknown mood '{mood}'", d.id))?;
+                        reg.mood_id(mood)
+                            .ok_or_else(|| format!("intent '{}': unknown mood '{mood}'", d.id))?;
                     }
                     Move::Sway { trait_name, .. } => {
-                        reg.trait_id(trait_name).ok_or_else(|| format!("intent '{}': unknown trait '{trait_name}'", d.id))?;
+                        reg.trait_id(trait_name).ok_or_else(|| {
+                            format!("intent '{}': unknown trait '{trait_name}'", d.id)
+                        })?;
                     }
                     _ => {}
                 }
             }
-            let appeal =
-                d.appeal.into_iter().map(|c| c.resolve(reg)).collect::<Result<Vec<_>, _>>().map_err(|e| format!("intent '{}': {e}", d.id))?;
-            out.push(Intent { id: d.id, act: d.act, tags: d.tags, appeal, moves: d.moves, weight: d.weight });
+            let appeal = d
+                .appeal
+                .into_iter()
+                .map(|c| c.resolve(reg))
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| format!("intent '{}': {e}", d.id))?;
+            out.push(Intent {
+                id: d.id,
+                act: d.act,
+                tags: d.tags,
+                appeal,
+                moves: d.moves,
+                weight: d.weight,
+            });
         }
         Ok(IntentBook(out))
     }
@@ -267,7 +302,13 @@ pub struct Dialogue {
 
 impl Dialogue {
     pub fn seeded(seed: u64) -> Self {
-        Self { rng: SplitMix64::new(seed), mem: HashMap::new(), grammar: Grammar::bundled(), forced: Vec::new(), log: Vec::new() }
+        Self {
+            rng: SplitMix64::new(seed),
+            mem: HashMap::new(),
+            grammar: Grammar::bundled(),
+            forced: Vec::new(),
+            log: Vec::new(),
+        }
     }
 
     /// Queue an utterance the director is putting in `speaker`'s mouth (see `Effect::Voice`).
@@ -276,8 +317,16 @@ impl Dialogue {
     }
 
     /// Compose the grammar surface for an utterance (disjoint field borrow of grammar+rng).
-    fn render(&mut self, act: SpeechAct, affect: &str, referent: &Option<String>, speaker: &str, listener: &str) -> String {
-        self.grammar.realize(act, affect, referent, speaker, listener, &mut self.rng)
+    fn render(
+        &mut self,
+        act: SpeechAct,
+        affect: &str,
+        referent: &Option<String>,
+        speaker: &str,
+        listener: &str,
+    ) -> String {
+        self.grammar
+            .realize(act, affect, referent, speaker, listener, &mut self.rng)
     }
 
     /// Salient shared history between `who` and `other`, `0..1` — the `SharedHistory` axis.
@@ -285,7 +334,13 @@ impl Dialogue {
         let mass: f32 = self
             .mem
             .get(&who)
-            .map(|l| l.records.iter().filter(|r| r.partner == other).map(|r| r.strength).sum())
+            .map(|l| {
+                l.records
+                    .iter()
+                    .filter(|r| r.partner == other)
+                    .map(|r| r.strength)
+                    .sum()
+            })
             .unwrap_or(0.0);
         mass / (mass + 2.0)
     }
@@ -367,7 +422,10 @@ impl MoodWords {
 
     fn dominant(&self, moods: &[f32]) -> Affect {
         let mut best = 0.15f32; // a feeling has to be felt to colour speech
-        let mut out = Affect { word: "even", bucket: "plain" };
+        let mut out = Affect {
+            word: "even",
+            bucket: "plain",
+        };
         for &(id, word, bucket) in &self.ids[..self.n] {
             let v = moods.get(id).copied().unwrap_or(0.0);
             if v > best {
@@ -448,7 +506,18 @@ pub(crate) fn converse(
     reg: Res<Registry>,
     director: Option<Res<crate::director::Director>>,
     mut dlg: ResMut<Dialogue>,
-    mut people: Query<(Entity, &Position, &mut Personality, &mut Mood, &mut Opinion, &Needs, Option<&Grievance>), With<Npc>>,
+    mut people: Query<
+        (
+            Entity,
+            &Position,
+            &mut Personality,
+            &mut Mood,
+            &mut Opinion,
+            &Needs,
+            Option<&Grievance>,
+        ),
+        With<Npc>,
+    >,
     // Off-by-default Chronicle: a conversation that breeds a grudge is a story seed; recorded here.
     mut chronicle: Option<ResMut<crate::chronicle::Chronicle>>,
 ) {
@@ -517,9 +586,16 @@ pub(crate) fn converse(
             }
             let listener = cands[cj].e;
             let op = cands[ci].op.get(&listener).copied().unwrap_or(0.0);
-            let grudge = if cands[ci].grudge == Some(listener) { 1.0 } else { 0.0 };
+            let grudge = if cands[ci].grudge == Some(listener) {
+                1.0
+            } else {
+                0.0
+            };
             let shared = dlg.shared_history(speaker, listener);
-            let prom = director.as_ref().map(|d| (d.prominence_of(listener) / 4.0).min(1.0)).unwrap_or(0.0);
+            let prom = director
+                .as_ref()
+                .map(|d| (d.prominence_of(listener) / 4.0).min(1.0))
+                .unwrap_or(0.0);
             for (bi, intent) in book.0.iter().enumerate() {
                 let raw = ai::score(&intent.appeal, |input| match input {
                     Input::Deficit => 0.0,
@@ -535,7 +611,13 @@ pub(crate) fn converse(
                 let echo = dlg
                     .mem
                     .get(&speaker)
-                    .map(|l| l.records.iter().rev().take(3).any(|r| r.partner == listener && r.act == intent.act))
+                    .map(|l| {
+                        l.records
+                            .iter()
+                            .rev()
+                            .take(3)
+                            .any(|r| r.partner == listener && r.act == intent.act)
+                    })
                     .unwrap_or(false);
                 let score = raw * intent.weight * if echo { cfg.echo_penalty } else { 1.0 };
                 if score >= cfg.appeal_floor && best.is_none_or(|(b, _, _)| score > b) {
@@ -553,14 +635,19 @@ pub(crate) fn converse(
     for (k, (speaker, listener, bi)) in chosen.into_iter().enumerate() {
         let intent = &book.0[bi];
         let forced = forced_flag[k];
-        let Some(&si) = idx_of.get(&speaker) else { continue };
+        let Some(&si) = idx_of.get(&speaker) else {
+            continue;
+        };
 
         // Apply the social consequence (the canon — deterministic, in the tick).
         let mut made_grudge = false;
         for mv in &intent.moves {
             match mv {
                 Move::Turn { who, toward, delta } => {
-                    let (w, t) = (party(*who, speaker, listener), party(*toward, speaker, listener));
+                    let (w, t) = (
+                        party(*who, speaker, listener),
+                        party(*toward, speaker, listener),
+                    );
                     if w != t
                         && let Ok((.., mut op, _, _)) = people.get_mut(w)
                     {
@@ -577,7 +664,11 @@ pub(crate) fn converse(
                         *v = (*v + delta).clamp(0.0, 1.0);
                     }
                 }
-                Move::Sway { who, trait_name, delta } => {
+                Move::Sway {
+                    who,
+                    trait_name,
+                    delta,
+                } => {
                     let w = party(*who, speaker, listener);
                     if let Some(tid) = reg.trait_id(trait_name)
                         && let Ok((.., mut pers, _, _, _, _)) = people.get_mut(w)
@@ -587,12 +678,22 @@ pub(crate) fn converse(
                     }
                 }
                 Move::Grudge { who, against } => {
-                    let (w, a) = (party(*who, speaker, listener), party(*against, speaker, listener));
+                    let (w, a) = (
+                        party(*who, speaker, listener),
+                        party(*against, speaker, listener),
+                    );
                     if w != a {
                         commands.entity(w).insert(Grievance(a));
                         made_grudge = true;
                         if let Some(c) = chronicle.as_deref_mut() {
-                            c.record(tick, EpisodeKind::GrievanceFormed, [Some(w), Some(a), None], cands[si].pos, None, 0);
+                            c.record(
+                                tick,
+                                EpisodeKind::GrievanceFormed,
+                                [Some(w), Some(a), None],
+                                cands[si].pos,
+                                None,
+                                0,
+                            );
                         }
                     }
                 }
@@ -602,19 +703,51 @@ pub(crate) fn converse(
         // Assemble the card (numbers → words) and choose a referent from memory.
         let op_sl = cands[si].op.get(&listener).copied().unwrap_or(0.0);
         let affect = moods_w.dominant(&cands[si].moods);
-        let register = intent.tags.first().cloned().unwrap_or_else(|| intent.act.key().to_string());
-        let referent = pick_referent(&dlg, speaker, listener, &register, cands[si].grudge == Some(listener));
+        let register = intent
+            .tags
+            .first()
+            .cloned()
+            .unwrap_or_else(|| intent.act.key().to_string());
+        let referent = pick_referent(
+            &dlg,
+            speaker,
+            listener,
+            &register,
+            cands[si].grudge == Some(listener),
+        );
         let speaker_name = name_of(&dlg.grammar, speaker);
         let listener_name = name_of(&dlg.grammar, listener);
         let motive = motive_words(&reg, &cands[si].traits);
 
         // Render the deterministic grammar surface.
-        let surface = dlg.render(intent.act, affect.bucket, &referent, &speaker_name, &listener_name);
+        let surface = dlg.render(
+            intent.act,
+            affect.bucket,
+            &referent,
+            &speaker_name,
+            &listener_name,
+        );
 
         // Remember it, for both souls (importance from the social weight it carried).
         let importance = (intent.weight + if made_grudge { 0.6 } else { 0.0 }).min(2.0);
-        remember(&mut dlg, speaker, listener, intent.act, &register, importance, cfg.memory_cap);
-        remember(&mut dlg, listener, speaker, intent.act, &register, importance * 0.8, cfg.memory_cap);
+        remember(
+            &mut dlg,
+            speaker,
+            listener,
+            intent.act,
+            &register,
+            importance,
+            cfg.memory_cap,
+        );
+        remember(
+            &mut dlg,
+            listener,
+            speaker,
+            intent.act,
+            &register,
+            importance * 0.8,
+            cfg.memory_cap,
+        );
         dlg.mem.entry(speaker).or_default().last_spoke = Some(tick);
 
         dlg.log.push(Utterance {
@@ -644,7 +777,13 @@ fn party(p: Party, speaker: Entity, listener: Entity) -> Entity {
 
 /// Pick the most salient memory of the listener as the thing to bring up — mood-congruent,
 /// recency-weighted; a standing grudge is the loudest referent of all.
-fn pick_referent(dlg: &Dialogue, speaker: Entity, listener: Entity, register: &str, has_grudge: bool) -> Option<String> {
+fn pick_referent(
+    dlg: &Dialogue,
+    speaker: Entity,
+    listener: Entity,
+    register: &str,
+    has_grudge: bool,
+) -> Option<String> {
     if has_grudge {
         return Some("the wrong between us".to_string());
     }
@@ -661,17 +800,41 @@ fn pick_referent(dlg: &Dialogue, speaker: Entity, listener: Entity, register: &s
     Some(format!("what passed between us ({})", best.register))
 }
 
-fn remember(dlg: &mut Dialogue, who: Entity, partner: Entity, act: SpeechAct, register: &str, importance: f32, cap: usize) {
+fn remember(
+    dlg: &mut Dialogue,
+    who: Entity,
+    partner: Entity,
+    act: SpeechAct,
+    register: &str,
+    importance: f32,
+    cap: usize,
+) {
     // Recall reinforces (spaced repetition): bump an existing record with this partner+act.
     let log = dlg.mem.entry(who).or_default();
-    if let Some(r) = log.records.iter_mut().find(|r| r.partner == partner && r.act == act) {
+    if let Some(r) = log
+        .records
+        .iter_mut()
+        .find(|r| r.partner == partner && r.act == act)
+    {
         r.strength = (r.strength + 0.5).min(3.0);
         return;
     }
-    log.records.push(MemRecord { tick: 0, partner, act, register: register.to_string(), importance, strength: 1.0 });
+    log.records.push(MemRecord {
+        tick: 0,
+        partner,
+        act,
+        register: register.to_string(),
+        importance,
+        strength: 1.0,
+    });
     if log.records.len() > cap {
         // Forget the weakest.
-        let weakest = log.records.iter().enumerate().min_by(|a, b| a.1.strength.total_cmp(&b.1.strength)).map(|(i, _)| i);
+        let weakest = log
+            .records
+            .iter()
+            .enumerate()
+            .min_by(|a, b| a.1.strength.total_cmp(&b.1.strength))
+            .map(|(i, _)| i);
         if let Some(i) = weakest {
             log.records.remove(i);
         }
@@ -709,7 +872,11 @@ impl Grammar {
         rng: &mut SplitMix64,
     ) -> String {
         let keyed = format!("{}/{}", act.key(), affect);
-        let root = if self.0.contains_key(&keyed) { keyed } else { act.key().to_string() };
+        let root = if self.0.contains_key(&keyed) {
+            keyed
+        } else {
+            act.key().to_string()
+        };
         let slots = |s: &str| -> Option<String> {
             match s {
                 "speaker" => Some(speaker.to_string()),
@@ -727,7 +894,13 @@ impl Grammar {
         s
     }
 
-    fn expand(&self, symbol: &str, slots: &impl Fn(&str) -> Option<String>, rng: &mut SplitMix64, depth: u8) -> String {
+    fn expand(
+        &self,
+        symbol: &str,
+        slots: &impl Fn(&str) -> Option<String>,
+        rng: &mut SplitMix64,
+        depth: u8,
+    ) -> String {
         if depth > 8 {
             return String::new();
         }
@@ -777,7 +950,11 @@ pub trait TextGen {
 /// Build the prompt the SLM rephrases from — the character card assembled from the
 /// already-grounded utterance (numbers already turned to words; the model only voices it).
 pub fn build_prompt(u: &Utterance) -> String {
-    let motive = if u.motive.is_empty() { "unremarkable".to_string() } else { u.motive.join(", ") };
+    let motive = if u.motive.is_empty() {
+        "unremarkable".to_string()
+    } else {
+        u.motive.join(", ")
+    };
     let referent = u.referent.as_deref().unwrap_or("nothing in particular");
     format!(
         "You are {name}, a {motive} person. You feel {mood}. You {relation} {listener}. \
@@ -825,7 +1002,10 @@ pub struct SlmRealizer<G: TextGen> {
 
 impl<G: TextGen> SlmRealizer<G> {
     pub fn new(model: G) -> Self {
-        Self { model, cache: HashMap::new() }
+        Self {
+            model,
+            cache: HashMap::new(),
+        }
     }
 
     /// Render one foreground utterance with the model, cached and grammar-guarded.
@@ -837,7 +1017,11 @@ impl<G: TextGen> SlmRealizer<G> {
         let line = self.model.generate(&build_prompt(u), key);
         let line = line.trim();
         // Guard: a model that returns nothing, or a wall of text, gets the grammar floor.
-        let chosen = if line.is_empty() || line.len() > 240 { u.surface.clone() } else { line.to_string() };
+        let chosen = if line.is_empty() || line.len() > 240 {
+            u.surface.clone()
+        } else {
+            line.to_string()
+        };
         self.cache.insert(key, chosen.clone());
         chosen
     }
@@ -854,12 +1038,32 @@ impl<G: TextGen> SlmRealizer<G> {
 pub fn available(world: &World, speaker: Entity, listener: Entity) -> Vec<(String, f32)> {
     let book = world.resource::<IntentBook>();
     let reg = world.resource::<Registry>();
-    let Some(traits) = world.get::<Personality>(speaker).map(|p| p.0.clone()) else { return Vec::new() };
-    let moods = world.get::<Mood>(speaker).map(|m| m.0.clone()).unwrap_or_default();
-    let op = world.get::<Opinion>(speaker).map(|o| o.of(listener)).unwrap_or(0.0);
-    let grudge = if world.get::<Grievance>(speaker).is_some_and(|g| g.0 == listener) { 1.0 } else { 0.0 };
-    let shared = world.resource::<Dialogue>().shared_history(speaker, listener);
-    let prom = world.get_resource::<crate::director::Director>().map(|d| (d.prominence_of(listener) / 4.0).min(1.0)).unwrap_or(0.0);
+    let Some(traits) = world.get::<Personality>(speaker).map(|p| p.0.clone()) else {
+        return Vec::new();
+    };
+    let moods = world
+        .get::<Mood>(speaker)
+        .map(|m| m.0.clone())
+        .unwrap_or_default();
+    let op = world
+        .get::<Opinion>(speaker)
+        .map(|o| o.of(listener))
+        .unwrap_or(0.0);
+    let grudge = if world
+        .get::<Grievance>(speaker)
+        .is_some_and(|g| g.0 == listener)
+    {
+        1.0
+    } else {
+        0.0
+    };
+    let shared = world
+        .resource::<Dialogue>()
+        .shared_history(speaker, listener);
+    let prom = world
+        .get_resource::<crate::director::Director>()
+        .map(|d| (d.prominence_of(listener) / 4.0).min(1.0))
+        .unwrap_or(0.0);
     let _ = reg;
     let mut out: Vec<(String, f32)> = book
         .0
@@ -887,7 +1091,12 @@ pub fn available(world: &World, speaker: Entity, listener: Entity) -> Vec<(Strin
 /// ([`available`]); it is simply offered the verbs and chooses the meaning. So the avatar
 /// needs no traits, mood, or opinion to speak — the choosing is the human's.
 pub fn repertoire(world: &World) -> Vec<String> {
-    world.resource::<IntentBook>().0.iter().map(|i| i.id.clone()).collect()
+    world
+        .resource::<IntentBook>()
+        .0
+        .iter()
+        .map(|i| i.id.clone())
+        .collect()
 }
 
 /// `speaker` answers `listener` with its most-appealing intent that clears the appeal floor
@@ -922,12 +1131,21 @@ pub fn apply_moves(world: &mut World, speaker: Entity, listener: Entity, moves: 
 /// strongly the words land (e.g. the result of a speaker's persuasion-skill check). `scale == 1.0`
 /// is the unscaled canon, so every existing caller (and a world without the RPG layer) is
 /// byte-identical; `0.0` means the words move nothing and no grudge forms.
-pub fn apply_moves_scaled(world: &mut World, speaker: Entity, listener: Entity, moves: &[Move], scale: f32) -> bool {
+pub fn apply_moves_scaled(
+    world: &mut World,
+    speaker: Entity,
+    listener: Entity,
+    moves: &[Move],
+    scale: f32,
+) -> bool {
     let mut made_grudge = false;
     for mv in moves {
         match mv {
             Move::Turn { who, toward, delta } => {
-                let (w, t) = (party(*who, speaker, listener), party(*toward, speaker, listener));
+                let (w, t) = (
+                    party(*who, speaker, listener),
+                    party(*toward, speaker, listener),
+                );
                 if w != t
                     && let Some(mut op) = world.get_mut::<Opinion>(w)
                 {
@@ -945,7 +1163,11 @@ pub fn apply_moves_scaled(world: &mut World, speaker: Entity, listener: Entity, 
                     *v = (*v + delta * scale).clamp(0.0, 1.0);
                 }
             }
-            Move::Sway { who, trait_name, delta } => {
+            Move::Sway {
+                who,
+                trait_name,
+                delta,
+            } => {
                 let w = party(*who, speaker, listener);
                 let tid = world.resource::<Registry>().trait_id(trait_name);
                 if let Some(tid) = tid
@@ -956,7 +1178,10 @@ pub fn apply_moves_scaled(world: &mut World, speaker: Entity, listener: Entity, 
                 }
             }
             Move::Grudge { who, against } => {
-                let (w, a) = (party(*who, speaker, listener), party(*against, speaker, listener));
+                let (w, a) = (
+                    party(*who, speaker, listener),
+                    party(*against, speaker, listener),
+                );
                 if scale > 0.0 && w != a {
                     world.entity_mut(w).insert(Grievance(a));
                     made_grudge = true;
@@ -972,7 +1197,14 @@ pub fn apply_moves_scaled(world: &mut World, speaker: Entity, listener: Entity, 
                     if let Some(at) = at
                         && let Some(mut chron) = world.get_resource_mut::<Chronicle>()
                     {
-                        chron.record(tick, EpisodeKind::GrievanceFormed, [Some(w), Some(a), None], at, None, 0);
+                        chron.record(
+                            tick,
+                            EpisodeKind::GrievanceFormed,
+                            [Some(w), Some(a), None],
+                            at,
+                            None,
+                            0,
+                        );
                     }
                 }
             }
@@ -982,7 +1214,12 @@ pub fn apply_moves_scaled(world: &mut World, speaker: Entity, listener: Entity, 
 }
 
 /// Enact one utterance immediately, at full strength — see [`perform_scaled`].
-pub fn perform(world: &mut World, speaker: Entity, listener: Entity, intent_id: &str) -> Option<Utterance> {
+pub fn perform(
+    world: &mut World,
+    speaker: Entity,
+    listener: Entity,
+    intent_id: &str,
+) -> Option<Utterance> {
     perform_scaled(world, speaker, listener, intent_id, 1.0)
 }
 
@@ -992,8 +1229,18 @@ pub fn perform(world: &mut World, speaker: Entity, listener: Entity, intent_id: 
 /// the result of the speaker's persuasion check — then renders the surface, records the memory
 /// for both souls, logs it, and returns it. `scale == 1.0` is the unscaled canon. Uses the
 /// *same* machinery as emergent speech.
-pub fn perform_scaled(world: &mut World, speaker: Entity, listener: Entity, intent_id: &str, scale: f32) -> Option<Utterance> {
-    let bi = world.resource::<IntentBook>().0.iter().position(|i| i.id == intent_id)?;
+pub fn perform_scaled(
+    world: &mut World,
+    speaker: Entity,
+    listener: Entity,
+    intent_id: &str,
+    scale: f32,
+) -> Option<Utterance> {
+    let bi = world
+        .resource::<IntentBook>()
+        .0
+        .iter()
+        .position(|i| i.id == intent_id)?;
     let intent = world.resource::<IntentBook>().0[bi].clone();
     let tick = world.resource::<Substrate>().0.tick();
 
@@ -1001,18 +1248,41 @@ pub fn perform_scaled(world: &mut World, speaker: Entity, listener: Entity, inte
     // the player's avatar, which carries no traits or mood of its own — the player is its
     // mind. Absent components read as neutral: no fixed motive, an even affect. (The player
     // is offered the verbs and chooses; the sim never scores what the avatar "wants" to say.)
-    let s_traits = world.get::<Personality>(speaker).map(|p| p.0.clone()).unwrap_or_default();
-    let s_moods = world.get::<Mood>(speaker).map(|m| m.0.clone()).unwrap_or_default();
-    let op_sl = world.get::<Opinion>(speaker).map(|o| o.of(listener)).unwrap_or(0.0);
-    let has_grudge = world.get::<Grievance>(speaker).is_some_and(|g| g.0 == listener);
+    let s_traits = world
+        .get::<Personality>(speaker)
+        .map(|p| p.0.clone())
+        .unwrap_or_default();
+    let s_moods = world
+        .get::<Mood>(speaker)
+        .map(|m| m.0.clone())
+        .unwrap_or_default();
+    let op_sl = world
+        .get::<Opinion>(speaker)
+        .map(|o| o.of(listener))
+        .unwrap_or(0.0);
+    let has_grudge = world
+        .get::<Grievance>(speaker)
+        .is_some_and(|g| g.0 == listener);
     let (affect_word, affect_bucket, motive, speaker_name, listener_name, referent, register) = {
         let reg = world.resource::<Registry>();
         let affect = MoodWords::resolve(reg).dominant(&s_moods);
         let motive = motive_words(reg, &s_traits);
-        let register = intent.tags.first().cloned().unwrap_or_else(|| intent.act.key().to_string());
+        let register = intent
+            .tags
+            .first()
+            .cloned()
+            .unwrap_or_else(|| intent.act.key().to_string());
         let dlg = world.resource::<Dialogue>();
         let referent = pick_referent(dlg, speaker, listener, &register, has_grudge);
-        (affect.word, affect.bucket, motive, name_of(&dlg.grammar, speaker), name_of(&dlg.grammar, listener), referent, register)
+        (
+            affect.word,
+            affect.bucket,
+            motive,
+            name_of(&dlg.grammar, speaker),
+            name_of(&dlg.grammar, listener),
+            referent,
+            register,
+        )
     };
 
     // Phase 2 — apply the moves (the canon consequence; mirrors `converse`), scaled by how
@@ -1022,10 +1292,26 @@ pub fn perform_scaled(world: &mut World, speaker: Entity, listener: Entity, inte
     // Phase 3 — render, remember, log.
     let cap = world.resource::<DialogueRes>().memory_cap;
     let utt = world.resource_scope::<Dialogue, Utterance>(|_w, mut dlg| {
-        let surface = dlg.render(intent.act, affect_bucket, &referent, &speaker_name, &listener_name);
+        let surface = dlg.render(
+            intent.act,
+            affect_bucket,
+            &referent,
+            &speaker_name,
+            &listener_name,
+        );
         let importance = (intent.weight + if made_grudge { 0.6 } else { 0.0 }).min(2.0);
-        remember(&mut dlg, speaker, listener, intent.act, &register, importance, cap);
-        remember(&mut dlg, listener, speaker, intent.act, &register, importance * 0.8, cap);
+        remember(
+            &mut dlg, speaker, listener, intent.act, &register, importance, cap,
+        );
+        remember(
+            &mut dlg,
+            listener,
+            speaker,
+            intent.act,
+            &register,
+            importance * 0.8,
+            cap,
+        );
         dlg.mem.entry(speaker).or_default().last_spoke = Some(tick);
         let u = Utterance {
             tick,
@@ -1055,10 +1341,20 @@ mod tests {
     #[test]
     fn bundled_intents_and_grammar_load() {
         let book = IntentBook::bundled();
-        assert!(book.0.len() >= 8, "the intent repertoire should be stocked, got {}", book.0.len());
+        assert!(
+            book.0.len() >= 8,
+            "the intent repertoire should be stocked, got {}",
+            book.0.len()
+        );
         let g = Grammar::bundled();
-        assert!(g.0.contains_key("accuse"), "the grammar needs at least the core acts");
-        assert!(g.0.get("name").is_some_and(|n| !n.is_empty()), "the grammar needs a name list");
+        assert!(
+            g.0.contains_key("accuse"),
+            "the grammar needs at least the core acts"
+        );
+        assert!(
+            g.0.get("name").is_some_and(|n| !n.is_empty()),
+            "the grammar needs a name list"
+        );
     }
 
     #[test]
@@ -1067,16 +1363,29 @@ mod tests {
         let mut w = World::new();
         let speaker = w.spawn_empty().id();
         let listener = w.spawn(Opinion(Default::default())).id();
-        let mv = [Move::Turn { who: Party::Listener, toward: Party::Speaker, delta: 0.4 }];
+        let mv = [Move::Turn {
+            who: Party::Listener,
+            toward: Party::Speaker,
+            delta: 0.4,
+        }];
 
         apply_moves_scaled(&mut w, speaker, listener, &mv, 0.5);
-        assert!((w.get::<Opinion>(listener).unwrap().of(speaker) - 0.2).abs() < 1e-6, "0.4 × 0.5");
+        assert!(
+            (w.get::<Opinion>(listener).unwrap().of(speaker) - 0.2).abs() < 1e-6,
+            "0.4 × 0.5"
+        );
         // A failed persuasion (scale 0) moves nothing further.
         apply_moves_scaled(&mut w, speaker, listener, &mv, 0.0);
-        assert!((w.get::<Opinion>(listener).unwrap().of(speaker) - 0.2).abs() < 1e-6, "no change at scale 0");
+        assert!(
+            (w.get::<Opinion>(listener).unwrap().of(speaker) - 0.2).abs() < 1e-6,
+            "no change at scale 0"
+        );
         // Full strength is the unscaled canon, identical to `apply_moves`.
         apply_moves_scaled(&mut w, speaker, listener, &mv, 1.0);
-        assert!((w.get::<Opinion>(listener).unwrap().of(speaker) - 0.6).abs() < 1e-6, "0.2 + 0.4");
+        assert!(
+            (w.get::<Opinion>(listener).unwrap().of(speaker) - 0.6).abs() < 1e-6,
+            "0.2 + 0.4"
+        );
     }
 
     #[test]
@@ -1095,7 +1404,10 @@ mod tests {
         let l1 = g.realize(SpeechAct::Accuse, "angry", &r, "Aldric", "Mira", &mut a);
         let l2 = g.realize(SpeechAct::Accuse, "angry", &r, "Aldric", "Mira", &mut b);
         assert_eq!(l1, l2, "same seed → same line");
-        assert!(!l1.is_empty() && l1.contains("Mira"), "the line should address the listener: {l1:?}");
+        assert!(
+            !l1.is_empty() && l1.contains("Mira"),
+            "the line should address the listener: {l1:?}"
+        );
     }
 
     #[test]
@@ -1130,7 +1442,11 @@ mod tests {
         };
         let mut loud = SlmRealizer::new(Loud);
         assert_eq!(loud.realize(&u), "I will not forget what you did.");
-        assert_eq!(loud.realize(&u), "I will not forget what you did.", "second call is cached");
+        assert_eq!(
+            loud.realize(&u),
+            "I will not forget what you did.",
+            "second call is cached"
+        );
         // A model that returns nothing falls back to the deterministic grammar surface.
         let mut empty = SlmRealizer::new(Empty);
         assert_eq!(empty.realize(&u), "You broke your oath, Mira.");

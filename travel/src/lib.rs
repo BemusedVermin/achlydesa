@@ -23,7 +23,10 @@ pub struct Caps {
 impl Caps {
     /// Unrestricted — used when laying roads (engineers switchback anything).
     pub fn all() -> Self {
-        Self { climbing: true, boat: true }
+        Self {
+            climbing: true,
+            boat: true,
+        }
     }
 }
 
@@ -44,7 +47,13 @@ pub struct CostModel {
 
 impl Default for CostModel {
     fn default() -> Self {
-        Self { road_factor: 0.35, slope_per_m: 0.0012, climb_threshold: 700.0, water_threshold: 0.5, water_cost: 1.5 }
+        Self {
+            road_factor: 0.35,
+            slope_per_m: 0.0012,
+            climb_threshold: 700.0,
+            water_threshold: 0.5,
+            water_cost: 1.5,
+        }
     }
 }
 
@@ -90,11 +99,22 @@ pub fn edge_passable(world: &World, model: &CostModel, a: Coord, b: Coord, caps:
 /// The land neighbours of tile index `t` (same land-filter as the planner's movement graph).
 fn land_neighbors(world: &World, topo: &Topology, t: usize) -> Vec<usize> {
     let sea = world.params().sea_level;
-    topo.neighbors(t).iter().map(|l| l.to).filter(|&n| world.elevation(topo.coord(n)) >= sea).collect()
+    topo.neighbors(t)
+        .iter()
+        .map(|l| l.to)
+        .filter(|&n| world.elevation(topo.coord(n)) >= sea)
+        .collect()
 }
 
 /// The integer edge cost (×100 days) of stepping from tile `tc` into neighbour index `n`.
-fn step_cost(world: &World, topo: &Topology, model: &CostModel, tc: Coord, n: usize, on_road: bool) -> u32 {
+fn step_cost(
+    world: &World,
+    topo: &Topology,
+    model: &CostModel,
+    tc: Coord,
+    n: usize,
+    on_road: bool,
+) -> u32 {
     let nc = topo.coord(n);
     let slope = (world.elevation(nc) - world.elevation(tc)).max(0.0) * model.slope_per_m;
     ((tile_cost(world, model, nc, on_road) + slope) * 100.0) as u32
@@ -103,7 +123,14 @@ fn step_cost(world: &World, topo: &Topology, model: &CostModel, tc: Coord, n: us
 /// Weighted least-cost **route** from `from` to `to` over land, honoring tile cost, the road
 /// network (`is_road`), slope, and the edge gates for `caps`. Returns the hex steps (excluding
 /// `from`); `None` if `to` is unreachable with these capabilities.
-pub fn route(world: &World, model: &CostModel, is_road: &dyn Fn(usize) -> bool, from: Coord, to: Coord, caps: Caps) -> Option<Vec<Coord>> {
+pub fn route(
+    world: &World,
+    model: &CostModel,
+    is_road: &dyn Fn(usize) -> bool,
+    from: Coord,
+    to: Coord,
+    caps: Caps,
+) -> Option<Vec<Coord>> {
     let topo = world.topology();
     let goal = topo.index_of(to);
     let res = dijkstra(
@@ -125,7 +152,9 @@ pub fn route(world: &World, model: &CostModel, is_road: &dyn Fn(usize) -> bool, 
 /// reads to know a road hex is cheap and a mountain hex dear. `1.0` ≈ a day's forest walk.
 pub fn cost_field(world: &World, model: &CostModel, is_road: &dyn Fn(usize) -> bool) -> Vec<f32> {
     let topo = world.topology();
-    (0..topo.len()).map(|t| tile_cost(world, model, topo.coord(t), is_road(t))).collect()
+    (0..topo.len())
+        .map(|t| tile_cost(world, model, topo.coord(t), is_road(t)))
+        .collect()
 }
 
 /// Build a **road network**: a greedy least-cost tree connecting the `hubs` (settlement tiles).
@@ -134,7 +163,9 @@ pub fn cost_field(world: &World, model: &CostModel, is_road: &dyn Fn(usize) -> b
 pub fn build_roads(world: &World, model: &CostModel, hubs: &[Coord]) -> HashSet<usize> {
     let topo = world.topology();
     let mut roads: HashSet<usize> = HashSet::new();
-    let Some(&first) = hubs.first() else { return roads };
+    let Some(&first) = hubs.first() else {
+        return roads;
+    };
     roads.insert(topo.index_of(first));
     let caps = Caps::all();
     for &h in &hubs[1..] {
@@ -172,7 +203,10 @@ mod tests {
     fn first_land(world: &World) -> Coord {
         let topo = world.topology();
         let sea = world.params().sea_level;
-        (0..topo.len()).map(|i| topo.coord(i)).find(|&c| world.elevation(c) >= sea).unwrap()
+        (0..topo.len())
+            .map(|i| topo.coord(i))
+            .find(|&c| world.elevation(c) >= sea)
+            .unwrap()
     }
 
     #[test]
@@ -180,7 +214,10 @@ mod tests {
         let world = small_world();
         let c = first_land(&world);
         let model = CostModel::default();
-        assert!(tile_cost(&world, &model, c, true) < tile_cost(&world, &model, c, false), "roads are the fast lane");
+        assert!(
+            tile_cost(&world, &model, c, true) < tile_cost(&world, &model, c, false),
+            "roads are the fast lane"
+        );
     }
 
     #[test]
@@ -198,7 +235,10 @@ mod tests {
             .map(|n| topo.coord(n))
             .expect("a coastal/inland land tile has a land neighbour");
         let roads = build_roads(&world, &CostModel::default(), &[a, b]);
-        assert!(roads.contains(&topo.index_of(a)) && roads.contains(&topo.index_of(b)), "both hubs are on the road network");
+        assert!(
+            roads.contains(&topo.index_of(a)) && roads.contains(&topo.index_of(b)),
+            "both hubs are on the road network"
+        );
     }
 
     #[test]
@@ -206,7 +246,10 @@ mod tests {
         let world = small_world();
         let topo = world.topology();
         let sea = world.params().sea_level;
-        let land: Vec<Coord> = (0..topo.len()).map(|i| topo.coord(i)).filter(|&c| world.elevation(c) >= sea).collect();
+        let land: Vec<Coord> = (0..topo.len())
+            .map(|i| topo.coord(i))
+            .filter(|&c| world.elevation(c) >= sea)
+            .collect();
         let (a, b) = (land[0], land[land.len() / 2]);
         let no_road = |_: usize| false;
         let r1 = route(&world, &CostModel::default(), &no_road, a, b, Caps::all());

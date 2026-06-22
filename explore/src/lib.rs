@@ -52,6 +52,9 @@ pub struct ExploreConfig {
 
 impl Default for ExploreConfig {
     fn default() -> Self {
-        Self { cost: CostModel::default(), climb_share: 0.5 }
+        Self {
+            cost: CostModel::default(),
+            climb_share: 0.5,
+        }
     }
 }

@@ -8,7 +8,14 @@ use agents::{Setup, Simulation};
 use std::collections::HashMap;
 
 fn main() {
-    let mut sim = Simulation::new(Setup { width: 48, height: 36, seed: 7, npcs: 80, rpg: true, ..Default::default() });
+    let mut sim = Simulation::new(Setup {
+        width: 48,
+        height: 36,
+        seed: 7,
+        npcs: 80,
+        rpg: true,
+        ..Default::default()
+    });
 
     let npcs = sim.npcs();
     println!("{} NPCs rolled with WWN stats\n", npcs.len());
@@ -33,7 +40,9 @@ fn main() {
     // Archetype (Edge) mix.
     let mut edges: HashMap<String, usize> = HashMap::new();
     for &e in &npcs {
-        *edges.entry(sim.archetype_of(e).unwrap_or("(none)").to_string()).or_default() += 1;
+        *edges
+            .entry(sim.archetype_of(e).unwrap_or("(none)").to_string())
+            .or_default() += 1;
     }
     let mut mix: Vec<_> = edges.into_iter().collect();
     mix.sort_by(|a, b| b.1.cmp(&a.1));
@@ -47,11 +56,23 @@ fn main() {
     let (social, world): (Vec<String>, Vec<String>) = {
         let data = sim.rpg_data().unwrap();
         (
-            data.skills().iter().filter(|s| s.social).map(|s| s.name.clone()).collect(),
-            data.skills().iter().filter(|s| s.world).map(|s| s.name.clone()).collect(),
+            data.skills()
+                .iter()
+                .filter(|s| s.social)
+                .map(|s| s.name.clone())
+                .collect(),
+            data.skills()
+                .iter()
+                .filter(|s| s.world)
+                .map(|s| s.name.clone())
+                .collect(),
         )
     };
-    let trained = |skill: &str, sim: &Simulation| npcs.iter().filter(|&&e| sim.proficiency_of(e, skill).is_some_and(|r| r > -1)).count();
+    let trained = |skill: &str, sim: &Simulation| {
+        npcs.iter()
+            .filter(|&&e| sim.proficiency_of(e, skill).is_some_and(|r| r > -1))
+            .count()
+    };
     println!("social skills — trained NPCs:");
     for s in &social {
         println!("  {s:<12} {}", trained(s, &sim));
@@ -63,7 +84,10 @@ fn main() {
 
     // The avatar gets capabilities too (rolled from its own sub-stream).
     let avatar = sim.spawn_player(None);
-    println!("\navatar archetype: {}", sim.archetype_of(avatar).unwrap_or("(none)"));
+    println!(
+        "\navatar archetype: {}",
+        sim.archetype_of(avatar).unwrap_or("(none)")
+    );
     if let Some(a) = sim.abilities_of(avatar) {
         print!("avatar attributes: ");
         for i in 0..6 {

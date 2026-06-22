@@ -42,16 +42,32 @@ fn ring_mesh() -> Mesh {
     };
     let (ro, ri) = (1.05, 0.84);
     for k in 0..6 {
-        b.quad(at(k, ro), at(k + 1, ro), at(k + 1, ri), at(k, ri), [1.0, 1.0, 1.0]);
+        b.quad(
+            at(k, ro),
+            at(k + 1, ro),
+            at(k + 1, ri),
+            at(k, ri),
+            [1.0, 1.0, 1.0],
+        );
     }
     b.into_mesh()
 }
 
-pub fn setup_ui(commands: &mut Commands, meshes: &mut Assets<Mesh>, materials: &mut Assets<StandardMaterial>, f: &ThemeFonts) {
+pub fn setup_ui(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    f: &ThemeFonts,
+) {
     // Highlight rings (unlit + two-sided via cull_mode None, so winding never hides them).
     let ring = meshes.add(ring_mesh());
     let mut ring_mat = |rgba: Color| {
-        materials.add(StandardMaterial { base_color: rgba, unlit: true, cull_mode: None, ..default() })
+        materials.add(StandardMaterial {
+            base_color: rgba,
+            unlit: true,
+            cull_mode: None,
+            ..default()
+        })
     };
     commands.spawn((
         Ring(RingKind::Hover),
@@ -77,13 +93,26 @@ pub fn setup_ui(commands: &mut Commands, meshes: &mut Assets<Mesh>, materials: &
         max_width: Val::Px(w),
         ..default()
     };
-    let text = |size: f32, color: Color| (TextFont { font: f.mono.clone(), font_size: size, ..default() }, TextColor(color));
+    let text = |size: f32, color: Color| {
+        (
+            TextFont {
+                font: f.mono.clone(),
+                font_size: size,
+                ..default()
+            },
+            TextColor(color),
+        )
+    };
 
     // Inspect panel — top-right of the centre view (clear of the right action tray).
     commands.spawn((
         InspectText,
         HideOnPause,
-        Node { right: Val::Px(crate::hud::RIGHT_W + theme::SP_MD), top: Val::Px(crate::hud::TOP_H + theme::SP_MD), ..panel(270.0) },
+        Node {
+            right: Val::Px(crate::hud::RIGHT_W + theme::SP_MD),
+            top: Val::Px(crate::hud::TOP_H + theme::SP_MD),
+            ..panel(270.0)
+        },
         theme::panel_chrome(),
         Text::new(""),
         text(13.0, theme::TEXT),
@@ -92,7 +121,11 @@ pub fn setup_ui(commands: &mut Commands, meshes: &mut Assets<Mesh>, materials: &
     // Cursor tooltip — floats, moved each frame.
     commands.spawn((
         TooltipText,
-        Node { left: Val::Px(0.0), top: Val::Px(0.0), ..panel(240.0) },
+        Node {
+            left: Val::Px(0.0),
+            top: Val::Px(0.0),
+            ..panel(240.0)
+        },
         theme::panel_chrome(),
         Text::new(""),
         text(12.0, theme::TEXT),
@@ -103,9 +136,18 @@ pub fn setup_ui(commands: &mut Commands, meshes: &mut Assets<Mesh>, materials: &
     for _ in 0..LABEL_POOL {
         commands.spawn((
             MapLabel,
-            Node { position_type: PositionType::Absolute, left: Val::Px(0.0), top: Val::Px(0.0), ..default() },
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(0.0),
+                top: Val::Px(0.0),
+                ..default()
+            },
             Text::new(""),
-            TextFont { font: f.serif.clone(), font_size: 14.0, ..default() },
+            TextFont {
+                font: f.serif.clone(),
+                font_size: 14.0,
+                ..default()
+            },
             TextColor(theme::HEADING),
             Visibility::Hidden,
         ));
@@ -117,7 +159,12 @@ pub fn setup_ui(commands: &mut Commands, meshes: &mut Assets<Mesh>, materials: &
 /// The explored tile under the cursor — the one whose **top-centre projects nearest the cursor
 /// on screen**. Comparing in screen space (rather than on the flat sea-level plane) makes the
 /// pick correct for raised tiles at any camera angle, so what you click is what you get.
-fn pick_tile(window: &Window, cam: &Camera, cam_tf: &GlobalTransform, sim: &Simulation) -> Option<Coord> {
+fn pick_tile(
+    window: &Window,
+    cam: &Camera,
+    cam_tf: &GlobalTransform,
+    sim: &Simulation,
+) -> Option<Coord> {
     let cursor = window.cursor_position()?;
     let gw = sim.substrate();
     sim.player_explored()
@@ -125,20 +172,29 @@ fn pick_tile(window: &Window, cam: &Camera, cam_tf: &GlobalTransform, sim: &Simu
         .filter_map(|c| {
             let w = tile_world(c.col, c.row);
             let world = Vec3::new(w.x, tile_top(gw, c), w.y);
-            cam.world_to_viewport(cam_tf, world).ok().map(|p| (c, p.distance_squared(cursor)))
+            cam.world_to_viewport(cam_tf, world)
+                .ok()
+                .map(|p| (c, p.distance_squared(cursor)))
         })
         .min_by(|a, b| a.1.total_cmp(&b.1))
         .map(|(c, _)| c)
 }
 
 /// Hover-pick every frame; left-click selects a tile to inspect, right-click travels to it.
-pub fn tile_interact(mouse: Res<ButtonInput<MouseButton>>, windows: Query<&Window>, cams: Query<(&Camera, &GlobalTransform), With<CamRig>>, mut game: NonSendMut<Game>) {
+pub fn tile_interact(
+    mouse: Res<ButtonInput<MouseButton>>,
+    windows: Query<&Window>,
+    cams: Query<(&Camera, &GlobalTransform), With<CamRig>>,
+    mut game: NonSendMut<Game>,
+) {
     if game.convo.is_some() || game.paused || game.talk_choices.is_some() {
         game.hovered = None;
         return;
     }
     let Ok(window) = windows.single() else { return };
-    let Ok((cam, cam_tf)) = cams.single() else { return };
+    let Ok((cam, cam_tf)) = cams.single() else {
+        return;
+    };
     // Only the centre (world) rectangle picks — a click over a tray must never move the avatar.
     match window.cursor_position() {
         Some(p) if crate::hud::in_center(window, p) => {}
@@ -155,14 +211,21 @@ pub fn tile_interact(mouse: Res<ButtonInput<MouseButton>>, windows: Query<&Windo
         g.selected = Some(c);
     }
     if mouse.just_pressed(MouseButton::Right) {
-        g.status = if g.sim.player_travel_to(c) { format!("Setting out for ({}, {}).", c.col, c.row) } else { "No path leads there on foot.".into() };
+        g.status = if g.sim.player_travel_to(c) {
+            format!("Setting out for ({}, {}).", c.col, c.row)
+        } else {
+            "No path leads there on foot.".into()
+        };
     }
 }
 
 // ── The overlays ─────────────────────────────────────────────────────────────────────────────
 
 /// Lay the hover/select rings on their tiles (or hide them).
-pub fn update_highlights(game: NonSend<Game>, mut q: Query<(&Ring, &mut Transform, &mut Visibility)>) {
+pub fn update_highlights(
+    game: NonSend<Game>,
+    mut q: Query<(&Ring, &mut Transform, &mut Visibility)>,
+) {
     let gw = game.sim.substrate();
     for (ring, mut tf, mut vis) in &mut q {
         let coord = match ring.0 {
@@ -188,7 +251,9 @@ pub fn update_tooltip(
     game: NonSend<Game>,
     mut q: Query<(&mut Node, &mut Text, &mut Visibility), With<TooltipText>>,
 ) {
-    let Ok((mut node, mut text, mut vis)) = q.single_mut() else { return };
+    let Ok((mut node, mut text, mut vis)) = q.single_mut() else {
+        return;
+    };
     let cursor = windows.single().ok().and_then(|w| w.cursor_position());
     let s = ui_scale.0.max(0.01);
     match (game.hovered, cursor) {
@@ -254,7 +319,9 @@ pub fn update_labels(
         }
     }
 
-    let Ok((cam, cam_tf)) = cams.single() else { return };
+    let Ok((cam, cam_tf)) = cams.single() else {
+        return;
+    };
     let ap = tile_world(game.avatar_pos.col, game.avatar_pos.row);
     // Nearest-first so the closest places win the limited label pool.
     cache.0.sort_by(|a, b| {
@@ -310,7 +377,12 @@ fn ledger_line(sim: &Simulation, e: Entity) -> String {
 /// The discoveries journal — the Outer-Wilds ship-log: every place found (grouped), every lore fact
 /// held, the **ledger** of souls the avatar has met (`met`), and the **charges** it has taken up
 /// (`quests` active, `done` closed). Rendered into the pause menu's Journal tab (see `update_menu`).
-pub fn journal_text(sim: &Simulation, met: &[Entity], quests: &[agents::Quest], done: &[String]) -> String {
+pub fn journal_text(
+    sim: &Simulation,
+    met: &[Entity],
+    quests: &[agents::Quest],
+    done: &[String],
+) -> String {
     let cat = sim.feature_catalog();
     // Discovered features on explored tiles, grouped by category.
     let mut groups: [Vec<String>; 4] = [Vec::new(), Vec::new(), Vec::new(), Vec::new()];
@@ -329,13 +401,19 @@ pub fn journal_text(sim: &Simulation, met: &[Entity], quests: &[agents::Quest], 
     let mut s = format!("— Journal —\n\nPlaces found: {total}\n");
     for (i, g) in groups.iter().enumerate() {
         if !g.is_empty() {
-            s.push_str(&format!("  {}: {}\n", ["Settlements", "Courts", "Ruins", "Wonders"][i], g.join(", ")));
+            s.push_str(&format!(
+                "  {}: {}\n",
+                ["Settlements", "Courts", "Ruins", "Wonders"][i],
+                g.join(", ")
+            ));
         }
     }
     let lore = sim.player_lore();
     s.push_str(&format!("\nLore known: {}\n", lore.len()));
     if lore.is_empty() {
-        s.push_str("  (you know nothing yet \u{2014} search ruins, ask the living, read the stones)\n");
+        s.push_str(
+            "  (you know nothing yet \u{2014} search ruins, ask the living, read the stones)\n",
+        );
     } else {
         for l in &lore {
             s.push_str(&format!("  \u{2022} {}\n", pretty(l)));
@@ -358,7 +436,11 @@ pub fn journal_text(sim: &Simulation, met: &[Entity], quests: &[agents::Quest], 
         s.push_str("  (none \u{2014} take up a soul's charge in conversation)\n");
     } else {
         for q in quests {
-            s.push_str(&format!("  \u{2022} {} {}\n", q.objective, sim.quest_bearing(q)));
+            s.push_str(&format!(
+                "  \u{2022} {} {}\n",
+                q.objective,
+                sim.quest_bearing(q)
+            ));
         }
     }
     if !done.is_empty() {
@@ -415,7 +497,13 @@ fn discovered_features(sim: &Simulation, c: Coord) -> Vec<String> {
     sim.features_at(c)
         .iter()
         .filter(|f| f.discovered)
-        .map(|f| format!("  {} ({})", pretty(cat.name(f.kind)), category_word(cat.def(f.kind).category)))
+        .map(|f| {
+            format!(
+                "  {} ({})",
+                pretty(cat.name(f.kind)),
+                category_word(cat.def(f.kind).category)
+            )
+        })
         .collect()
 }
 

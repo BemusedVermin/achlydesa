@@ -14,7 +14,13 @@ const H: i32 = 72;
 
 fn main() {
     // Two years of warm-up so the annual climate averages are fully settled.
-    let mut sim = Simulation::new(Setup { width: W, height: H, seed: 2026, warmup: 730, ..Default::default() });
+    let mut sim = Simulation::new(Setup {
+        width: W,
+        height: H,
+        seed: 2026,
+        warmup: 730,
+        ..Default::default()
+    });
     let gw = sim.substrate();
     let topo = gw.topology();
     let sea = gw.params().sea_level;
@@ -41,23 +47,37 @@ fn main() {
     }
     let total = topo.len();
 
-    println!("world {W}x{H}  ({total} tiles, {land} land = {:.0}%)", 100.0 * land as f32 / total as f32);
+    println!(
+        "world {W}x{H}  ({total} tiles, {land} land = {:.0}%)",
+        100.0 * land as f32 / total as f32
+    );
     println!("biotemperature  {bt_min:.1}..{bt_max:.1} °C");
     println!("annual precip   {ap_min:.0}..{ap_max:.0} (model units)");
-    println!("mean land biomass {:.3} (of biomass_max {:.0})", biomass / land.max(1) as f32, gw.params().biomass_max);
+    println!(
+        "mean land biomass {:.3} (of biomass_max {:.0})",
+        biomass / land.max(1) as f32,
+        gw.params().biomass_max
+    );
 
     println!("\nby formation (share of all tiles):");
     let mut fs: Vec<_> = by_formation.into_iter().collect();
     fs.sort_by(|a, b| b.1.cmp(&a.1));
     for (f, n) in fs {
-        println!("  {f:>11?}  {n:>5}  {:>5.1}%", 100.0 * n as f32 / total as f32);
+        println!(
+            "  {f:>11?}  {n:>5}  {:>5.1}%",
+            100.0 * n as f32 / total as f32
+        );
     }
 
     println!("\nlife zones realised (of 39 possible):");
     let mut bs: Vec<_> = by_biome.into_iter().collect();
     bs.sort_by(|a, b| b.1.cmp(&a.1));
     for (b, n) in &bs {
-        println!("  {:>28}  {n:>5}  {:>5.1}%", b.name(), 100.0 * *n as f32 / total as f32);
+        println!(
+            "  {:>28}  {n:>5}  {:>5.1}%",
+            b.name(),
+            100.0 * *n as f32 / total as f32
+        );
     }
     println!("  {} distinct biomes present", bs.len());
 }

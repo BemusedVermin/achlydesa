@@ -17,7 +17,10 @@ fn main() {
         // A low bar so even a non-social avatar can gather a small band for the demo. In play
         // the difficulty is the WWN ladder (6/8/10/12…) shifted by the stranger's opinion of
         // you — a charismatic hero, or one who's earned goodwill, recruits where this one can't.
-        party_cfg: PartyConfig { recruit_difficulty: 0, ..Default::default() },
+        party_cfg: PartyConfig {
+            recruit_difficulty: 0,
+            ..Default::default()
+        },
         ..Default::default()
     });
     let avatar = sim.spawn_player(None);
@@ -30,8 +33,16 @@ fn main() {
     );
 
     // Ask the people in reach (fall back to the wider population if few are nearby).
-    let nearby: Vec<_> = sim.player_nearby_npcs().into_iter().map(|(e, _)| e).collect();
-    let candidates = if nearby.len() >= 8 { nearby } else { sim.npcs() };
+    let nearby: Vec<_> = sim
+        .player_nearby_npcs()
+        .into_iter()
+        .map(|(e, _)| e)
+        .collect();
+    let candidates = if nearby.len() >= 8 {
+        nearby
+    } else {
+        sim.npcs()
+    };
 
     let mut asked = 0;
     for e in candidates.into_iter().take(8) {
@@ -45,14 +56,24 @@ fn main() {
         }
     }
 
-    println!("\nrecruited {} of {asked} asked. Party roster:", sim.party_size());
+    println!(
+        "\nrecruited {} of {asked} asked. Party roster:",
+        sim.party_size()
+    );
     for e in sim.party_roster() {
-        println!("  {} — {}", sim.display_name(e), sim.archetype_of(e).unwrap_or("?"));
+        println!(
+            "  {} — {}",
+            sim.display_name(e),
+            sim.archetype_of(e).unwrap_or("?")
+        );
     }
 
     // They follow as a stack: after a few ticks they all stand on the avatar's tile.
     sim.run(3);
     let here = sim.player_position();
-    let together = sim.party_roster().iter().all(|&e| sim.position_of(e) == here);
+    let together = sim
+        .party_roster()
+        .iter()
+        .all(|&e| sim.position_of(e) == here);
     println!("\nall companions at the avatar's tile after travelling: {together}");
 }
