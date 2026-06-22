@@ -38,7 +38,11 @@ fn main() {
     let opinion = |sim: &Simulation| sim.opinion_of(npc, avatar).unwrap_or(0.0);
 
     // A neutral stranger won't follow on a whim — recruiting is earned, not ordered.
-    println!("{name} is a stranger (opinion {:+.2}); recruiting outright succeeds: {}", opinion(&sim), sim.player_recruit(npc));
+    println!(
+        "{name} is a stranger (opinion {:+.2}); recruiting outright succeeds: {}",
+        opinion(&sim),
+        sim.player_recruit(npc)
+    );
     println!("so we win them over, a kind word at a time:");
 
     let mut joined_on = None;
@@ -49,12 +53,18 @@ fn main() {
             break;
         }
         if turn % 2 == 0 {
-            println!("  after {turn:>2} kind words: {name} is at opinion {:+.2}", opinion(&sim));
+            println!(
+                "  after {turn:>2} kind words: {name} is at opinion {:+.2}",
+                opinion(&sim)
+            );
         }
     }
 
     match joined_on {
-        Some(t) => println!("\n{name} came round and joined after {t} turns (opinion {:+.2}).", opinion(&sim)),
+        Some(t) => println!(
+            "\n{name} came round and joined after {t} turns (opinion {:+.2}).",
+            opinion(&sim)
+        ),
         None => println!("\n{name} never came round (opinion {:+.2}).", opinion(&sim)),
     }
     println!("party size: {}", sim.party_size());

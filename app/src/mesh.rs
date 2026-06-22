@@ -49,16 +49,22 @@ impl MeshBuf {
             .chunks(3)
             .map(|t| {
                 let p = |i: u32| Vec3::from_array(self.pos[i as usize]);
-                ([p(t[0]), p(t[1]), p(t[2])], Vec3::from_array(self.nor[t[0] as usize]))
+                (
+                    [p(t[0]), p(t[1]), p(t[2])],
+                    Vec3::from_array(self.nor[t[0] as usize]),
+                )
             })
             .collect()
     }
 
     pub fn into_mesh(self) -> Mesh {
-        Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default())
-            .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, self.pos)
-            .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, self.nor)
-            .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, self.col)
-            .with_inserted_indices(Indices::U32(self.idx))
+        Mesh::new(
+            PrimitiveTopology::TriangleList,
+            RenderAssetUsages::default(),
+        )
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, self.pos)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, self.nor)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_COLOR, self.col)
+        .with_inserted_indices(Indices::U32(self.idx))
     }
 }

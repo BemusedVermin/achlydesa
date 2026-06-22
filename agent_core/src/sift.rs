@@ -150,8 +150,10 @@ pub struct SiftBook(pub Vec<SiftPattern>);
 impl SiftBook {
     /// The patterns shipped with the crate.
     pub fn bundled() -> Self {
-        let book = Self::from_ron(Bundled::get(Asset::Sift)).expect("bundled sift patterns are valid RON");
-        book.validate().expect("bundled sift patterns are structurally sound");
+        let book =
+            Self::from_ron(Bundled::get(Asset::Sift)).expect("bundled sift patterns are valid RON");
+        book.validate()
+            .expect("bundled sift patterns are structurally sound");
         book
     }
 
@@ -269,7 +271,11 @@ impl Sift {
     /// deterministically by pattern, then first-seen, then the leading episode id) — what the
     /// director and the eval harness read.
     pub fn ranked(&self, min_interest: f32) -> Vec<&ThreadCandidate> {
-        let mut out: Vec<&ThreadCandidate> = self.candidates.iter().filter(|c| c.interest >= min_interest).collect();
+        let mut out: Vec<&ThreadCandidate> = self
+            .candidates
+            .iter()
+            .filter(|c| c.interest >= min_interest)
+            .collect();
         out.sort_by(|a, b| {
             b.interest
                 .partial_cmp(&a.interest)
@@ -342,7 +348,14 @@ impl Sift {
             if try_step(&mut env, &pat.window[0], ep) {
                 self.open.push((
                     pi,
-                    RawMatch { env, support: vec![ep.id], matched: 1, first_tick: ep.tick, last_tick: ep.tick, place: ep.place },
+                    RawMatch {
+                        env,
+                        support: vec![ep.id],
+                        matched: 1,
+                        first_tick: ep.tick,
+                        last_tick: ep.tick,
+                        place: ep.place,
+                    },
                 ));
             }
         }
@@ -473,11 +486,17 @@ fn try_step(env: &mut Vec<(String, Entity)>, step: &WindowStep, ep: &Episode) ->
     }
     let mut staged: Vec<(String, Entity)> = Vec::new();
     for (var, slot) in &step.binds {
-        let Some(e) = ep.parties[slot.idx()] else { return false };
-        let bound = env.iter().chain(staged.iter()).find(|(v, _)| v == var).map(|(_, b)| *b);
+        let Some(e) = ep.parties[slot.idx()] else {
+            return false;
+        };
+        let bound = env
+            .iter()
+            .chain(staged.iter())
+            .find(|(v, _)| v == var)
+            .map(|(_, b)| *b);
         match bound {
             Some(b) if b != e => return false, // reuse mismatch
-            Some(_) => {}                       // consistent reuse
+            Some(_) => {}                      // consistent reuse
             None => staged.push((var.clone(), e)),
         }
     }
@@ -573,15 +592,22 @@ fn axis_input(axis: Axis, m: &RawMatch, reads: &SiftReads, seen: u64) -> f32 {
             if !reads.taboo_active {
                 return 0.0;
             }
-            cast.iter().map(|e| *reads.vengeance.get(e).unwrap_or(&0.0)).fold(0.0f32, f32::max)
+            cast.iter()
+                .map(|e| *reads.vengeance.get(e).unwrap_or(&0.0))
+                .fold(0.0f32, f32::max)
         }
         Axis::MoodReversal => {
             // The deepest low felt by any cast member (the same low the director reads).
-            cast.iter().map(|e| reads.mood.get(e).map_or(0.0, |mv| reads.mood_ids.low(mv))).fold(0.0f32, f32::max).clamp(0.0, 1.0)
+            cast.iter()
+                .map(|e| reads.mood.get(e).map_or(0.0, |mv| reads.mood_ids.low(mv)))
+                .fold(0.0f32, f32::max)
+                .clamp(0.0, 1.0)
         }
         Axis::Bloodshed => {
             let any = m.support.iter().any(|&id| {
-                reads.episode(id).is_some_and(|ep| matches!(ep.kind, EpisodeKind::Killed | EpisodeKind::Death))
+                reads
+                    .episode(id)
+                    .is_some_and(|ep| matches!(ep.kind, EpisodeKind::Killed | EpisodeKind::Death))
             });
             if any { 1.0 } else { 0.0 }
         }
@@ -631,7 +657,15 @@ fn assemble_reads<'a>(
     mood_ids: MoodIds,
     vengeance_id: Option<usize>,
     taboo_active: bool,
-    rows: impl Iterator<Item = (Entity, Option<&'a Grievance>, &'a Opinion, &'a Mood, &'a Personality)>,
+    rows: impl Iterator<
+        Item = (
+            Entity,
+            Option<&'a Grievance>,
+            &'a Opinion,
+            &'a Mood,
+            &'a Personality,
+        ),
+    >,
     ring: &[Episode],
 ) -> SiftReads {
     let mut grudge_convergence: HashMap<Entity, u32> = HashMap::new();
@@ -653,7 +687,16 @@ fn assemble_reads<'a>(
         }
     }
     let by_id: HashMap<u64, Episode> = ring.iter().map(|e| (e.id, *e)).collect();
-    SiftReads { now, grudge_convergence, opinion, mood, vengeance, taboo_active, mood_ids, by_id }
+    SiftReads {
+        now,
+        grudge_convergence,
+        opinion,
+        mood,
+        vengeance,
+        taboo_active,
+        mood_ids,
+        by_id,
+    }
 }
 
 /// Gather the read-only world snapshot the scorer needs (live grievance convergence, opinion edges,
@@ -663,11 +706,24 @@ pub(crate) fn gather_reads(world: &mut World) -> SiftReads {
     let now = world.resource::<crate::Substrate>().0.tick();
     let mood_ids = MoodIds::resolve(world.resource::<Registry>());
     let vengeance_id = world.resource::<Registry>().trait_id("vengeance");
-    let taboo_active = taboo_in_force(world.resource::<Registry>(), world.get_resource::<Factions>());
-    let ring: Vec<Episode> =
-        world.get_resource::<Chronicle>().map(|c| c.recent().copied().collect()).unwrap_or_default();
-    let mut q = world.query_filtered::<(Entity, Option<&Grievance>, &Opinion, &Mood, &Personality), With<Npc>>();
-    assemble_reads(now, mood_ids, vengeance_id, taboo_active, q.iter(world), &ring)
+    let taboo_active = taboo_in_force(
+        world.resource::<Registry>(),
+        world.get_resource::<Factions>(),
+    );
+    let ring: Vec<Episode> = world
+        .get_resource::<Chronicle>()
+        .map(|c| c.recent().copied().collect())
+        .unwrap_or_default();
+    let mut q = world
+        .query_filtered::<(Entity, Option<&Grievance>, &Opinion, &Mood, &Personality), With<Npc>>();
+    assemble_reads(
+        now,
+        mood_ids,
+        vengeance_id,
+        taboo_active,
+        q.iter(world),
+        &ring,
+    )
 }
 
 /// The **live sifter**: each tick, fold the Chronicle's new episodes into the incremental matcher
@@ -693,7 +749,14 @@ pub(crate) fn sift_step(
     let mood_ids = MoodIds::resolve(&reg);
     let vengeance_id = reg.trait_id("vengeance");
     let taboo_active = taboo_in_force(&reg, factions.as_deref());
-    let reads = assemble_reads(now, mood_ids, vengeance_id, taboo_active, npcs.iter(), &ring);
+    let reads = assemble_reads(
+        now,
+        mood_ids,
+        vengeance_id,
+        taboo_active,
+        npcs.iter(),
+        &ring,
+    );
 
     let last = sift.last_ingested;
     for ep in ring.iter().filter(|e| last.is_none_or(|l| e.id > l)) {
@@ -711,7 +774,11 @@ pub(crate) fn sift_step(
 /// run. The result is also written back into the world's [`Sift`] resource.
 pub fn run_retrospective(world: &mut World) -> Option<Sift> {
     let book = world.get_resource::<SiftBook>()?.clone();
-    let ring: Vec<Episode> = world.get_resource::<Chronicle>()?.recent().copied().collect();
+    let ring: Vec<Episode> = world
+        .get_resource::<Chronicle>()?
+        .recent()
+        .copied()
+        .collect();
     let reads = gather_reads(world);
     let mut sift = world.get_resource::<Sift>().cloned().unwrap_or_default();
     sift.resift(&ring, &book, &reads);
@@ -727,7 +794,11 @@ pub fn run_retrospective(world: &mut World) -> Option<Sift> {
 /// Dev/test only; reads the world and changes no sim state.
 pub fn paths_agree(world: &mut World) -> Option<bool> {
     let book = world.get_resource::<SiftBook>()?.clone();
-    let ring: Vec<Episode> = world.get_resource::<Chronicle>()?.recent().copied().collect();
+    let ring: Vec<Episode> = world
+        .get_resource::<Chronicle>()?
+        .recent()
+        .copied()
+        .collect();
     let reads = gather_reads(world);
 
     let mut retro = Sift::default();
@@ -750,7 +821,10 @@ mod tests {
     fn bundled_sift_patterns_load_and_validate() {
         let book = SiftBook::bundled();
         assert!(!book.0.is_empty(), "the sift book should ship patterns");
-        assert!(book.0.iter().any(|p| p.id == "feud_escalating"), "the canonical feud pattern is present");
+        assert!(
+            book.0.iter().any(|p| p.id == "feud_escalating"),
+            "the canonical feud pattern is present"
+        );
         book.validate().expect("bundled patterns validate");
     }
 
@@ -775,11 +849,26 @@ mod tests {
             tension: "feud".into(),
             register: Register::Vengeance,
             window: vec![
-                WindowStep { kind: EpisodeKind::GrievanceFormed, binds: vec![("A".into(), Slot::Actor), ("B".into(), Slot::Target)], dir: None },
-                WindowStep { kind: EpisodeKind::OpinionCrossed, binds: vec![("A".into(), Slot::Actor), ("B".into(), Slot::Target)], dir: Some(Dir::Cold) },
-                WindowStep { kind: EpisodeKind::Killed, binds: vec![("A".into(), Slot::Actor), ("B".into(), Slot::Target)], dir: None },
+                WindowStep {
+                    kind: EpisodeKind::GrievanceFormed,
+                    binds: vec![("A".into(), Slot::Actor), ("B".into(), Slot::Target)],
+                    dir: None,
+                },
+                WindowStep {
+                    kind: EpisodeKind::OpinionCrossed,
+                    binds: vec![("A".into(), Slot::Actor), ("B".into(), Slot::Target)],
+                    dir: Some(Dir::Cold),
+                },
+                WindowStep {
+                    kind: EpisodeKind::Killed,
+                    binds: vec![("A".into(), Slot::Actor), ("B".into(), Slot::Target)],
+                    dir: None,
+                },
             ],
-            interest: vec![InterestAxis { axis: Axis::Bloodshed, curve: Curve::Power { exp: 1.0 } }],
+            interest: vec![InterestAxis {
+                axis: Axis::Bloodshed,
+                curve: Curve::Power { exp: 1.0 },
+            }],
             emerging_at: 1,
             active_at: 2,
             window_ticks: 60,
@@ -789,15 +878,16 @@ mod tests {
         let b = w.spawn_empty().id();
         let stranger = w.spawn_empty().id();
         let at = Coord::new(3, 4);
-        let ep = |id: u64, tick: u64, kind: EpisodeKind, p0: Entity, p1: Entity, detail: i32| Episode {
-            id,
-            tick,
-            kind,
-            parties: [Some(p0), Some(p1), None],
-            place: at,
-            register: None,
-            detail,
-        };
+        let ep =
+            |id: u64, tick: u64, kind: EpisodeKind, p0: Entity, p1: Entity, detail: i32| Episode {
+                id,
+                tick,
+                kind,
+                parties: [Some(p0), Some(p1), None],
+                place: at,
+                register: None,
+                detail,
+            };
         let ring = vec![
             ep(0, 1, EpisodeKind::GrievanceFormed, a, b, 0),
             // a stranger's unrelated grudge — must NOT bind into A/B's story.
@@ -824,9 +914,20 @@ mod tests {
             .iter()
             .find(|c| c.cast.as_slice() == [a, b])
             .expect("the A->B feud was found");
-        assert_eq!(feud.status, SiftStatus::Resolved, "all three steps matched -> the arc resolved");
-        assert_eq!(feud.support.as_slice(), &[0, 2, 3], "the stranger's grudge (id 1) is not part of it");
-        assert!(feud.interest > 0.0, "a feud that reaches a killing carries bloodshed interest");
+        assert_eq!(
+            feud.status,
+            SiftStatus::Resolved,
+            "all three steps matched -> the arc resolved"
+        );
+        assert_eq!(
+            feud.support.as_slice(),
+            &[0, 2, 3],
+            "the stranger's grudge (id 1) is not part of it"
+        );
+        assert!(
+            feud.interest > 0.0,
+            "a feud that reaches a killing carries bloodshed interest"
+        );
     }
 
     /// The S8.2 oracle: the incremental matcher (fed the ring episode-by-episode in tick order)
@@ -836,7 +937,12 @@ mod tests {
     #[test]
     fn the_incremental_matcher_agrees_with_the_retrospective_oracle() {
         let mut w = World::new();
-        let (a, b, c, d) = (w.spawn_empty().id(), w.spawn_empty().id(), w.spawn_empty().id(), w.spawn_empty().id());
+        let (a, b, c, d) = (
+            w.spawn_empty().id(),
+            w.spawn_empty().id(),
+            w.spawn_empty().id(),
+            w.spawn_empty().id(),
+        );
         let at = Coord::new(2, 3);
         let ep = |id, tick, kind, p0: Entity, p1: Option<Entity>, detail| Episode {
             id,
@@ -863,7 +969,9 @@ mod tests {
         let reads = SiftReads {
             now: 20,
             grudge_convergence: [(b, 2u32), (d, 1)].into_iter().collect(),
-            opinion: [(a, [(b, -0.9f32)].into_iter().collect())].into_iter().collect(),
+            opinion: [(a, [(b, -0.9f32)].into_iter().collect())]
+                .into_iter()
+                .collect(),
             mood: HashMap::new(),
             vengeance: [(a, 0.8f32)].into_iter().collect(),
             taboo_active: true,
@@ -880,7 +988,10 @@ mod tests {
         }
         incr.recompute(&book, &reads);
 
-        assert!(!retro.candidates.is_empty(), "the ring should produce candidates");
+        assert!(
+            !retro.candidates.is_empty(),
+            "the ring should produce candidates"
+        );
         assert_eq!(
             retro.candidates, incr.candidates,
             "the incremental matcher must agree with the retrospective oracle, candidate for candidate",

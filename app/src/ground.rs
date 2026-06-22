@@ -77,7 +77,9 @@ pub fn rebuild_ground(
     let mut dirty: HashSet<(i32, i32)> = HashSet::new();
     for &c in &ex.fresh {
         let h = crate::world_mesh::top_of(&game.sim, c);
-        ground.heights.insert(crate::world_mesh::qkey(tile_world(c.col, c.row)), h);
+        ground
+            .heights
+            .insert(crate::world_mesh::qkey(tile_world(c.col, c.row)), h);
         let ch = chunk_of(c.col, c.row);
         ground.tiles.entry(ch).or_default().push(c);
         dirty.insert(ch);
@@ -92,7 +94,10 @@ pub fn rebuild_ground(
         }
     }
 
-    let to_build: Vec<(i32, i32)> = dirty.into_iter().filter(|ch| ground.tiles.contains_key(ch)).collect();
+    let to_build: Vec<(i32, i32)> = dirty
+        .into_iter()
+        .filter(|ch| ground.tiles.contains_key(ch))
+        .collect();
     for ch in to_build {
         if let Some(old) = ground.chunks.remove(&ch) {
             commands.entity(old).despawn();
@@ -100,7 +105,12 @@ pub fn rebuild_ground(
         let coords = ground.tiles.get(&ch).cloned().unwrap_or_default();
         let mesh = crate::world_mesh::build_mesh(&game.sim, &coords, &ground.heights);
         let e = commands
-            .spawn((MapMesh, Mesh3d(meshes.add(mesh)), MeshMaterial3d(ra.map_mat.clone()), Transform::IDENTITY))
+            .spawn((
+                MapMesh,
+                Mesh3d(meshes.add(mesh)),
+                MeshMaterial3d(ra.map_mat.clone()),
+                Transform::IDENTITY,
+            ))
             .id();
         ground.chunks.insert(ch, e);
     }

@@ -69,9 +69,18 @@ impl Goals {
         let goals = defs
             .into_iter()
             .map(|d| {
-                let appeal = d.appeal.into_iter().map(|c| c.resolve(reg)).collect::<Result<Vec<_>, _>>()?;
+                let appeal = d
+                    .appeal
+                    .into_iter()
+                    .map(|c| c.resolve(reg))
+                    .collect::<Result<Vec<_>, _>>()?;
                 let act = d.condition.verb_effect(reg)?;
-                Ok(Goal { name: d.name, condition: d.condition.resolve(reg)?, appeal, act })
+                Ok(Goal {
+                    name: d.name,
+                    condition: d.condition.resolve(reg)?,
+                    appeal,
+                    act,
+                })
             })
             .collect::<Result<Vec<_>, GoalError>>()?;
         Ok(Goals(goals))
@@ -100,7 +109,10 @@ impl Goals {
             Input::Mood(m) => mood.get(m).copied().unwrap_or(0.0),
             Input::Sanction => sanction,
             // Listener-relative axes are the dialogue layer's; a goal has no addressee.
-            Input::OpinionOf | Input::GrievanceAgainst | Input::SharedHistory | Input::Prominence => 0.0,
+            Input::OpinionOf
+            | Input::GrievanceAgainst
+            | Input::SharedHistory
+            | Input::Prominence => 0.0,
         })
     }
 
@@ -113,8 +125,9 @@ impl Goals {
         mood: &[f32],
         norms: &Norms,
     ) -> Vec<usize> {
-        let appeals: Vec<f32> =
-            (0..self.0.len()).map(|i| self.appeal(i, s, reg, personality, mood, norms)).collect();
+        let appeals: Vec<f32> = (0..self.0.len())
+            .map(|i| self.appeal(i, s, reg, personality, mood, norms))
+            .collect();
         let mut idx: Vec<usize> = (0..self.0.len()).collect();
         idx.sort_by(|&a, &b| appeals[b].total_cmp(&appeals[a]).then(a.cmp(&b)));
         idx
@@ -143,7 +156,6 @@ impl Goals {
         live.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
         live.into_iter().map(|(i, _)| i).collect()
     }
-
 }
 
 // --- Authored form (good names not yet resolved) ---
@@ -180,7 +192,10 @@ impl ConsiderationDef {
             InputDef::Mood(n) => Input::Mood(reg.mood_id(&n).ok_or(GoalError::UnknownMood(n))?),
             InputDef::Sanction => Input::Sanction,
         };
-        Ok(Consideration { input, curve: self.curve })
+        Ok(Consideration {
+            input,
+            curve: self.curve,
+        })
     }
 }
 
@@ -188,10 +203,19 @@ impl ConsiderationDef {
 /// load. Shared with [`norms`](crate::norms), whose `when` clauses are conditions.
 #[derive(Deserialize)]
 pub(crate) enum ConditionDef {
-    Sustenance { at_least: i32 },
-    Rest { at_least: i32 },
-    Money { at_least: i64 },
-    Holding { good: GoodSelDef, at_least: u32 },
+    Sustenance {
+        at_least: i32,
+    },
+    Rest {
+        at_least: i32,
+    },
+    Money {
+        at_least: i64,
+    },
+    Holding {
+        good: GoodSelDef,
+        at_least: u32,
+    },
     /// A relational predicate of a bound entity: `Relation("alive", Foe, 0)` =
     /// "make alive(foe) false". `subject` says whose — the agent itself (`Me`, the
     /// default) or its bound target (`Foe`). Grounds to a flat fact slot.
@@ -211,7 +235,10 @@ pub(crate) enum ConditionDef {
         target: SubjectDef,
     },
     /// A raw flat fact slot (escape hatch / tests).
-    Fact { fact: usize, equals: i64 },
+    Fact {
+        fact: usize,
+        equals: i64,
+    },
 }
 
 #[derive(Deserialize)]
@@ -244,9 +271,10 @@ impl ConditionDef {
     /// norms regulate the goal by. `None` for the raw relation/fact forms.
     fn verb_effect(&self, reg: &Registry) -> Result<Option<(PredicateId, i64)>, GoalError> {
         match self {
-            ConditionDef::Verb { verb, .. } => {
-                Ok(Some(reg.verb(verb).ok_or_else(|| GoalError::UnknownVerb(verb.clone()))?))
-            }
+            ConditionDef::Verb { verb, .. } => Ok(Some(
+                reg.verb(verb)
+                    .ok_or_else(|| GoalError::UnknownVerb(verb.clone()))?,
+            )),
             _ => Ok(None),
         }
     }
@@ -256,14 +284,29 @@ impl ConditionDef {
             ConditionDef::Sustenance { at_least } => Condition::Sustenance { at_least },
             ConditionDef::Rest { at_least } => Condition::Rest { at_least },
             ConditionDef::Money { at_least } => Condition::Money { at_least },
-            ConditionDef::Holding { good, at_least } => Condition::Holding { good: good.resolve(reg)?, at_least },
-            ConditionDef::Relation { predicate, subject, equals } => {
-                let p = reg.predicate_id(&predicate).ok_or(GoalError::UnknownPredicate(predicate))?;
-                Condition::Fact { fact: crate::data::fact_slot(p, subject.role()), equals }
+            ConditionDef::Holding { good, at_least } => Condition::Holding {
+                good: good.resolve(reg)?,
+                at_least,
+            },
+            ConditionDef::Relation {
+                predicate,
+                subject,
+                equals,
+            } => {
+                let p = reg
+                    .predicate_id(&predicate)
+                    .ok_or(GoalError::UnknownPredicate(predicate))?;
+                Condition::Fact {
+                    fact: crate::data::fact_slot(p, subject.role()),
+                    equals,
+                }
             }
             ConditionDef::Verb { verb, target } => {
                 let (p, value) = reg.verb(&verb).ok_or(GoalError::UnknownVerb(verb))?;
-                Condition::Fact { fact: crate::data::fact_slot(p, target.role()), equals: value }
+                Condition::Fact {
+                    fact: crate::data::fact_slot(p, target.role()),
+                    equals: value,
+                }
             }
             ConditionDef::Fact { fact, equals } => Condition::Fact { fact, equals },
         })
@@ -274,7 +317,9 @@ impl GoodSelDef {
     fn resolve(self, reg: &Registry) -> Result<GoodSel, GoalError> {
         Ok(match self {
             GoodSelDef::Edible => GoodSel::Edible,
-            GoodSelDef::Named(n) => GoodSel::Named(reg.good_id(&n).ok_or(GoalError::UnknownGood(n))?),
+            GoodSelDef::Named(n) => {
+                GoodSel::Named(reg.good_id(&n).ok_or(GoalError::UnknownGood(n))?)
+            }
         })
     }
 }
@@ -327,7 +372,15 @@ mod tests {
         if let Some(g) = (0..reg.good_count()).find(|&g| reg.good(g).nutrition > 0.0) {
             stock[g] = edible;
         }
-        PlanState { sustenance, rest, money, stock, pos: Coord::new(0, 0), facts: Facts::new(), learned: Stock::new() }
+        PlanState {
+            sustenance,
+            rest,
+            money,
+            stock,
+            pos: Coord::new(0, 0),
+            facts: Facts::new(),
+            learned: Stock::new(),
+        }
     }
 
     fn top(goals: &Goals, reg: &Registry, s: &PlanState) -> String {
@@ -336,7 +389,9 @@ mod tests {
 
     fn top_for(goals: &Goals, reg: &Registry, s: &PlanState, personality: &[f32]) -> String {
         let n = Norms::default();
-        goals.0[goals.ranked(s, reg, personality, &[], &n)[0]].name.clone()
+        goals.0[goals.ranked(s, reg, personality, &[], &n)[0]]
+            .name
+            .clone()
     }
 
     /// A personality vector with one named trait set to `value`, the rest zero.
@@ -351,7 +406,11 @@ mod tests {
         let reg = Registry::bundled();
         let goals = Goals::bundled(&reg);
         let names: Vec<_> = goals.0.iter().map(|g| g.name.as_str()).collect();
-        assert!(names.contains(&"sustained") && names.contains(&"stocked") && names.contains(&"solvent"));
+        assert!(
+            names.contains(&"sustained")
+                && names.contains(&"stocked")
+                && names.contains(&"solvent")
+        );
     }
 
     #[test]
@@ -398,8 +457,16 @@ mod tests {
         // throne is unheld (fact 0 == 0, so "rule" has full deficit).
         let mut s = state(&reg, 100, 100, 0, 99);
         s.facts = Facts::from_elem(0, 1);
-        assert_eq!(top_for(&goals, &reg, &s, &personality_with(&reg, "ambition", 1.0)), "rule", "the ambitious go for it");
-        assert_ne!(top_for(&goals, &reg, &s, &personality_with(&reg, "ambition", 0.0)), "rule", "the content do not");
+        assert_eq!(
+            top_for(&goals, &reg, &s, &personality_with(&reg, "ambition", 1.0)),
+            "rule",
+            "the ambitious go for it"
+        );
+        assert_ne!(
+            top_for(&goals, &reg, &s, &personality_with(&reg, "ambition", 0.0)),
+            "rule",
+            "the content do not"
+        );
     }
 
     #[test]
@@ -407,7 +474,10 @@ mod tests {
         let reg = Registry::bundled();
         let ron = r#"[(name: "x", condition: Fact(fact: 0, equals: 1),
             appeal: [(input: Trait("greedmaxxing"), curve: Linear(m: 1.0, b: 0.0))])]"#;
-        assert!(matches!(Goals::from_ron(ron, &reg), Err(GoalError::UnknownTrait(_))));
+        assert!(matches!(
+            Goals::from_ron(ron, &reg),
+            Err(GoalError::UnknownTrait(_))
+        ));
     }
 
     #[test]
@@ -415,6 +485,9 @@ mod tests {
         let reg = Registry::bundled();
         let ron = r#"[(name: "hoard", condition: Holding(good: Named("unobtanium"), at_least: 5),
             appeal: [(input: Deficit, curve: Linear(m: 1.0, b: 0.0))])]"#;
-        assert!(matches!(Goals::from_ron(ron, &reg), Err(GoalError::UnknownGood(_))));
+        assert!(matches!(
+            Goals::from_ron(ron, &reg),
+            Err(GoalError::UnknownGood(_))
+        ));
     }
 }

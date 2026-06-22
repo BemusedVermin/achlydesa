@@ -29,8 +29,8 @@
 
 use crate::ai::Curve;
 use bevy_ecs::prelude::Resource;
-use game_sim::fields::Formation;
 use config::{Asset, Config};
+use game_sim::fields::Formation;
 use game_sim::{Coord, SplitMix64, Topology, World as GameWorld};
 use serde::Deserialize;
 use sim::Rng;
@@ -50,7 +50,12 @@ pub enum Category {
 }
 
 impl Category {
-    pub const ALL: [Category; 4] = [Category::Community, Category::Court, Category::Ruin, Category::Wilderness];
+    pub const ALL: [Category; 4] = [
+        Category::Community,
+        Category::Court,
+        Category::Ruin,
+        Category::Wilderness,
+    ];
     pub const COUNT: usize = 4;
     pub fn idx(self) -> usize {
         self as usize
@@ -134,10 +139,20 @@ pub enum NeedKind {
 /// optionally gated by a calling.
 #[derive(Deserialize, Clone, Debug)]
 pub enum EffectDef {
-    Relieve { need: NeedKind, amount: i32 },
-    Yield { good: String, units: u32, #[serde(default)] skill: Option<String> },
+    Relieve {
+        need: NeedKind,
+        amount: i32,
+    },
+    Yield {
+        good: String,
+        units: u32,
+        #[serde(default)]
+        skill: Option<String>,
+    },
     /// Teach a calling — a guild lifts a skill the user lacks above zero.
-    Teach { skill: String },
+    Teach {
+        skill: String,
+    },
 }
 
 /// A **smart-object affordance** a feature advertises: a named action and what it
@@ -216,7 +231,10 @@ impl Features {
 
     /// Every placed feature with its tile index.
     pub fn iter(&self) -> impl Iterator<Item = (usize, &Feature)> {
-        self.tiles.iter().enumerate().flat_map(|(i, fs)| fs.iter().map(move |f| (i, f)))
+        self.tiles
+            .iter()
+            .enumerate()
+            .flat_map(|(i, fs)| fs.iter().map(move |f| (i, f)))
     }
 
     /// Total features placed across the world.
@@ -226,11 +244,18 @@ impl Features {
 
     /// How many placed features belong to `category`.
     pub fn count_of(&self, catalog: &FeatureCatalog, category: Category) -> usize {
-        self.iter().filter(|(_, f)| catalog.def(f.kind).category == category).count()
+        self.iter()
+            .filter(|(_, f)| catalog.def(f.kind).category == category)
+            .count()
     }
 
     /// The hexes carrying a feature of `category`, in storage order (deterministic).
-    pub fn tiles_of(&self, catalog: &FeatureCatalog, category: Category, topo: &Topology) -> Vec<Coord> {
+    pub fn tiles_of(
+        &self,
+        catalog: &FeatureCatalog,
+        category: Category,
+        topo: &Topology,
+    ) -> Vec<Coord> {
         self.tiles
             .iter()
             .enumerate()
@@ -244,11 +269,22 @@ impl Features {
     /// (usually ungated) and any Secret whose lore the player holds. Returns the kinds newly
     /// revealed, so the caller can harvest their [`FeatureDef::reveals`]. The deterministic,
     /// knowledge-gated heart of player discovery (no luck involved).
-    pub fn search_at_index(&mut self, catalog: &FeatureCatalog, i: usize, lore: &HashSet<String>) -> Vec<FeatureId> {
+    pub fn search_at_index(
+        &mut self,
+        catalog: &FeatureCatalog,
+        i: usize,
+        lore: &HashSet<String>,
+    ) -> Vec<FeatureId> {
         let mut found = Vec::new();
         if let Some(fs) = self.tiles.get_mut(i) {
             for f in fs.iter_mut() {
-                if !f.discovered && catalog.def(f.kind).requires.iter().all(|r| lore.contains(r)) {
+                if !f.discovered
+                    && catalog
+                        .def(f.kind)
+                        .requires
+                        .iter()
+                        .all(|r| lore.contains(r))
+                {
                     f.discovered = true;
                     found.push(f.kind);
                 }
@@ -260,27 +296,48 @@ impl Features {
     /// Whether searching tile `i` would turn anything up, given the lore the player holds:
     /// `Findable` (something undiscovered here whose gate is met), `Locked` (something is
     /// here but the player lacks the knowledge to find it — the lure), or `Nothing`.
-    pub fn find_state_at_index(&self, catalog: &FeatureCatalog, i: usize, lore: &HashSet<String>) -> FindState {
+    pub fn find_state_at_index(
+        &self,
+        catalog: &FeatureCatalog,
+        i: usize,
+        lore: &HashSet<String>,
+    ) -> FindState {
         let mut locked = false;
         for f in self.at_index(i) {
             if !f.discovered {
-                if catalog.def(f.kind).requires.iter().all(|r| lore.contains(r)) {
+                if catalog
+                    .def(f.kind)
+                    .requires
+                    .iter()
+                    .all(|r| lore.contains(r))
+                {
                     return FindState::Findable;
                 }
                 locked = true;
             }
         }
-        if locked { FindState::Locked } else { FindState::Nothing }
+        if locked {
+            FindState::Locked
+        } else {
+            FindState::Nothing
+        }
     }
 
     /// Reveal every still-hidden feature on tile `i` whose discovery tier is at or
     /// below `tier` (Landmark < Hidden < Secret). Returns how many were newly
     /// revealed. The mechanism behind [`people::discover_features`](crate::people::discover_features).
-    pub fn discover_at_index(&mut self, catalog: &FeatureCatalog, i: usize, tier: Discovery) -> usize {
+    pub fn discover_at_index(
+        &mut self,
+        catalog: &FeatureCatalog,
+        i: usize,
+        tier: Discovery,
+    ) -> usize {
         let mut revealed = 0;
         if let Some(fs) = self.tiles.get_mut(i) {
             for f in fs {
-                if !f.discovered && discovery_rank(catalog.def(f.kind).discovery) <= discovery_rank(tier) {
+                if !f.discovered
+                    && discovery_rank(catalog.def(f.kind).discovery) <= discovery_rank(tier)
+                {
                     f.discovered = true;
                     revealed += 1;
                 }
@@ -329,12 +386,16 @@ impl FeatureCatalog {
 
     /// Load the catalog from a [`Config`]'s content source.
     pub fn load(cfg: &Config) -> Result<Self, FeatureError> {
-        Ok(Self { defs: cfg.load(Asset::Features)? })
+        Ok(Self {
+            defs: cfg.load(Asset::Features)?,
+        })
     }
 
     /// Parse a catalog from RON text.
     pub fn from_ron(s: &str) -> Result<Self, config::ConfigError> {
-        Ok(Self { defs: config::parse(s)? })
+        Ok(Self {
+            defs: config::parse(s)?,
+        })
     }
 
     pub fn def(&self, id: FeatureId) -> &FeatureDef {
@@ -397,7 +458,12 @@ fn suitability(terms: &[Term], signal: impl Fn(Signal) -> f32) -> f32 {
 
 /// Place features over a substrate. Deterministic given `rng`; uses its own RNG
 /// stream so feature placement never perturbs the economy's.
-pub fn place(substrate: &GameWorld, catalog: &FeatureCatalog, cfg: &FeatureConfig, rng: &mut SplitMix64) -> Features {
+pub fn place(
+    substrate: &GameWorld,
+    catalog: &FeatureCatalog,
+    cfg: &FeatureConfig,
+    rng: &mut SplitMix64,
+) -> Features {
     let topo = substrate.topology();
     let n = topo.len();
     let sea = substrate.params().sea_level;
@@ -419,7 +485,10 @@ pub fn place(substrate: &GameWorld, catalog: &FeatureCatalog, cfg: &FeatureConfi
             .iter()
             .map(|l| (elev - substrate.elevation(topo.coord(l.to))).max(0.0))
             .fold(0.0f32, f32::max);
-        let coast = topo.neighbors(i).iter().any(|l| substrate.elevation(topo.coord(l.to)) < sea);
+        let coast = topo
+            .neighbors(i)
+            .iter()
+            .any(|l| substrate.elevation(topo.coord(l.to)) < sea);
         let fertility = (substrate.carrying_capacity(c) / biomass_max).clamp(0.0, 1.0);
         let veg = (substrate.plant_biomass(c) / biomass_max).clamp(0.0, 1.0);
         let formation = substrate.biome(c).formation();
@@ -433,9 +502,17 @@ pub fn place(substrate: &GameWorld, catalog: &FeatureCatalog, cfg: &FeatureConfi
         s[Signal::Minerals.idx()] = substrate.minerals(c);
         s[Signal::SurfaceWater.idx()] = substrate.surface_water(c);
         s[Signal::Coast.idx()] = if coast { 1.0 } else { 0.0 };
-        s[Signal::Forest.idx()] =
-            if matches!(formation, Formation::Forest | Formation::Rainforest) { 1.0 } else { 0.0 };
-        s[Signal::Grass.idx()] = if formation == Formation::Grassland { 1.0 } else { 0.0 };
+        s[Signal::Forest.idx()] = if matches!(formation, Formation::Forest | Formation::Rainforest)
+        {
+            1.0
+        } else {
+            0.0
+        };
+        s[Signal::Grass.idx()] = if formation == Formation::Grassland {
+            1.0
+        } else {
+            0.0
+        };
         s[Signal::Aridity.idx()] = 1.0 - fertility;
     }
 
@@ -449,7 +526,11 @@ pub fn place(substrate: &GameWorld, catalog: &FeatureCatalog, cfg: &FeatureConfi
         }
         if let Some(kind) = choose(Category::Community, i, &sig, &tiles, catalog, cfg, rng) {
             let discovered = catalog.def(kind).discovery == Discovery::Landmark;
-            tiles[i].push(Feature { kind, discovered, defiled: false });
+            tiles[i].push(Feature {
+                kind,
+                discovered,
+                defiled: false,
+            });
             block_within(topo, &mut blocked, i, cfg.community_spacing);
         }
     }
@@ -465,7 +546,11 @@ pub fn place(substrate: &GameWorld, catalog: &FeatureCatalog, cfg: &FeatureConfi
             }
             if let Some(kind) = choose(cat, i, &sig, &tiles, catalog, cfg, rng) {
                 let discovered = catalog.def(kind).discovery == Discovery::Landmark;
-                tiles[i].push(Feature { kind, discovered, defiled: false });
+                tiles[i].push(Feature {
+                    kind,
+                    discovered,
+                    defiled: false,
+                });
             }
         }
     }
@@ -566,7 +651,10 @@ fn fill_remoteness(
     let mut dist = vec![u32::MAX; n];
     let mut q = VecDeque::new();
     for (i, fs) in tiles.iter().enumerate() {
-        if fs.iter().any(|f| catalog.def(f.kind).category == Category::Community) {
+        if fs
+            .iter()
+            .any(|f| catalog.def(f.kind).category == Category::Community)
+        {
             dist[i] = 0;
             q.push_back(i);
         }
@@ -581,7 +669,11 @@ fn fill_remoteness(
     }
     let scale = scale.max(1e-3);
     for i in 0..n {
-        sig[i][Signal::Remoteness.idx()] = if dist[i] == u32::MAX { 1.0 } else { (dist[i] as f32 / scale).min(1.0) };
+        sig[i][Signal::Remoteness.idx()] = if dist[i] == u32::MAX {
+            1.0
+        } else {
+            (dist[i] as f32 / scale).min(1.0)
+        };
     }
 }
 
@@ -634,12 +726,27 @@ mod tests {
         )
         .unwrap();
         let (seer, gate) = (cat.id_of("seer").unwrap(), cat.id_of("gate").unwrap());
-        let mut feats =
-            Features { tiles: vec![vec![Feature { kind: seer, discovered: false, defiled: false }, Feature { kind: gate, discovered: false, defiled: false }]] };
+        let mut feats = Features {
+            tiles: vec![vec![
+                Feature {
+                    kind: seer,
+                    discovered: false,
+                    defiled: false,
+                },
+                Feature {
+                    kind: gate,
+                    discovered: false,
+                    defiled: false,
+                },
+            ]],
+        };
         let mut lore = HashSet::new();
 
         // The seer is ungated → findable; searching reveals it but NOT the gate.
-        assert_eq!(feats.find_state_at_index(&cat, 0, &lore), FindState::Findable);
+        assert_eq!(
+            feats.find_state_at_index(&cat, 0, &lore),
+            FindState::Findable
+        );
         assert_eq!(feats.search_at_index(&cat, 0, &lore), vec![seer]);
         // Now only the gate is left, and without the password it merely lures.
         assert_eq!(feats.find_state_at_index(&cat, 0, &lore), FindState::Locked);
@@ -647,17 +754,30 @@ mod tests {
 
         // Learn the password (as the seer would teach) → the gate opens to a search.
         lore.insert("password".to_string());
-        assert_eq!(feats.find_state_at_index(&cat, 0, &lore), FindState::Findable);
+        assert_eq!(
+            feats.find_state_at_index(&cat, 0, &lore),
+            FindState::Findable
+        );
         assert_eq!(feats.search_at_index(&cat, 0, &lore), vec![gate]);
-        assert_eq!(feats.find_state_at_index(&cat, 0, &lore), FindState::Nothing);
+        assert_eq!(
+            feats.find_state_at_index(&cat, 0, &lore),
+            FindState::Nothing
+        );
     }
 
     #[test]
     fn bundled_catalog_loads_and_covers_every_category() {
         let cat = FeatureCatalog::bundled();
-        assert!(cat.len() >= 20, "expected a rich catalog, got {}", cat.len());
+        assert!(
+            cat.len() >= 20,
+            "expected a rich catalog, got {}",
+            cat.len()
+        );
         for c in Category::ALL {
-            assert!(cat.iter().any(|d| d.category == c), "no feature in category {c:?}");
+            assert!(
+                cat.iter().any(|d| d.category == c),
+                "no feature in category {c:?}"
+            );
         }
         // A host-constrained kind exists (a court inside a community).
         assert!(cat.iter().any(|d| d.host == Some(Category::Community)));
@@ -680,20 +800,33 @@ mod tests {
         let w = world(7);
         let cat = FeatureCatalog::bundled();
         let feats = place(&w, &cat, &FeatureConfig::default(), &mut SplitMix64::new(1));
-        assert!(feats.total() > 10, "a 48×36 world should host many features, got {}", feats.total());
+        assert!(
+            feats.total() > 10,
+            "a 48×36 world should host many features, got {}",
+            feats.total()
+        );
         // Nothing in the sea.
         let topo = w.topology();
         let sea = w.params().sea_level;
         for (i, _) in feats.iter() {
-            assert!(w.elevation(topo.coord(i)) >= sea, "a feature was placed in the sea");
+            assert!(
+                w.elevation(topo.coord(i)) >= sea,
+                "a feature was placed in the sea"
+            );
         }
         // At least communities and one other category appear.
-        assert!(feats.count_of(&cat, Category::Community) > 0, "no settlements formed");
+        assert!(
+            feats.count_of(&cat, Category::Community) > 0,
+            "no settlements formed"
+        );
         let others: usize = [Category::Court, Category::Ruin, Category::Wilderness]
             .iter()
             .map(|&c| feats.count_of(&cat, c))
             .sum();
-        assert!(others > 0, "only communities formed — no courts/ruins/wilderness");
+        assert!(
+            others > 0,
+            "only communities formed — no courts/ruins/wilderness"
+        );
     }
 
     #[test]
@@ -710,7 +843,10 @@ mod tests {
                 cats.any(|c| Some(c) != first)
             }
         });
-        assert!(stacked, "no hex layered features from two different categories");
+        assert!(
+            stacked,
+            "no hex layered features from two different categories"
+        );
     }
 
     #[test]
@@ -720,8 +856,15 @@ mod tests {
         let feats = place(&w, &cat, &FeatureConfig::default(), &mut SplitMix64::new(5));
         for (i, f) in feats.iter() {
             if let Some(host) = cat.def(f.kind).host {
-                let has_host = feats.at_index(i).iter().any(|g| cat.def(g.kind).category == host);
-                assert!(has_host, "{} requires a {host:?} on its tile but none is there", cat.name(f.kind));
+                let has_host = feats
+                    .at_index(i)
+                    .iter()
+                    .any(|g| cat.def(g.kind).category == host);
+                assert!(
+                    has_host,
+                    "{} requires a {host:?} on its tile but none is there",
+                    cat.name(f.kind)
+                );
             }
         }
     }
@@ -734,7 +877,9 @@ mod tests {
         for (_, f) in feats.iter() {
             let tier = cat.def(f.kind).discovery;
             match tier {
-                Discovery::Landmark => assert!(f.discovered, "a landmark should be known on placement"),
+                Discovery::Landmark => {
+                    assert!(f.discovered, "a landmark should be known on placement")
+                }
                 _ => assert!(!f.discovered, "a {tier:?} feature should start latent"),
             }
         }
@@ -758,8 +903,14 @@ mod tests {
                 .at_index(i)
                 .iter()
                 .any(|f| cat.def(f.kind).discovery == Discovery::Secret && !f.discovered);
-            let has_secret = feats.at_index(i).iter().any(|f| cat.def(f.kind).discovery == Discovery::Secret);
-            assert_eq!(still_secret, has_secret, "a Hidden-tier search must not expose secrets");
+            let has_secret = feats
+                .at_index(i)
+                .iter()
+                .any(|f| cat.def(f.kind).discovery == Discovery::Secret);
+            assert_eq!(
+                still_secret, has_secret,
+                "a Hidden-tier search must not expose secrets"
+            );
         }
     }
 
@@ -768,14 +919,25 @@ mod tests {
         // With a large inhibition radius, no two communities should be adjacent.
         let w = world(7);
         let cat = FeatureCatalog::bundled();
-        let cfg = FeatureConfig { community_spacing: 2, ..FeatureConfig::default() };
+        let cfg = FeatureConfig {
+            community_spacing: 2,
+            ..FeatureConfig::default()
+        };
         let feats = place(&w, &cat, &cfg, &mut SplitMix64::new(1));
         let topo = w.topology();
-        let is_community = |i: usize| feats.at_index(i).iter().any(|f| cat.def(f.kind).category == Category::Community);
+        let is_community = |i: usize| {
+            feats
+                .at_index(i)
+                .iter()
+                .any(|f| cat.def(f.kind).category == Category::Community)
+        };
         for (i, _) in feats.iter() {
             if is_community(i) {
                 for l in topo.neighbors(i) {
-                    assert!(!is_community(l.to), "two communities ended up adjacent despite spacing");
+                    assert!(
+                        !is_community(l.to),
+                        "two communities ended up adjacent despite spacing"
+                    );
                 }
             }
         }

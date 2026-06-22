@@ -126,11 +126,20 @@ mod tests {
         // Two strong considerations should still score high (compensation), rather
         // than collapsing toward their raw product.
         let cons = vec![
-            Consideration { input: Input::Deficit, curve: Curve::Power { exp: 1.0 } },
-            Consideration { input: Input::Deficit, curve: Curve::Power { exp: 1.0 } },
+            Consideration {
+                input: Input::Deficit,
+                curve: Curve::Power { exp: 1.0 },
+            },
+            Consideration {
+                input: Input::Deficit,
+                curve: Curve::Power { exp: 1.0 },
+            },
         ];
         // Naive product of two 0.85s is 0.7225; with makeup it lands above it.
         let s = score(&cons, |_| 0.85);
-        assert!(s > 0.8, "compensated score should beat the raw product, got {s}");
+        assert!(
+            s > 0.8,
+            "compensated score should beat the raw product, got {s}"
+        );
     }
 }

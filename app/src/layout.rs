@@ -25,7 +25,11 @@ const HEIGHT_KNEE_M: f32 = 1150.0;
 /// World-space centre of a tile's top face (x, z), matching the sim's pointy-top odd-offset
 /// layout exactly (via hexx), so the view lines up with the simulation's own coordinates.
 pub fn tile_world(col: i32, row: i32) -> Vec2 {
-    let h = hexx::Hex::from_offset_coordinates([col, row], hexx::OffsetHexMode::Odd, hexx::HexOrientation::Pointy);
+    let h = hexx::Hex::from_offset_coordinates(
+        [col, row],
+        hexx::OffsetHexMode::Odd,
+        hexx::HexOrientation::Pointy,
+    );
     let (q, r) = (h.x as f32, h.y as f32);
     Vec2::new(SQRT3 * (q + r / 2.0), 1.5 * r)
 }
@@ -51,5 +55,9 @@ pub fn land_height(relief_m: f32) -> f32 {
 pub fn tile_top(gw: &GameWorld, c: Coord) -> f32 {
     let sea = gw.params().sea_level;
     let elev = gw.elevation(c);
-    if Terrain::of(elev, sea) == Terrain::Ocean { 0.0 } else { land_height(elev - sea) }
+    if Terrain::of(elev, sea) == Terrain::Ocean {
+        0.0
+    } else {
+        land_height(elev - sea)
+    }
 }

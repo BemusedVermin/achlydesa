@@ -54,8 +54,16 @@ fn main() {
     );
     sim.spawn_player(None);
     let apos = sim.player_position().unwrap();
-    println!("avatar spawned at ({},{}); {} NPCs in the world.", apos.col, apos.row, sim.npc_count());
-    println!("NPCs within the avatar's sight at spawn: {}", sim.player_nearby_npcs().len());
+    println!(
+        "avatar spawned at ({},{}); {} NPCs in the world.",
+        apos.col,
+        apos.row,
+        sim.npc_count()
+    );
+    println!(
+        "NPCs within the avatar's sight at spawn: {}",
+        sim.player_nearby_npcs().len()
+    );
     println!("\nNow simulating a player who *takes up a charge* and follows it to fulfilment:");
     println!("  tick | beats | nearby | charge / tidings");
     println!("  -----+-------+--------+-----------------");
@@ -84,17 +92,27 @@ fn main() {
         if let Some(q) = &quest
             && (sim.quest_reached(q) || !sim.quest_thread_open(q))
         {
-            let why = if sim.quest_reached(q) { "reached the place" } else { "drama resolved" };
-            println!("  >>> CHARGE CLOSED (tick {}): {} ({why})", sim.substrate().tick(), q.objective);
+            let why = if sim.quest_reached(q) {
+                "reached the place"
+            } else {
+                "drama resolved"
+            };
+            println!(
+                "  >>> CHARGE CLOSED (tick {}): {} ({why})",
+                sim.substrate().tick(),
+                q.objective
+            );
             quest = None;
             done += 1;
         }
         // Head for the charge's other (else the strongest unrest).
         if !sim.player_traveling() {
-            let target = quest
-                .as_ref()
-                .map(|q| q.target)
-                .or_else(|| sim.drama_marks().into_iter().max_by(|a, b| a.1.partial_cmp(&b.1).unwrap()).map(|(c, _)| c));
+            let target = quest.as_ref().map(|q| q.target).or_else(|| {
+                sim.drama_marks()
+                    .into_iter()
+                    .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
+                    .map(|(c, _)| c)
+            });
             if let Some(t) = target {
                 sim.player_travel_to(t);
             }
@@ -103,9 +121,17 @@ fn main() {
             let nearby = sim.player_nearby_npcs().len();
             let line = match &quest {
                 Some(q) => format!("CHARGE: {} {}", q.objective, sim.quest_bearing(q)),
-                None => sim.tidings().unwrap_or_else(|| "(the land is quiet)".into()),
+                None => sim
+                    .tidings()
+                    .unwrap_or_else(|| "(the land is quiet)".into()),
             };
-            println!("  {:>4} | {:>5} | {:>6} | {}", sim.substrate().tick(), sim.director_beats_fired(), nearby, line);
+            println!(
+                "  {:>4} | {:>5} | {:>6} | {}",
+                sim.substrate().tick(),
+                sim.director_beats_fired(),
+                nearby,
+                line
+            );
         }
     }
     println!("\nCharges taken: {taken}, fulfilled: {done}.");

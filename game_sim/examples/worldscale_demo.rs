@@ -13,7 +13,8 @@ fn biome_mix(world: &game_sim::World) -> Vec<(String, usize)> {
     let topo = world.topology();
     let mut m: HashMap<String, usize> = HashMap::new();
     for i in 0..topo.len() {
-        *m.entry(world.biome(topo.coord(i)).name().to_string()).or_default() += 1;
+        *m.entry(world.biome(topo.coord(i)).name().to_string())
+            .or_default() += 1;
     }
     let mut v: Vec<_> = m.into_iter().collect();
     v.sort_unstable_by(|a, b| b.1.cmp(&a.1));
@@ -21,16 +22,36 @@ fn biome_mix(world: &game_sim::World) -> Vec<(String, usize)> {
 }
 
 fn is_green(name: &str) -> bool {
-    ["forest", "rain", "moist", "wet", "grass", "steppe"].iter().any(|k| name.contains(k))
+    ["forest", "rain", "moist", "wet", "grass", "steppe"]
+        .iter()
+        .any(|k| name.contains(k))
 }
 
 fn print_mix(label: &str, mix: &[(String, usize)], n: usize) {
-    let green: usize = mix.iter().filter(|(k, _)| is_green(k)).map(|(_, c)| *c).sum();
-    let land: usize = mix.iter().filter(|(k, _)| k.as_str() != "open water").map(|(_, c)| *c).sum();
-    let green_of_land = if land == 0 { 0.0 } else { 100.0 * green as f32 / land as f32 };
-    println!("{label}: {} biome types, {green_of_land:.1}% of land is 'green' (forest/grass/wet)", mix.len());
+    let green: usize = mix
+        .iter()
+        .filter(|(k, _)| is_green(k))
+        .map(|(_, c)| *c)
+        .sum();
+    let land: usize = mix
+        .iter()
+        .filter(|(k, _)| k.as_str() != "open water")
+        .map(|(_, c)| *c)
+        .sum();
+    let green_of_land = if land == 0 {
+        0.0
+    } else {
+        100.0 * green as f32 / land as f32
+    };
+    println!(
+        "{label}: {} biome types, {green_of_land:.1}% of land is 'green' (forest/grass/wet)",
+        mix.len()
+    );
     for (name, c) in mix.iter().take(10) {
-        println!("    {name:<24} {c:>6}  {:>4.1}%", 100.0 * *c as f32 / n as f32);
+        println!(
+            "    {name:<24} {c:>6}  {:>4.1}%",
+            100.0 * *c as f32 / n as f32
+        );
     }
 }
 
@@ -85,7 +106,10 @@ fn main() {
         sizes.sort_unstable_by(|a, b| b.cmp(a));
         let big = sizes.iter().filter(|&&s| s >= 50).count();
         println!("world {width}×{height} = {n} cells, seed {seed}, {plates} plates");
-        println!("land: {land} cells ({:.1}%)   elevation: {lo:.0}..{hi:.0} m", 100.0 * land as f32 / n as f32);
+        println!(
+            "land: {land} cells ({:.1}%)   elevation: {lo:.0}..{hi:.0} m",
+            100.0 * land as f32 / n as f32
+        );
         println!(
             "continents: {} land masses, {big} of them ≥50 tiles; largest few: {:?}\n",
             sizes.len(),

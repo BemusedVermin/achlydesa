@@ -18,7 +18,11 @@ const COOL_AMOUNT: f32 = 0.07;
 
 pub fn lerp(a: [f32; 3], b: [f32; 3], t: f32) -> [f32; 3] {
     let t = t.clamp(0.0, 1.0);
-    [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]
+    [
+        a[0] + (b[0] - a[0]) * t,
+        a[1] + (b[1] - a[1]) * t,
+        a[2] + (b[2] - a[2]) * t,
+    ]
 }
 
 /// Lay the shared cool cast over a colour — the world's single unifying tint.
@@ -31,12 +35,12 @@ pub fn tinted(rgb: [f32; 3]) -> [f32; 3] {
 /// alien-pale frost. Saturated and well-separated so the classes never blur into one another.
 pub fn formation_color(f: Formation) -> [f32; 3] {
     match f {
-        Formation::Water => [0.07, 0.18, 0.31], // deep indigo sea
-        Formation::Desert => [0.66, 0.42, 0.22], // Dune: rich spice-amber ochre
-        Formation::Tundra => [0.55, 0.57, 0.63], // alien pale frost, faintly violet
+        Formation::Water => [0.07, 0.18, 0.31],     // deep indigo sea
+        Formation::Desert => [0.66, 0.42, 0.22],    // Dune: rich spice-amber ochre
+        Formation::Tundra => [0.55, 0.57, 0.63],    // alien pale frost, faintly violet
         Formation::Grassland => [0.43, 0.52, 0.21], // dry gold-green under a strange sun
         Formation::Shrubland => [0.50, 0.45, 0.23], // dusty olive-amber scrub
-        Formation::Forest => [0.13, 0.40, 0.21], // vivid exotic canopy
+        Formation::Forest => [0.13, 0.40, 0.21],    // vivid exotic canopy
         Formation::Rainforest => [0.05, 0.34, 0.20], // deep jewel-emerald, the lush island
     }
 }
@@ -54,7 +58,10 @@ pub fn ground_rgb(t: Terrain, f: Formation, fertility: f32) -> [f32; 3] {
         Terrain::Coast => base = lerp(base, [0.74, 0.55, 0.30], 0.6), // Dune spice-sand
         _ => {}
     }
-    if !matches!(f, Formation::Forest | Formation::Rainforest | Formation::Water) {
+    if !matches!(
+        f,
+        Formation::Forest | Formation::Rainforest | Formation::Water
+    ) {
         base = lerp(base, GRASS, fertility.clamp(0.0, 1.0) * 0.4);
     }
     tinted(base)
@@ -86,7 +93,11 @@ pub fn snow_blend(rgb: [f32; 3], relief_m: f32) -> [f32; 3] {
 pub fn vary(rgb: [f32; 3], seed: u64) -> [f32; 3] {
     let h = (seed ^ (seed >> 29)).wrapping_mul(0x9E37_79B9_7F4A_7C15);
     let f = 0.88 + (h >> 40) as f32 / (1u64 << 24) as f32 * 0.24;
-    [(rgb[0] * f).min(1.0), (rgb[1] * f).min(1.0), (rgb[2] * f).min(1.0)]
+    [
+        (rgb[0] * f).min(1.0),
+        (rgb[1] * f).min(1.0),
+        (rgb[2] * f).min(1.0),
+    ]
 }
 
 /// How much to darken a column's side walls relative to its top (cheap directional shading).

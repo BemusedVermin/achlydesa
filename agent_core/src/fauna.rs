@@ -94,7 +94,11 @@ impl Species {
     /// (`0` unliveable … `1` ideal): habitat-formation match × biotemperature-band
     /// match (falling off over ~5 °C beyond the tolerated band).
     pub fn suitability(&self, formation: Formation, biotemp: f32) -> f32 {
-        let hab = if self.habitat.contains(&formation) { 1.0 } else { 0.2 };
+        let hab = if self.habitat.contains(&formation) {
+            1.0
+        } else {
+            0.2
+        };
         let temp = if biotemp < self.min_temp {
             1.0 - (self.min_temp - biotemp) / 5.0
         } else if biotemp > self.max_temp {
@@ -145,7 +149,8 @@ pub struct Bestiary {
 impl Bestiary {
     /// The roster baked in at compile time from `assets/data/bestiary.ron`.
     pub fn bundled() -> Self {
-        Self::from_ron(config::Bundled::get(config::Asset::Bestiary)).expect("bundled bestiary is valid RON")
+        Self::from_ron(config::Bundled::get(config::Asset::Bestiary))
+            .expect("bundled bestiary is valid RON")
     }
 
     /// Parse and resolve a roster from RON text (habitat names → formations).
@@ -154,8 +159,11 @@ impl Bestiary {
         let species = defs
             .into_iter()
             .map(|d| {
-                let habitat =
-                    d.habitat.iter().map(|s| formation_from_str(s)).collect::<Result<Vec<_>, _>>()?;
+                let habitat = d
+                    .habitat
+                    .iter()
+                    .map(|s| formation_from_str(s))
+                    .collect::<Result<Vec<_>, _>>()?;
                 Ok::<_, String>(Species {
                     name: d.name,
                     diet: d.diet,
@@ -175,7 +183,12 @@ impl Bestiary {
 
     /// Indices of every species of a given diet.
     pub fn of_diet(&self, diet: Diet) -> Vec<usize> {
-        self.species.iter().enumerate().filter(|(_, s)| s.diet == diet).map(|(i, _)| i).collect()
+        self.species
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| s.diet == diet)
+            .map(|(i, _)| i)
+            .collect()
     }
 }
 
@@ -220,9 +233,12 @@ pub(crate) fn forage(
             let appeal = |i: usize, c: game_sim::Coord| {
                 let suit = sp.suitability(world.biome(c).formation(), world.biotemperature(c));
                 world.plant_biomass(c) * suit
-                    + config.herd_cohesion * sp.gregarious * density.get(&i).copied().unwrap_or(0) as f32
+                    + config.herd_cohesion
+                        * sp.gregarious
+                        * density.get(&i).copied().unwrap_or(0) as f32
             };
-            let mut cands: Vec<(game_sim::Coord, f32)> = vec![(position.0, appeal(here, position.0))];
+            let mut cands: Vec<(game_sim::Coord, f32)> =
+                vec![(position.0, appeal(here, position.0))];
             for link in topo.neighbors(here) {
                 cands.push((topo.coord(link.to), appeal(link.to, topo.coord(link.to))));
             }
@@ -374,7 +390,12 @@ pub(crate) fn carnivore_lifecycle(
             commands.entity(entity).despawn();
         } else if energy.0 >= config.carn_repro_threshold / sp.fecundity {
             energy.0 -= config.carn_repro_cost;
-            commands.spawn((Carnivore, Position(position.0), Energy(config.carn_repro_cost), *species));
+            commands.spawn((
+                Carnivore,
+                Position(position.0),
+                Energy(config.carn_repro_cost),
+                *species,
+            ));
         }
     }
 }
@@ -402,7 +423,10 @@ fn spawn_diet(
     }
     let topo = substrate.topology();
     let sea = substrate.params().sea_level;
-    let land: Vec<usize> = topo.indices().filter(|&i| substrate.elevation(topo.coord(i)) >= sea).collect();
+    let land: Vec<usize> = topo
+        .indices()
+        .filter(|&i| substrate.elevation(topo.coord(i)) >= sea)
+        .collect();
     if land.is_empty() {
         return;
     }
@@ -416,7 +440,8 @@ fn spawn_diet(
                 .copied()
                 .filter(|&i| {
                     let c = topo.coord(i);
-                    sp.suitability(substrate.biome(c).formation(), substrate.biotemperature(c)) >= 0.6
+                    sp.suitability(substrate.biome(c).formation(), substrate.biotemperature(c))
+                        >= 0.6
                 })
                 .collect();
             (si, pool)
@@ -426,7 +451,10 @@ fn spawn_diet(
 
     for _ in 0..count {
         let (si, coord) = if pools.is_empty() {
-            (idxs[rng.gen_range(idxs.len())], topo.coord(land[rng.gen_range(land.len())]))
+            (
+                idxs[rng.gen_range(idxs.len())],
+                topo.coord(land[rng.gen_range(land.len())]),
+            )
         } else {
             let (si, pool) = &pools[rng.gen_range(pools.len())];
             (*si, topo.coord(pool[rng.gen_range(pool.len())]))
@@ -451,7 +479,15 @@ pub fn spawn_fauna(
     count: usize,
     energy: f32,
 ) {
-    spawn_diet(world, substrate, bestiary, rng, count, energy, Diet::Herbivore);
+    spawn_diet(
+        world,
+        substrate,
+        bestiary,
+        rng,
+        count,
+        energy,
+        Diet::Herbivore,
+    );
 }
 
 /// Place `count` carnivores, each in a biome its species favours (near its prey).
@@ -463,7 +499,15 @@ pub fn spawn_carnivores(
     count: usize,
     energy: f32,
 ) {
-    spawn_diet(world, substrate, bestiary, rng, count, energy, Diet::Carnivore);
+    spawn_diet(
+        world,
+        substrate,
+        bestiary,
+        rng,
+        count,
+        energy,
+        Diet::Carnivore,
+    );
 }
 
 #[cfg(test)]
@@ -473,22 +517,50 @@ mod tests {
     #[test]
     fn bundled_bestiary_loads_with_both_diets() {
         let b = Bestiary::bundled();
-        assert!(b.species.len() >= 8, "expected a broad roster, got {}", b.species.len());
-        assert!(!b.of_diet(Diet::Herbivore).is_empty(), "no herbivores in the roster");
-        assert!(!b.of_diet(Diet::Carnivore).is_empty(), "no carnivores in the roster");
+        assert!(
+            b.species.len() >= 8,
+            "expected a broad roster, got {}",
+            b.species.len()
+        );
+        assert!(
+            !b.of_diet(Diet::Herbivore).is_empty(),
+            "no herbivores in the roster"
+        );
+        assert!(
+            !b.of_diet(Diet::Carnivore).is_empty(),
+            "no carnivores in the roster"
+        );
         for s in &b.species {
             assert!(!s.habitat.is_empty(), "{} has no habitat", s.name);
-            assert!(s.min_temp <= s.max_temp, "{} has an inverted temperature band", s.name);
-            assert!(s.size > 0.0 && s.fecundity > 0.0, "{} has a non-positive body knob", s.name);
+            assert!(
+                s.min_temp <= s.max_temp,
+                "{} has an inverted temperature band",
+                s.name
+            );
+            assert!(
+                s.size > 0.0 && s.fecundity > 0.0,
+                "{} has a non-positive body knob",
+                s.name
+            );
         }
     }
 
     #[test]
     fn suitability_peaks_in_habitat_and_falls_off_outside_it() {
         let b = Bestiary::bundled();
-        let ash = b.species.iter().find(|s| s.name == "ash elk").expect("ash elk present");
+        let ash = b
+            .species
+            .iter()
+            .find(|s| s.name == "ash elk")
+            .expect("ash elk present");
         // Ideal in its cold tundra; hostile in hot desert (wrong formation and far too warm).
-        assert!(ash.suitability(Formation::Tundra, 3.0) > 0.9, "tundra at 3°C should be ideal");
-        assert!(ash.suitability(Formation::Desert, 28.0) < 0.3, "hot desert should be hostile");
+        assert!(
+            ash.suitability(Formation::Tundra, 3.0) > 0.9,
+            "tundra at 3°C should be ideal"
+        );
+        assert!(
+            ash.suitability(Formation::Desert, 28.0) < 0.3,
+            "hot desert should be hostile"
+        );
     }
 }

@@ -20,7 +20,7 @@ use bevy::input::ButtonState;
 use bevy::input::keyboard::{Key, KeyboardInput};
 use bevy::input::mouse::{AccumulatedMouseMotion, AccumulatedMouseScroll};
 use bevy::prelude::*;
-use bevy::render::view::screenshot::{save_to_disk, Screenshot};
+use bevy::render::view::screenshot::{Screenshot, save_to_disk};
 use bevy::text::Font;
 use bevy::ui::widget::{ImageNode, NodeImageMode};
 use bevy::ui::{BorderRadius, BoxShadow, GlobalZIndex};
@@ -68,14 +68,35 @@ mod voice_bridge {
         }
         /// Queue a free-text conversation turn: the character described by `card` answers
         /// `player_msg` given the prior `history` (`(from_player, text)` turns). `true` if dispatched.
-        pub fn request_chat(&self, req_id: u64, card: &str, history: &[(bool, String)], player_msg: &str, fallback: &str) -> bool {
-            let turns: Vec<voice::ChatTurn> =
-                history.iter().map(|(from_player, text)| voice::ChatTurn { from_player: *from_player, text: text.clone() }).collect();
-            self.0.request_chat(req_id, card, &turns, player_msg, fallback)
+        pub fn request_chat(
+            &self,
+            req_id: u64,
+            card: &str,
+            history: &[(bool, String)],
+            player_msg: &str,
+            fallback: &str,
+        ) -> bool {
+            let turns: Vec<voice::ChatTurn> = history
+                .iter()
+                .map(|(from_player, text)| voice::ChatTurn {
+                    from_player: *from_player,
+                    text: text.clone(),
+                })
+                .collect();
+            self.0
+                .request_chat(req_id, card, &turns, player_msg, fallback)
         }
         /// Classify what the player said into one of `labels` (for the social effect).
-        pub fn request_classify(&self, req_id: u64, name: &str, message: &str, labels: &[&str], fallback: &str) -> bool {
-            self.0.request_classify(req_id, name, message, labels, fallback)
+        pub fn request_classify(
+            &self,
+            req_id: u64,
+            name: &str,
+            message: &str,
+            labels: &[&str],
+            fallback: &str,
+        ) -> bool {
+            self.0
+                .request_classify(req_id, name, message, labels, fallback)
         }
         /// Drain finished generations: `(req_id, voiced line)`.
         pub fn poll(&self) -> Vec<(u64, String)> {
@@ -87,7 +108,10 @@ mod voice_bridge {
                 VoiceStatus::Off => None,
                 VoiceStatus::Loading => Some("voice: loading model…".into()),
                 VoiceStatus::Ready => Some("voice: on".into()),
-                VoiceStatus::Failed(e) => Some(format!("voice: off ({})", e.lines().next().unwrap_or("failed"))),
+                VoiceStatus::Failed(e) => Some(format!(
+                    "voice: off ({})",
+                    e.lines().next().unwrap_or("failed")
+                )),
             }
         }
     }
@@ -105,10 +129,24 @@ mod voice_bridge {
         pub fn is_ready(&self) -> bool {
             false
         }
-        pub fn request_chat(&self, _req_id: u64, _card: &str, _history: &[(bool, String)], _player_msg: &str, _fallback: &str) -> bool {
+        pub fn request_chat(
+            &self,
+            _req_id: u64,
+            _card: &str,
+            _history: &[(bool, String)],
+            _player_msg: &str,
+            _fallback: &str,
+        ) -> bool {
             false
         }
-        pub fn request_classify(&self, _req_id: u64, _name: &str, _message: &str, _labels: &[&str], _fallback: &str) -> bool {
+        pub fn request_classify(
+            &self,
+            _req_id: u64,
+            _name: &str,
+            _message: &str,
+            _labels: &[&str],
+            _fallback: &str,
+        ) -> bool {
             false
         }
         pub fn poll(&self) -> Vec<(u64, String)> {
@@ -286,7 +324,10 @@ fn main() {
         talk_choices: None,
         // Dev hooks: `ACHLYDESA_PAUSE` starts on the pause menu, `ACHLYDESA_TAB=N` on tab N.
         paused: std::env::var("ACHLYDESA_PAUSE").is_ok(),
-        menu_tab: std::env::var("ACHLYDESA_TAB").ok().and_then(|s| s.parse().ok()).unwrap_or(0),
+        menu_tab: std::env::var("ACHLYDESA_TAB")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0),
         sheet_subject: None,
         sys_cursor: 0,
         map_center: Vec2::ZERO,
@@ -317,9 +358,16 @@ fn main() {
             })
             // Runtime assets (the user's parchment, any images) live in the workspace `assets/`
             // folder — one up from this crate — alongside the baked RON. Point Bevy there.
-            .set(AssetPlugin { file_path: "../assets".into(), ..default() }),
+            .set(AssetPlugin {
+                file_path: "../assets".into(),
+                ..default()
+            }),
     )
-    .insert_resource(ClearColor(Color::srgb(palette::SKY_RGB[0], palette::SKY_RGB[1], palette::SKY_RGB[2])))
+    .insert_resource(ClearColor(Color::srgb(
+        palette::SKY_RGB[0],
+        palette::SKY_RGB[1],
+        palette::SKY_RGB[2],
+    )))
     .add_systems(Startup, setup)
     .add_systems(
         Update,
@@ -351,7 +399,17 @@ fn main() {
     // The fauna layer runs as its own group: `sync_fauna` re-targets creatures when
     // the world ticks (idempotent in between, so loose ordering is fine) and
     // `animate_fauna` is purely visual.
-    .add_systems(Update, (smooth_follow, sync_fauna, fauna_art::animate_fauna, recruit_input, sheet_input).chain())
+    .add_systems(
+        Update,
+        (
+            smooth_follow,
+            sync_fauna,
+            fauna_art::animate_fauna,
+            recruit_input,
+            sheet_input,
+        )
+            .chain(),
+    )
     // The conversation panel + the who-to-talk-to chooser: fill them, style and handle their buttons.
     .add_systems(
         Update,
@@ -370,7 +428,20 @@ fn main() {
     // The pause layer: Esc/back + menu nav run *before* `talk_input` (which also reads Esc, to
     // leave a conversation), then the overlay's visibility + the dev screenshot hook.
     .add_systems(Update, (pause_input, menu_input).chain().before(talk_input))
-    .add_systems(Update, (update_menu, update_map, map_drag, hide_overlays_when_paused, dev_capture, dev_open_convo, dev_talk_pick, dev_walk, update_quests))
+    .add_systems(
+        Update,
+        (
+            update_menu,
+            update_map,
+            map_drag,
+            hide_overlays_when_paused,
+            dev_capture,
+            dev_open_convo,
+            dev_talk_pick,
+            dev_walk,
+            update_quests,
+        ),
+    )
     // The framed HUD: keep the whole frame scaled to the window, then refresh the trays.
     .add_systems(
         Update,
@@ -427,8 +498,17 @@ fn build_world() -> Simulation {
     // agent simulation via `from_world`. Worldgen itself lives in `game_sim`; `agents` only
     // drives the substrate it is given. (Starting values — tune to taste.)
     // Dev knobs to isolate the per-tick cost (default to the shipping values).
-    let env = |k: &str, d: usize| std::env::var(k).ok().and_then(|s| s.parse().ok()).unwrap_or(d);
-    let (width, height, seed) = (env("ACHLYDESA_W", 192) as i32, env("ACHLYDESA_H", 144) as i32, 7);
+    let env = |k: &str, d: usize| {
+        std::env::var(k)
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(d)
+    };
+    let (width, height, seed) = (
+        env("ACHLYDESA_W", 192) as i32,
+        env("ACHLYDESA_H", 144) as i32,
+        7,
+    );
     let mut params = config::tunables::params();
     params.plates = 5; // few plates → a few huge continents
     params.uplift_falloff = 16.0; // wider mountain belts to match the larger scale
@@ -477,7 +557,10 @@ fn build_world() -> Simulation {
             // The director sees every soul each tick, so drama is intact. `ACHLYDESA_LOD=N` sets the
             // radius (`off` disables); `ACHLYDESA_STRIDE=N` sets the coarse stride.
             sim_radius: lod_radius(),
-            sim_far_stride: std::env::var("ACHLYDESA_STRIDE").ok().and_then(|s| s.parse().ok()).unwrap_or(12),
+            sim_far_stride: std::env::var("ACHLYDESA_STRIDE")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(12),
             goals,
             registry: reg,
             ..Default::default()
@@ -506,13 +589,20 @@ fn setup(
     asset_server: Res<AssetServer>,
     game: NonSend<Game>,
 ) {
-    let map_mat = materials.add(StandardMaterial { base_color: Color::WHITE, perceptual_roughness: 0.96, ..default() });
+    let map_mat = materials.add(StandardMaterial {
+        base_color: Color::WHITE,
+        perceptual_roughness: 0.96,
+        ..default()
+    });
     let avatar_mat = materials.add(StandardMaterial {
         base_color: Color::srgb(1.0, 0.82, 0.25),
         emissive: LinearRgba::rgb(0.7, 0.5, 0.12),
         ..default()
     });
-    let npc_mat = materials.add(StandardMaterial { base_color: Color::srgb(0.78, 0.80, 0.88), ..default() });
+    let npc_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.78, 0.80, 0.88),
+        ..default()
+    });
     // The procedural prop library (trees, scrub, rock) shares the map's matte vertex-colour
     // material; the meshes carry their own colour.
     let prop_lib = props::build_library(&mut meshes, map_mat.clone());
@@ -531,22 +621,46 @@ fn setup(
     });
     // The avatar is one persistent figure (not rebuilt with the per-tick markers): `smooth_follow`
     // glides it — and the camera — toward the tile it stands on, so a walk reads as a glide.
-    commands.spawn((AvatarFig, Mesh3d(avatar_mesh), MeshMaterial3d(avatar_mat), Transform::from_translation(game.avatar_render)));
+    commands.spawn((
+        AvatarFig,
+        Mesh3d(avatar_mesh),
+        MeshMaterial3d(avatar_mat),
+        Transform::from_translation(game.avatar_render),
+    ));
 
     let aw = tile_world(game.avatar_pos.col, game.avatar_pos.row);
-    let rig = CamRig { dist: 42.0, yaw: 0.0, pitch: 0.92 };
+    let rig = CamRig {
+        dist: 42.0,
+        yaw: 0.0,
+        pitch: 0.92,
+    };
     let fog = palette::FOG_RGB;
     commands.spawn((
         Camera3d::default(),
         cam_transform(Vec3::new(aw.x, 0.0, aw.y), &rig),
         rig,
         // A cool ambient and a pale distance haze — the dream half-drowned in fog.
-        AmbientLight { brightness: 200.0, color: Color::srgb(0.72, 0.79, 0.9), ..default() },
-        DistanceFog { color: Color::srgb(fog[0], fog[1], fog[2]), falloff: FogFalloff::Linear { start: 70.0, end: 300.0 }, ..default() },
+        AmbientLight {
+            brightness: 200.0,
+            color: Color::srgb(0.72, 0.79, 0.9),
+            ..default()
+        },
+        DistanceFog {
+            color: Color::srgb(fog[0], fog[1], fog[2]),
+            falloff: FogFalloff::Linear {
+                start: 70.0,
+                end: 300.0,
+            },
+            ..default()
+        },
     ));
 
     commands.spawn((
-        DirectionalLight { illuminance: 6200.0, shadows_enabled: true, ..default() },
+        DirectionalLight {
+            illuminance: 6200.0,
+            shadows_enabled: true,
+            ..default()
+        },
         Transform::from_rotation(Quat::from_euler(EulerRot::YXZ, -0.6, -0.95, 0.0)),
     ));
 
@@ -605,7 +719,12 @@ struct MapImageNode;
 
 fn parch_divider() -> impl Bundle {
     (
-        Node { width: Val::Percent(100.0), height: Val::Px(1.0), margin: UiRect::axes(Val::Px(0.0), Val::Px(theme::SP_XS)), ..default() },
+        Node {
+            width: Val::Percent(100.0),
+            height: Val::Px(1.0),
+            margin: UiRect::axes(Val::Px(0.0), Val::Px(theme::SP_XS)),
+            ..default()
+        },
         BackgroundColor(Color::srgba(0.36, 0.28, 0.16, 0.6)),
     )
 }
@@ -798,7 +917,9 @@ fn do_search(g: &mut Game) {
     let out = g.sim.player_search();
     if out.is_empty() {
         g.status = match g.sim.player_find_state() {
-            FindState::Locked => "Something is hidden here, but you lack the knowledge to find it.".into(),
+            FindState::Locked => {
+                "Something is hidden here, but you lack the knowledge to find it.".into()
+            }
             _ => "You search the ground, but find nothing of note.".into(),
         };
         return;
@@ -911,7 +1032,11 @@ fn pause_input(keys: Res<ButtonInput<KeyCode>>, mut game: NonSendMut<Game>) {
 }
 
 /// Page the menu tabs (Q/E or Left/Right); in the System tab, W/S move the cursor and Enter acts.
-fn menu_input(keys: Res<ButtonInput<KeyCode>>, mut game: NonSendMut<Game>, mut exit: MessageWriter<AppExit>) {
+fn menu_input(
+    keys: Res<ButtonInput<KeyCode>>,
+    mut game: NonSendMut<Game>,
+    mut exit: MessageWriter<AppExit>,
+) {
     if !game.paused {
         return;
     }
@@ -943,9 +1068,16 @@ fn menu_input(keys: Res<ButtonInput<KeyCode>>, mut game: NonSendMut<Game>, mut e
 }
 
 /// Hide the always-on overlays (legend, inspect) while paused, for a clean modal.
-fn hide_overlays_when_paused(game: NonSend<Game>, mut q: Query<&mut Visibility, With<ui::HideOnPause>>) {
+fn hide_overlays_when_paused(
+    game: NonSend<Game>,
+    mut q: Query<&mut Visibility, With<ui::HideOnPause>>,
+) {
     for mut vis in &mut q {
-        *vis = if game.paused { Visibility::Hidden } else { Visibility::Inherited };
+        *vis = if game.paused {
+            Visibility::Hidden
+        } else {
+            Visibility::Inherited
+        };
     }
 }
 
@@ -958,27 +1090,68 @@ fn update_menu(
     mut underlines: Query<(&TabUnderline, &mut BackgroundColor), Without<SysRow>>,
     mut panels: Query<(&TabPanel, &mut Node)>,
     mut sys: Query<(&SysRow, &mut BackgroundColor), Without<TabUnderline>>,
-    mut journal: Query<&mut Text, (With<JournalTabText>, Without<SheetTabText>, Without<InventoryTabText>)>,
-    mut sheet: Query<&mut Text, (With<SheetTabText>, Without<JournalTabText>, Without<InventoryTabText>)>,
-    mut inventory: Query<&mut Text, (With<InventoryTabText>, Without<JournalTabText>, Without<SheetTabText>)>,
+    mut journal: Query<
+        &mut Text,
+        (
+            With<JournalTabText>,
+            Without<SheetTabText>,
+            Without<InventoryTabText>,
+        ),
+    >,
+    mut sheet: Query<
+        &mut Text,
+        (
+            With<SheetTabText>,
+            Without<JournalTabText>,
+            Without<InventoryTabText>,
+        ),
+    >,
+    mut inventory: Query<
+        &mut Text,
+        (
+            With<InventoryTabText>,
+            Without<JournalTabText>,
+            Without<SheetTabText>,
+        ),
+    >,
 ) {
     if let Ok(mut vis) = root.single_mut() {
-        *vis = if game.paused { Visibility::Visible } else { Visibility::Hidden };
+        *vis = if game.paused {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        };
     }
     if !game.paused {
         return;
     }
     for (t, mut col) in &mut tabs {
-        col.0 = if t.0 == game.menu_tab { PARCH_INK } else { PARCH_DIM };
+        col.0 = if t.0 == game.menu_tab {
+            PARCH_INK
+        } else {
+            PARCH_DIM
+        };
     }
     for (u, mut bg) in &mut underlines {
-        bg.0 = if u.0 == game.menu_tab { PARCH_ACCENT } else { Color::NONE };
+        bg.0 = if u.0 == game.menu_tab {
+            PARCH_ACCENT
+        } else {
+            Color::NONE
+        };
     }
     for (p, mut node) in &mut panels {
-        node.display = if p.0 == game.menu_tab { Display::Flex } else { Display::None };
+        node.display = if p.0 == game.menu_tab {
+            Display::Flex
+        } else {
+            Display::None
+        };
     }
     for (r, mut bg) in &mut sys {
-        bg.0 = if game.menu_tab == TAB_SYSTEM && r.0 == game.sys_cursor { Color::srgba(0.55, 0.40, 0.18, 0.35) } else { Color::NONE };
+        bg.0 = if game.menu_tab == TAB_SYSTEM && r.0 == game.sys_cursor {
+            Color::srgba(0.55, 0.40, 0.18, 0.35)
+        } else {
+            Color::NONE
+        };
     }
     if let Ok(mut t) = journal.single_mut() {
         t.0 = ui::journal_text(&game.sim, &game.met, &game.quests, &game.done_quests);
@@ -1000,16 +1173,32 @@ const MAP_W: u32 = 440;
 const MAP_H: u32 = 300;
 
 /// Re-render the Map tab's image when its view (centre/zoom) or the explored set changes.
-fn update_map(mut game: NonSendMut<Game>, mut images: ResMut<Assets<Image>>, mut q: Query<&mut ImageNode, With<MapImageNode>>) {
+fn update_map(
+    mut game: NonSendMut<Game>,
+    mut images: ResMut<Assets<Image>>,
+    mut q: Query<&mut ImageNode, With<MapImageNode>>,
+) {
     if !game.paused || game.menu_tab != TAB_MAP {
         return;
     }
     let count = game.sim.player_explored_count();
-    let key = ((game.map_center.x * 2.0) as i32, (game.map_center.y * 2.0) as i32, (game.map_zoom * 100.0) as i32, count);
+    let key = (
+        (game.map_center.x * 2.0) as i32,
+        (game.map_center.y * 2.0) as i32,
+        (game.map_zoom * 100.0) as i32,
+        count,
+    );
     if game.last_map_render == Some(key) {
         return;
     }
-    let img = minimap::render(&game.sim, game.map_center, game.map_zoom, game.avatar_pos, MAP_W, MAP_H);
+    let img = minimap::render(
+        &game.sim,
+        game.map_center,
+        game.map_zoom,
+        game.avatar_pos,
+        MAP_W,
+        MAP_H,
+    );
     let handle = images.add(img);
     if let Ok(mut node) = q.single_mut() {
         node.image = handle;
@@ -1041,10 +1230,14 @@ fn map_drag(
         return;
     }
 
-    let over = map_q.single().map(|i| !matches!(i, Interaction::None)).unwrap_or(false);
+    let over = map_q
+        .single()
+        .map(|i| !matches!(i, Interaction::None))
+        .unwrap_or(false);
     // Scroll over the map zooms toward/away.
     if over && scroll.delta.y != 0.0 {
-        game.map_zoom = (game.map_zoom * (1.0 - scroll.delta.y * 0.12)).clamp(MAP_WPP_MIN, MAP_WPP_MAX);
+        game.map_zoom =
+            (game.map_zoom * (1.0 - scroll.delta.y * 0.12)).clamp(MAP_WPP_MIN, MAP_WPP_MAX);
     }
     // Press over the map starts a drag; it continues until the button is released, even off-image.
     if mouse.just_pressed(MouseButton::Left) && over {
@@ -1067,13 +1260,19 @@ struct CaptureClock(u32);
 /// Dev hook: with `ACHLYDESA_SHOT=<path>` set, capture the window once the world has rendered,
 /// then exit — so the live HUD/menus can be screenshotted headlessly. `ACHLYDESA_PAUSE` (read in
 /// `main`) starts on the pause menu so it can be captured.
-fn dev_capture(mut clock: ResMut<CaptureClock>, mut commands: Commands, mut exit: MessageWriter<AppExit>) {
+fn dev_capture(
+    mut clock: ResMut<CaptureClock>,
+    mut commands: Commands,
+    mut exit: MessageWriter<AppExit>,
+) {
     let Ok(path) = std::env::var("ACHLYDESA_SHOT") else {
         return;
     };
     clock.0 += 1;
     if clock.0 == 18 {
-        commands.spawn(Screenshot::primary_window()).observe(save_to_disk(path));
+        commands
+            .spawn(Screenshot::primary_window())
+            .observe(save_to_disk(path));
     }
     if clock.0 >= 48 {
         exit.write(AppExit::Success);
@@ -1100,7 +1299,10 @@ fn dev_walk(mut game: NonSendMut<Game>, mut done: Local<bool>) {
     if *done {
         return;
     }
-    let Some(rounds) = std::env::var("ACHLYDESA_WALK").ok().and_then(|s| s.parse::<u32>().ok()) else {
+    let Some(rounds) = std::env::var("ACHLYDESA_WALK")
+        .ok()
+        .and_then(|s| s.parse::<u32>().ok())
+    else {
         return;
     };
     *done = true;
@@ -1108,7 +1310,9 @@ fn dev_walk(mut game: NonSendMut<Game>, mut done: Local<bool>) {
     let mut last = None;
     let (mut tot, mut mx, mut steps) = (std::time::Duration::ZERO, std::time::Duration::ZERO, 0u32);
     for _ in 0..rounds {
-        let Some(target) = g.sim.player_explored().into_iter().max_by_key(|c| c.row) else { break };
+        let Some(target) = g.sim.player_explored().into_iter().max_by_key(|c| c.row) else {
+            break;
+        };
         if Some(target) == last || !g.sim.player_travel_to(target) {
             break; // the frontier has stopped advancing
         }
@@ -1127,8 +1331,17 @@ fn dev_walk(mut game: NonSendMut<Game>, mut done: Local<bool>) {
             steps += 1;
         }
     }
-    let avg_ms = if steps > 0 { tot.as_secs_f64() * 1000.0 / steps as f64 } else { 0.0 };
-    eprintln!("[WALK] {steps} sim.step()s · avg {:.3} ms · max {:.3} ms · explored now {}", avg_ms, mx.as_secs_f64() * 1000.0, g.sim.player_explored_count());
+    let avg_ms = if steps > 0 {
+        tot.as_secs_f64() * 1000.0 / steps as f64
+    } else {
+        0.0
+    };
+    eprintln!(
+        "[WALK] {steps} sim.step()s · avg {:.3} ms · max {:.3} ms · explored now {}",
+        avg_ms,
+        mx.as_secs_f64() * 1000.0,
+        g.sim.player_explored_count()
+    );
     if let Some(p) = g.sim.player_position() {
         g.avatar_pos = p;
     }
@@ -1137,7 +1350,10 @@ fn dev_walk(mut game: NonSendMut<Game>, mut done: Local<bool>) {
 /// Dev hook: with `ACHLYDESA_TALKPICK` set, seed the who-to-talk-to chooser with a few souls once,
 /// so the chooser can be screenshotted headlessly.
 fn dev_talk_pick(mut game: NonSendMut<Game>) {
-    if std::env::var("ACHLYDESA_TALKPICK").is_err() || game.talk_choices.is_some() || game.convo.is_some() {
+    if std::env::var("ACHLYDESA_TALKPICK").is_err()
+        || game.talk_choices.is_some()
+        || game.convo.is_some()
+    {
         return;
     }
     let some: Vec<Entity> = game.sim.npcs().into_iter().take(4).collect();
@@ -1157,7 +1373,9 @@ fn sheet_text(g: &Game) -> String {
         Some(e) if Some(e) == avatar || g.sim.party_roster().contains(&e) => Some(e),
         _ => avatar,
     };
-    let Some(e) = subject else { return "no character".into() };
+    let Some(e) = subject else {
+        return "no character".into();
+    };
     let is_avatar = Some(e) == avatar;
 
     let mut s = format!("— {} —\n", g.sim.display_name(e).to_uppercase());
@@ -1165,13 +1383,22 @@ fn sheet_text(g: &Game) -> String {
         s.push_str(arch);
         s.push('\n');
     }
-    s.push_str(if is_avatar { "you, the wanderer\n" } else { "a companion in your party\n" });
+    s.push_str(if is_avatar {
+        "you, the wanderer\n"
+    } else {
+        "a companion in your party\n"
+    });
     // Attributes — score and modifier, three to a row.
     if let Some(ab) = g.sim.abilities_of(e) {
         const NAMES: [&str; 6] = ["STR", "DEX", "CON", "INT", "WIS", "CHA"];
         s.push('\n');
         for i in 0..6 {
-            s.push_str(&format!("{} {:>2} ({:+})", NAMES[i], ab.scores[i], ab.modifier(i)));
+            s.push_str(&format!(
+                "{} {:>2} ({:+})",
+                NAMES[i],
+                ab.scores[i],
+                ab.modifier(i)
+            ));
             s.push_str(if i % 3 == 2 { "\n" } else { "   " });
         }
     }
@@ -1183,7 +1410,13 @@ fn sheet_text(g: &Game) -> String {
             .filter_map(|sk| {
                 let rank = g.sim.proficiency_of(e, &sk.name)?;
                 (rank >= 0).then(|| {
-                    let tag = if sk.social { " talk" } else if sk.world { " world" } else { "" };
+                    let tag = if sk.social {
+                        " talk"
+                    } else if sk.world {
+                        " world"
+                    } else {
+                        ""
+                    };
                     format!("{} +{}{}", sk.name, rank, tag)
                 })
             })
@@ -1196,7 +1429,10 @@ fn sheet_text(g: &Game) -> String {
     }
     // Survival vitals (only present when survival is on); gear lives on the Inventory tab.
     if let Some(v) = g.sim.vitals_of(e) {
-        s.push_str(&format!("\nThirst {:.0}   Warmth {:.0}   Stamina {:.0}\n", v.thirst, v.warmth, v.stamina));
+        s.push_str(&format!(
+            "\nThirst {:.0}   Warmth {:.0}   Stamina {:.0}\n",
+            v.thirst, v.warmth, v.stamina
+        ));
     }
     // The party roster — only on the avatar's own sheet (the party is the avatar's).
     if is_avatar {
@@ -1206,7 +1442,11 @@ fn sheet_text(g: &Game) -> String {
             s.push_str("(none — stand by a soul and press R to recruit)\n");
         } else {
             for m in &roster {
-                let arch = g.sim.archetype_of(*m).map(|a| format!("  ({a})")).unwrap_or_default();
+                let arch = g
+                    .sim
+                    .archetype_of(*m)
+                    .map(|a| format!("  ({a})"))
+                    .unwrap_or_default();
                 s.push_str(&format!("• {}{}\n", g.sim.display_name(*m), arch));
             }
             s.push_str("\n(click a portrait to view that companion)\n");
@@ -1308,8 +1548,20 @@ const EFFECTS: &[(&str, &str, &str)] = &[
     ("mourn", "a_grief_spoken", "shares in the grief"),
 ];
 /// The labels offered to the classifier (full words; matched by the stems above).
-const EFFECT_LABELS: &[&str] =
-    &["greet", "praise", "confide", "console", "reconcile", "plead", "accuse", "threaten", "dismiss", "boast", "gossip", "mourn"];
+const EFFECT_LABELS: &[&str] = &[
+    "greet",
+    "praise",
+    "confide",
+    "console",
+    "reconcile",
+    "plead",
+    "accuse",
+    "threaten",
+    "dismiss",
+    "boast",
+    "gossip",
+    "mourn",
+];
 
 /// Bin a soul's opinion of the player (`-1..1`) into a disposition phrase for the tab header,
 /// so the player can watch it move as the conversation lands effects. Mirrors the sim's own
@@ -1329,15 +1581,21 @@ fn disposition_word(op: f32) -> &'static str {
 /// character speaks as who it actually is in the simulation (the richer grounding).
 fn npc_card(sim: &mut Simulation, npc: Entity) -> String {
     let name = sim.display_name(npc);
-    let traits: Vec<&str> =
-        TRAIT_WORDS.iter().filter(|(t, _)| sim.trait_of(npc, t).is_some_and(|v| v > 0.55)).map(|(_, w)| *w).take(3).collect();
+    let traits: Vec<&str> = TRAIT_WORDS
+        .iter()
+        .filter(|(t, _)| sim.trait_of(npc, t).is_some_and(|v| v > 0.55))
+        .map(|(_, w)| *w)
+        .take(3)
+        .collect();
     let mood = MOOD_WORDS
         .iter()
         .filter_map(|(m, w)| sim.mood_of(npc, m).map(|v| (v, *w)))
         .filter(|(v, _)| *v > 0.15)
         .max_by(|a, b| a.0.total_cmp(&b.0))
         .map(|(_, w)| w);
-    let bears_grudge = sim.player_avatar().is_some_and(|me| sim.grudges().iter().any(|(h, t)| *h == npc && *t == me));
+    let bears_grudge = sim
+        .player_avatar()
+        .is_some_and(|me| sim.grudges().iter().any(|(h, t)| *h == npc && *t == me));
 
     let mut card = format!("You are {name}.");
     if traits.is_empty() {
@@ -1362,7 +1620,12 @@ fn start_talk(g: &mut Game) {
     if g.sim.player_traveling() || g.paused || g.convo.is_some() {
         return;
     }
-    let nearby: Vec<Entity> = g.sim.player_nearby_npcs().into_iter().map(|(e, _)| e).collect();
+    let nearby: Vec<Entity> = g
+        .sim
+        .player_nearby_npcs()
+        .into_iter()
+        .map(|(e, _)| e)
+        .collect();
     match nearby.len() {
         0 => g.status = "There is no one close enough to speak with.".into(),
         // One soul in reach — speak to them straight away.
@@ -1395,14 +1658,32 @@ fn open_conversation_with(g: &mut Game, npc: Entity) {
     // meeting a thread's figure opens on their story. Else the voice model's scene-cued opening, or
     // a neutral one so the deterministic speak choices stay reachable without the model.
     let greeting = if let Some(voiced) = g.sim.npc_voiced_line(npc) {
-        Line { from_player: false, prefix: format!("{name}: "), text: Some(voiced), reveal: 0.0, pending: None }
+        Line {
+            from_player: false,
+            prefix: format!("{name}: "),
+            text: Some(voiced),
+            reveal: 0.0,
+            pending: None,
+        }
     } else if let Some(sit) = g.sim.npc_situation(npc) {
-        Line { from_player: false, prefix: String::new(), text: Some(format!("{name} regards you, {sit}")), reveal: 0.0, pending: None }
+        Line {
+            from_player: false,
+            prefix: String::new(),
+            text: Some(format!("{name} regards you, {sit}")),
+            reveal: 0.0,
+            pending: None,
+        }
     } else if g.voice.is_ready() {
         g.req_seq += 1;
         let req = g.req_seq;
         let fallback = format!("{name} regards you in silence.");
-        let dispatched = g.voice.request_chat(req, &card, &[], "(A stranger approaches and meets your eyes.)", &fallback);
+        let dispatched = g.voice.request_chat(
+            req,
+            &card,
+            &[],
+            "(A stranger approaches and meets your eyes.)",
+            &fallback,
+        );
         Line {
             from_player: false,
             prefix: format!("{name}: "),
@@ -1411,7 +1692,13 @@ fn open_conversation_with(g: &mut Game, npc: Entity) {
             pending: dispatched.then_some(req),
         }
     } else {
-        Line { from_player: false, prefix: format!("{name}: "), text: Some(format!("{name} meets your eyes, and waits.")), reveal: 0.0, pending: None }
+        Line {
+            from_player: false,
+            prefix: format!("{name}: "),
+            text: Some(format!("{name} meets your eyes, and waits.")),
+            reveal: 0.0,
+            pending: None,
+        }
     };
     let mut transcript = vec![greeting];
     // The soul shares what word has reached it — a recent beat the director staged, sharp or vague
@@ -1427,10 +1714,9 @@ fn open_conversation_with(g: &mut Game, npc: Entity) {
     }
     // A charge from a thread's figure — the director's drama offered as a goal. Only if this soul
     // leads a live thread and we have not already taken (or closed) its charge; spoken here.
-    let offer = g
-        .sim
-        .quest_for(npc)
-        .filter(|q| !g.quests.iter().any(|a| a.giver == npc) && !g.quest_done_pairs.contains(&(npc, q.other)));
+    let offer = g.sim.quest_for(npc).filter(|q| {
+        !g.quests.iter().any(|a| a.giver == npc) && !g.quest_done_pairs.contains(&(npc, q.other))
+    });
     if let Some(q) = &offer {
         transcript.push(Line {
             from_player: false,
@@ -1440,7 +1726,14 @@ fn open_conversation_with(g: &mut Game, npc: Entity) {
             pending: None,
         });
     }
-    g.convo = Some(Convo { listener: npc, name: titled, card, transcript, input: String::new(), offer });
+    g.convo = Some(Convo {
+        listener: npc,
+        name: titled,
+        card,
+        transcript,
+        input: String::new(),
+        offer,
+    });
     g.status = format!("You fall into talk with {name}.");
 }
 
@@ -1448,7 +1741,11 @@ fn open_conversation_with(g: &mut Game, npc: Entity) {
 /// **Enter** sends, **Esc** leaves. The soul answers in its own voice, generated from its real
 /// sim state (the card) and the exchange so far. Needs the voice model — these are the
 /// character's own words — and the world pauses while you talk.
-fn talk_input(keys: Res<ButtonInput<KeyCode>>, mut kb: MessageReader<KeyboardInput>, mut game: NonSendMut<Game>) {
+fn talk_input(
+    keys: Res<ButtonInput<KeyCode>>,
+    mut kb: MessageReader<KeyboardInput>,
+    mut game: NonSendMut<Game>,
+) {
     let g = &mut *game;
 
     // Not yet talking: T opens a conversation with the nearest soul in reach (idle only).
@@ -1503,7 +1800,11 @@ fn talk_input(keys: Res<ButtonInput<KeyCode>>, mut kb: MessageReader<KeyboardInp
             return;
         }
         c.input.clear();
-        let history: Vec<(bool, String)> = c.transcript.iter().filter_map(|l| l.text.as_ref().map(|t| (l.from_player, t.clone()))).collect();
+        let history: Vec<(bool, String)> = c
+            .transcript
+            .iter()
+            .filter_map(|l| l.text.as_ref().map(|t| (l.from_player, t.clone())))
+            .collect();
         (c.card.clone(), history, c.name.clone(), msg, c.listener)
     };
 
@@ -1516,12 +1817,20 @@ fn talk_input(keys: Res<ButtonInput<KeyCode>>, mut kb: MessageReader<KeyboardInp
     // lands on the NPC via the authored intent's moves; the answer is routed in `poll_voice`).
     g.req_seq += 1;
     let creq = g.req_seq;
-    if g.voice.request_classify(creq, &name, &msg, EFFECT_LABELS, "none") {
+    if g.voice
+        .request_classify(creq, &name, &msg, EFFECT_LABELS, "none")
+    {
         g.classify.insert(creq, npc);
     }
 
     if let Some(c) = g.convo.as_mut() {
-        c.transcript.push(Line { from_player: true, prefix: "You: ".into(), text: Some(msg), reveal: f32::MAX, pending: None });
+        c.transcript.push(Line {
+            from_player: true,
+            prefix: "You: ".into(),
+            text: Some(msg),
+            reveal: f32::MAX,
+            pending: None,
+        });
         c.transcript.push(Line {
             from_player: false,
             prefix: format!("{name}: "),
@@ -1545,7 +1854,8 @@ fn poll_voice(mut game: NonSendMut<Game>) {
         // A classification result drives the conversation's social effect on the NPC.
         if let Some(npc) = g.classify.remove(&req_id) {
             let lower = text.to_lowercase();
-            if let Some((_, intent_id, flavor)) = EFFECTS.iter().find(|(stem, _, _)| lower.contains(stem))
+            if let Some((_, intent_id, flavor)) =
+                EFFECTS.iter().find(|(stem, _, _)| lower.contains(stem))
                 && g.sim.apply_conversational_intent(npc, intent_id)
             {
                 let name = g.sim.display_name(npc);
@@ -1582,15 +1892,30 @@ fn tick_typewriter(time: Res<Time>, mut game: NonSendMut<Game>) {
 // =====================================================================================
 
 /// Dress each tile revealed this frame with its trees, scrub, and rock (one-shot per tile).
-fn scatter_props(mut commands: Commands, lib: Res<props::PropLibrary>, game: NonSend<Game>, ex: Res<ground::Explored>) {
+fn scatter_props(
+    mut commands: Commands,
+    lib: Res<props::PropLibrary>,
+    game: NonSend<Game>,
+    ex: Res<ground::Explored>,
+) {
     scatter::decorate_fresh(&mut commands, &lib, &game.sim, &ex.fresh);
 }
 
 /// Raise the buildings for features as the player discovers them (settlements, courts, ruins) — on
 /// the freshly-revealed tiles, plus the avatar's own tile so a feature uncovered by *searching* an
 /// already-explored tile gets built too.
-fn build_features(mut commands: Commands, lib: Res<props::PropLibrary>, game: NonSend<Game>, ex: Res<ground::Explored>, mut built: ResMut<feature_art::Built>) {
-    let tiles = ex.fresh.iter().copied().chain(std::iter::once(game.avatar_pos));
+fn build_features(
+    mut commands: Commands,
+    lib: Res<props::PropLibrary>,
+    game: NonSend<Game>,
+    ex: Res<ground::Explored>,
+    mut built: ResMut<feature_art::Built>,
+) {
+    let tiles = ex
+        .fresh
+        .iter()
+        .copied()
+        .chain(std::iter::once(game.avatar_pos));
     feature_art::build_on(&mut commands, &lib, &game.sim, &mut built, tiles);
 }
 
@@ -1636,7 +1961,12 @@ fn rebuild_markers(
             }
         } else {
             let e = commands
-                .spawn((Marker, Mesh3d(ra.npc_mesh.clone()), MeshMaterial3d(ra.npc_mat.clone()), Transform::from_translation(pos)))
+                .spawn((
+                    Marker,
+                    Mesh3d(ra.npc_mesh.clone()),
+                    MeshMaterial3d(ra.npc_mat.clone()),
+                    Transform::from_translation(pos),
+                ))
                 .id();
             pool.0.push(e);
         }
@@ -1705,7 +2035,11 @@ fn cam_transform(focus: Vec3, rig: &CamRig) -> Transform {
 /// on, easing a little each frame. The avatar's *true* position is the discrete tile (that's the
 /// gameplay); this is purely the smoothed render position, so a walk reads as a glide rather than a
 /// hex-by-hex jump.
-fn smooth_follow(time: Res<Time>, mut game: NonSendMut<Game>, mut fig: Query<&mut Transform, With<AvatarFig>>) {
+fn smooth_follow(
+    time: Res<Time>,
+    mut game: NonSendMut<Game>,
+    mut fig: Query<&mut Transform, With<AvatarFig>>,
+) {
     let g = &mut *game;
     let target = {
         let aw = tile_world(g.avatar_pos.col, g.avatar_pos.row);
@@ -1731,7 +2065,9 @@ fn camera_control(
     if game.convo.is_some() || game.paused {
         return;
     }
-    let Ok((mut rig, mut tf)) = q.single_mut() else { return };
+    let Ok((mut rig, mut tf)) = q.single_mut() else {
+        return;
+    };
     let dt = time.delta_secs();
     if keys.pressed(KeyCode::KeyA) {
         rig.yaw += 1.3 * dt;
@@ -1763,12 +2099,18 @@ fn update_quests(mut game: NonSendMut<Game>) {
     let mut closed: Vec<(usize, String, Entity, Entity)> = Vec::new();
     for (i, q) in g.quests.iter().enumerate() {
         let line = if !g.sim.quest_giver_alive(q) {
-            format!("{} — the charge passes ({} is gone)", q.objective, q.giver_name)
+            format!(
+                "{} — the charge passes ({} is gone)",
+                q.objective, q.giver_name
+            )
         } else if g.sim.quest_reached(q) {
             format!("{} — {} found", q.objective, q.other_name)
         } else if !g.sim.quest_thread_open(q) {
             // The director resolved the drama before the avatar arrived — the matter is settled.
-            format!("{} — the matter is settled, {}'s reckoning come and gone", q.objective, q.giver_name)
+            format!(
+                "{} — the matter is settled, {}'s reckoning come and gone",
+                q.objective, q.giver_name
+            )
         } else {
             continue;
         };
@@ -1791,7 +2133,10 @@ fn update_quests(mut game: NonSendMut<Game>) {
     }
 }
 
-fn update_hud(mut game: NonSendMut<Game>, mut texts: Query<(&HudKind, &mut Text, &mut Visibility)>) {
+fn update_hud(
+    mut game: NonSendMut<Game>,
+    mut texts: Query<(&HudKind, &mut Text, &mut Visibility)>,
+) {
     let g = &mut *game;
     let view = g.sim.player_view();
     let day = g.sim.substrate().tick();
@@ -1807,21 +2152,46 @@ fn update_hud(mut game: NonSendMut<Game>, mut texts: Query<(&HudKind, &mut Text,
         _ => "",
     };
     // The world's current drama, pushed at the player as it moves (hidden under the menu / a talk).
-    let tidings = if g.paused || in_convo { None } else { g.sim.tidings() };
+    let tidings = if g.paused || in_convo {
+        None
+    } else {
+        g.sim.tidings()
+    };
     // The avatar's taken charges, as objective lines with a bearing to the soul to find.
-    let charges: String = g.quests.iter().map(|q| format!("\nCharge: {} {}", q.objective, g.sim.quest_bearing(q))).collect();
+    let charges: String = g
+        .quests
+        .iter()
+        .map(|q| format!("\nCharge: {} {}", q.objective, g.sim.quest_bearing(q)))
+        .collect();
 
     for (kind, mut text, mut vis) in &mut texts {
         text.0 = match kind {
             // The tile read-out: hidden under the pause menu and behind the conversation panel.
             HudKind::Look => {
-                *vis = if g.paused || in_convo { Visibility::Hidden } else { Visibility::Inherited };
+                *vis = if g.paused || in_convo {
+                    Visibility::Hidden
+                } else {
+                    Visibility::Inherited
+                };
                 match &view {
                     Some(v) => {
-                        let feats = if v.here.features.is_empty() { String::new() } else { format!("\nyou see: {}", v.here.features.join(", ")) };
+                        let feats = if v.here.features.is_empty() {
+                            String::new()
+                        } else {
+                            format!("\nyou see: {}", v.here.features.join(", "))
+                        };
                         format!(
                             "Day {day}\n({}, {})  {}  {:.0} m\nfertile {:.2}   {} soul(s) near\nfog lifted from {} tiles{}{}{}",
-                            v.pos.col, v.pos.row, v.here.terrain.name(), v.here.elevation, v.here.fertility, v.nearby.len(), explored, feats, search_cue, charges,
+                            v.pos.col,
+                            v.pos.row,
+                            v.here.terrain.name(),
+                            v.here.elevation,
+                            v.here.fertility,
+                            v.nearby.len(),
+                            explored,
+                            feats,
+                            search_cue,
+                            charges,
                         )
                     }
                     None => "no avatar".into(),
@@ -1830,7 +2200,11 @@ fn update_hud(mut game: NonSendMut<Game>, mut texts: Query<(&HudKind, &mut Text,
             // A single status line for the bottom tray; verbs live on the action buttons, camera
             // on A/D/W/S + scroll.
             HudKind::Help => {
-                *vis = if g.paused { Visibility::Hidden } else { Visibility::Inherited };
+                *vis = if g.paused {
+                    Visibility::Hidden
+                } else {
+                    Visibility::Inherited
+                };
                 let mut h = status.clone();
                 if let Some(v) = &voice_line {
                     h.push_str("   ·   ");

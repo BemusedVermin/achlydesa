@@ -10,7 +10,7 @@
 
 use app::theme::{self, ThemeFonts};
 use bevy::prelude::*;
-use bevy::render::view::screenshot::{save_to_disk, Screenshot};
+use bevy::render::view::screenshot::{Screenshot, save_to_disk};
 use bevy::text::Font;
 use bevy::ui::{BorderColor, BorderRadius};
 use bevy::window::WindowResolution;
@@ -42,10 +42,16 @@ fn main() {
 
 /// Capture on an early frame (once layout + glyph atlases have settled), then exit a few frames
 /// later so the async GPU readback + file write completes. `ACHLYDESA_HOLD` keeps it open.
-fn capture_and_exit(mut frames: ResMut<Frames>, mut commands: Commands, mut exit: MessageWriter<AppExit>) {
+fn capture_and_exit(
+    mut frames: ResMut<Frames>,
+    mut commands: Commands,
+    mut exit: MessageWriter<AppExit>,
+) {
     frames.0 += 1;
     if frames.0 == 6 {
-        commands.spawn(Screenshot::primary_window()).observe(save_to_disk(shot_path()));
+        commands
+            .spawn(Screenshot::primary_window())
+            .observe(save_to_disk(shot_path()));
     }
     if frames.0 >= 30 && std::env::var("ACHLYDESA_HOLD").is_err() {
         exit.write(AppExit::Success);
@@ -66,7 +72,10 @@ fn setup(mut commands: Commands, mut font_assets: ResMut<Assets<Font>>) {
         },
         children![
             theme::display(&f, "Achlydesa — UI gallery"),
-            theme::label(&f, "mock data · styled through app::theme · captured by the screenshot harness"),
+            theme::label(
+                &f,
+                "mock data · styled through app::theme · captured by the screenshot harness"
+            ),
             (
                 Node {
                     width: Val::Percent(100.0),
@@ -111,7 +120,11 @@ fn setup(mut commands: Commands, mut font_assets: ResMut<Assets<Font>>) {
 /// A labelled gallery card: a faint caption above the real widget.
 fn story(f: &ThemeFonts, caption: &str, widget: impl Bundle) -> impl Bundle {
     (
-        Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(theme::SP_SM), ..default() },
+        Node {
+            flex_direction: FlexDirection::Column,
+            row_gap: Val::Px(theme::SP_SM),
+            ..default()
+        },
         children![theme::micro(f, caption.to_uppercase()), widget],
     )
 }
@@ -120,31 +133,56 @@ fn story(f: &ThemeFonts, caption: &str, widget: impl Bundle) -> impl Bundle {
 
 fn legend(f: &ThemeFonts) -> impl Bundle {
     (
-        Node { max_width: Val::Px(240.0), ..theme::panel_node() },
+        Node {
+            max_width: Val::Px(240.0),
+            ..theme::panel_node()
+        },
         theme::panel_chrome(),
         children![
             theme::heading(f, "The land"),
-            theme::body(f, "rocks — heights & peaks\ntrees — woods & scrub\nhouses — a settlement\nkeep — a court\nbroken stones — a ruin"),
+            theme::body(
+                f,
+                "rocks — heights & peaks\ntrees — woods & scrub\nhouses — a settlement\nkeep — a court\nbroken stones — a ruin"
+            ),
             theme::divider(),
             theme::heading(f, "Controls"),
-            theme::label(f, "hover — look\nL-click — inspect\nR-click — travel\nSpace — wait   T — speak\nWASD — camera   scroll — zoom"),
+            theme::label(
+                f,
+                "hover — look\nL-click — inspect\nR-click — travel\nSpace — wait   T — speak\nWASD — camera   scroll — zoom"
+            ),
         ],
     )
 }
 
 fn inspect(f: &ThemeFonts) -> impl Bundle {
     (
-        Node { max_width: Val::Px(290.0), ..theme::panel_node() },
+        Node {
+            max_width: Val::Px(290.0),
+            ..theme::panel_node()
+        },
         theme::panel_chrome(),
         children![
             theme::heading(f, "Mist-Drowned Town"),
             theme::label(f, "(14, 9) · settlement"),
             theme::divider(),
             (
-                Node { flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, column_gap: Val::Px(theme::SP_XS), row_gap: Val::Px(theme::SP_XS), ..default() },
-                children![chip(f, "marsh"), chip(f, "fertile 0.62"), chip(f, "water 0.81")],
+                Node {
+                    flex_direction: FlexDirection::Row,
+                    flex_wrap: FlexWrap::Wrap,
+                    column_gap: Val::Px(theme::SP_XS),
+                    row_gap: Val::Px(theme::SP_XS),
+                    ..default()
+                },
+                children![
+                    chip(f, "marsh"),
+                    chip(f, "fertile 0.62"),
+                    chip(f, "water 0.81")
+                ],
             ),
-            theme::body(f, "Leaning houses where the fog pools thickest. The wheel has turned over this place more times than its souls can count."),
+            theme::body(
+                f,
+                "Leaning houses where the fog pools thickest. The wheel has turned over this place more times than its souls can count."
+            ),
             theme::divider(),
             theme::micro(f, "HERE"),
             theme::body(f, "• Pilgrim's Rest (court)\n• The Sunken Shrine (ruin)"),
@@ -154,24 +192,44 @@ fn inspect(f: &ThemeFonts) -> impl Bundle {
 
 fn tooltip(f: &ThemeFonts) -> impl Bundle {
     (
-        Node { max_width: Val::Px(220.0), ..theme::panel_node() },
+        Node {
+            max_width: Val::Px(220.0),
+            ..theme::panel_node()
+        },
         theme::panel_chrome(),
-        children![theme::body(f, "(14, 9)  Marsh"), theme::label(f, "Mist-Drowned Town")],
+        children![
+            theme::body(f, "(14, 9)  Marsh"),
+            theme::label(f, "Mist-Drowned Town")
+        ],
     )
 }
 
 fn journal(f: &ThemeFonts) -> impl Bundle {
     (
-        Node { max_width: Val::Px(350.0), ..theme::panel_node() },
+        Node {
+            max_width: Val::Px(350.0),
+            ..theme::panel_node()
+        },
         theme::panel_chrome(),
         children![
             theme::heading(f, "Journal"),
             theme::label(f, "Places found: 7"),
-            theme::body(f, "Settlements — Mist-Drowned Town, Ashfall\nCourts — Pilgrim's Rest\nRuins — The Sunken Shrine"),
-            theme::mono(f, "Wonders — The Crack in the Sky", theme::T_BODY, theme::AWE),
+            theme::body(
+                f,
+                "Settlements — Mist-Drowned Town, Ashfall\nCourts — Pilgrim's Rest\nRuins — The Sunken Shrine"
+            ),
+            theme::mono(
+                f,
+                "Wonders — The Crack in the Sky",
+                theme::T_BODY,
+                theme::AWE
+            ),
             theme::divider(),
             theme::label(f, "Lore known: 3"),
-            theme::body(f, "• The seven Archons\n• The cup of forgetting\n• The password of Yao"),
+            theme::body(
+                f,
+                "• The seven Archons\n• The cup of forgetting\n• The password of Yao"
+            ),
             theme::micro(f, "(press J to close)"),
         ],
     )
@@ -179,14 +237,28 @@ fn journal(f: &ThemeFonts) -> impl Bundle {
 
 fn conversation(f: &ThemeFonts) -> impl Bundle {
     (
-        Node { width: Val::Px(450.0), ..theme::panel_node() },
+        Node {
+            width: Val::Px(450.0),
+            ..theme::panel_node()
+        },
         theme::panel_chrome(),
         children![
             (
-                Node { flex_direction: FlexDirection::Row, column_gap: Val::Px(theme::SP_SM), align_items: AlignItems::Baseline, ..default() },
-                children![theme::serif(f, "Sophia", theme::T_TITLE, theme::DREAD), theme::label(f, "— wary of you")],
+                Node {
+                    flex_direction: FlexDirection::Row,
+                    column_gap: Val::Px(theme::SP_SM),
+                    align_items: AlignItems::Baseline,
+                    ..default()
+                },
+                children![
+                    theme::serif(f, "Sophia", theme::T_TITLE, theme::DREAD),
+                    theme::label(f, "— wary of you")
+                ],
             ),
-            theme::body(f, "\"You think I have forgotten the broken oath? The mist does not reach that far.\""),
+            theme::body(
+                f,
+                "\"You think I have forgotten the broken oath? The mist does not reach that far.\""
+            ),
             theme::divider(),
             theme::micro(f, "YOU MIGHT SAY"),
             option(f, "1", "Reconcile — let it lie"),
@@ -198,7 +270,10 @@ fn conversation(f: &ThemeFonts) -> impl Bundle {
 
 fn sheet(f: &ThemeFonts) -> impl Bundle {
     (
-        Node { width: Val::Px(340.0), ..theme::panel_node() },
+        Node {
+            width: Val::Px(340.0),
+            ..theme::panel_node()
+        },
         theme::panel_chrome(),
         children![
             theme::heading(f, "Iao — the Wanderer"),
@@ -206,12 +281,28 @@ fn sheet(f: &ThemeFonts) -> impl Bundle {
             theme::divider(),
             theme::micro(f, "ATTRIBUTES"),
             (
-                Node { flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, column_gap: Val::Px(theme::SP_SM), row_gap: Val::Px(theme::SP_SM), ..default() },
-                children![stat(f, "STR", "10"), stat(f, "DEX", "13"), stat(f, "CON", "11"), stat(f, "INT", "12"), stat(f, "WIS", "14"), stat(f, "CHA", "9")],
+                Node {
+                    flex_direction: FlexDirection::Row,
+                    flex_wrap: FlexWrap::Wrap,
+                    column_gap: Val::Px(theme::SP_SM),
+                    row_gap: Val::Px(theme::SP_SM),
+                    ..default()
+                },
+                children![
+                    stat(f, "STR", "10"),
+                    stat(f, "DEX", "13"),
+                    stat(f, "CON", "11"),
+                    stat(f, "INT", "12"),
+                    stat(f, "WIS", "14"),
+                    stat(f, "CHA", "9")
+                ],
             ),
             theme::divider(),
             theme::micro(f, "SKILLS"),
-            theme::body(f, "Survive +2   Notice +1   Talk +2\nSneak +0   Heal +1   Magic —"),
+            theme::body(
+                f,
+                "Survive +2   Notice +1   Talk +2\nSneak +0   Heal +1   Magic —"
+            ),
         ],
     )
 }
@@ -228,14 +319,20 @@ fn status(f: &ThemeFonts) -> impl Bundle {
             ..default()
         },
         theme::panel_chrome(),
-        children![theme::body(f, "Welcome. Click a tile to set out — the world moves when you do.")],
+        children![theme::body(
+            f,
+            "Welcome. Click a tile to set out — the world moves when you do."
+        )],
     )
 }
 
 // ── Small composite widgets ─────────────────────────────────────────────────────────────────────
 
 fn chip(f: &ThemeFonts, s: &str) -> impl Bundle {
-    (theme::chip_node(), children![theme::micro(f, s.to_string())])
+    (
+        theme::chip_node(),
+        children![theme::micro(f, s.to_string())],
+    )
 }
 
 fn stat(f: &ThemeFonts, name: &str, val: &str) -> impl Bundle {
@@ -252,13 +349,21 @@ fn stat(f: &ThemeFonts, name: &str, val: &str) -> impl Bundle {
         },
         BackgroundColor(theme::INK_SUNKEN),
         BorderColor::all(theme::BORDER),
-        children![theme::micro(f, name.to_string()), theme::mono(f, val.to_string(), theme::T_TITLE, theme::TEXT)],
+        children![
+            theme::micro(f, name.to_string()),
+            theme::mono(f, val.to_string(), theme::T_TITLE, theme::TEXT)
+        ],
     )
 }
 
 fn option(f: &ThemeFonts, key: &str, s: &str) -> impl Bundle {
     (
-        Node { flex_direction: FlexDirection::Row, column_gap: Val::Px(theme::SP_SM), align_items: AlignItems::Center, ..default() },
+        Node {
+            flex_direction: FlexDirection::Row,
+            column_gap: Val::Px(theme::SP_SM),
+            align_items: AlignItems::Center,
+            ..default()
+        },
         children![chip(f, key), theme::body(f, s.to_string())],
     )
 }
@@ -286,7 +391,10 @@ fn menu_with(f: &ThemeFonts, active: usize, content: impl Bundle) -> impl Bundle
             theme::divider(),
             content,
             theme::divider(),
-            theme::micro(f, "Q / E  page tabs        Enter  select        Esc  resume"),
+            theme::micro(
+                f,
+                "Q / E  page tabs        Enter  select        Esc  resume"
+            ),
         ],
     )
 }
@@ -312,12 +420,28 @@ fn tab_bar(f: &ThemeFonts, active: usize) -> impl Bundle {
 }
 
 fn tab(f: &ThemeFonts, label: &str, active: bool) -> impl Bundle {
-    let (color, bar) = if active { (theme::HEADING, theme::AWE) } else { (theme::TEXT_DIM, Color::NONE) };
+    let (color, bar) = if active {
+        (theme::HEADING, theme::AWE)
+    } else {
+        (theme::TEXT_DIM, Color::NONE)
+    };
     (
-        Node { flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: Val::Px(theme::SP_XS), ..default() },
+        Node {
+            flex_direction: FlexDirection::Column,
+            align_items: AlignItems::Center,
+            row_gap: Val::Px(theme::SP_XS),
+            ..default()
+        },
         children![
             theme::serif(f, label.to_string(), theme::T_TITLE, color),
-            (Node { width: Val::Percent(100.0), height: Val::Px(2.0), ..default() }, BackgroundColor(bar)),
+            (
+                Node {
+                    width: Val::Percent(100.0),
+                    height: Val::Px(2.0),
+                    ..default()
+                },
+                BackgroundColor(bar)
+            ),
         ],
     )
 }
@@ -327,14 +451,30 @@ fn menu_journal(f: &ThemeFonts) -> impl Bundle {
         f,
         0,
         (
-            Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(theme::SP_SM), width: Val::Percent(100.0), ..default() },
+            Node {
+                flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(theme::SP_SM),
+                width: Val::Percent(100.0),
+                ..default()
+            },
             children![
                 theme::heading(f, "Journal"),
                 theme::label(f, "Places found: 7"),
-                theme::body(f, "Settlements — Mist-Drowned Town, Ashfall\nCourts — Pilgrim's Rest\nRuins — The Sunken Shrine"),
-                theme::mono(f, "Wonders — The Crack in the Sky", theme::T_BODY, theme::AWE),
+                theme::body(
+                    f,
+                    "Settlements — Mist-Drowned Town, Ashfall\nCourts — Pilgrim's Rest\nRuins — The Sunken Shrine"
+                ),
+                theme::mono(
+                    f,
+                    "Wonders — The Crack in the Sky",
+                    theme::T_BODY,
+                    theme::AWE
+                ),
                 theme::label(f, "Lore known: 3"),
-                theme::body(f, "• The seven Archons\n• The cup of forgetting\n• The password of Yao"),
+                theme::body(
+                    f,
+                    "• The seven Archons\n• The cup of forgetting\n• The password of Yao"
+                ),
             ],
         ),
     )
@@ -347,7 +487,12 @@ fn menu_map(f: &ThemeFonts) -> impl Bundle {
 /// The Map tab — discovered places plotted on a fog-darkened field (a mock of the real view).
 fn mock_map(f: &ThemeFonts) -> impl Bundle {
     (
-        Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(theme::SP_SM), width: Val::Percent(100.0), ..default() },
+        Node {
+            flex_direction: FlexDirection::Column,
+            row_gap: Val::Px(theme::SP_SM),
+            width: Val::Percent(100.0),
+            ..default()
+        },
         children![
             theme::heading(f, "The Grey Country"),
             (
@@ -375,9 +520,25 @@ fn mock_map(f: &ThemeFonts) -> impl Bundle {
 
 fn place(f: &ThemeFonts, name: &str, x: f32, y: f32) -> impl Bundle {
     (
-        Node { position_type: PositionType::Absolute, left: Val::Percent(x), top: Val::Percent(y), flex_direction: FlexDirection::Row, column_gap: Val::Px(theme::SP_XS), align_items: AlignItems::Center, ..default() },
+        Node {
+            position_type: PositionType::Absolute,
+            left: Val::Percent(x),
+            top: Val::Percent(y),
+            flex_direction: FlexDirection::Row,
+            column_gap: Val::Px(theme::SP_XS),
+            align_items: AlignItems::Center,
+            ..default()
+        },
         children![
-            (Node { width: Val::Px(7.0), height: Val::Px(7.0), border_radius: BorderRadius::all(Val::Px(4.0)), ..default() }, BackgroundColor(theme::AWE)),
+            (
+                Node {
+                    width: Val::Px(7.0),
+                    height: Val::Px(7.0),
+                    border_radius: BorderRadius::all(Val::Px(4.0)),
+                    ..default()
+                },
+                BackgroundColor(theme::AWE)
+            ),
             theme::serif(f, name.to_string(), theme::T_LABEL, theme::HEADING),
         ],
     )
@@ -385,9 +546,27 @@ fn place(f: &ThemeFonts, name: &str, x: f32, y: f32) -> impl Bundle {
 
 fn here(f: &ThemeFonts, x: f32, y: f32) -> impl Bundle {
     (
-        Node { position_type: PositionType::Absolute, left: Val::Percent(x), top: Val::Percent(y), flex_direction: FlexDirection::Row, column_gap: Val::Px(theme::SP_XS), align_items: AlignItems::Center, ..default() },
+        Node {
+            position_type: PositionType::Absolute,
+            left: Val::Percent(x),
+            top: Val::Percent(y),
+            flex_direction: FlexDirection::Row,
+            column_gap: Val::Px(theme::SP_XS),
+            align_items: AlignItems::Center,
+            ..default()
+        },
         children![
-            (Node { width: Val::Px(9.0), height: Val::Px(9.0), border: UiRect::all(Val::Px(2.0)), border_radius: BorderRadius::all(Val::Px(5.0)), ..default() }, BackgroundColor(theme::DREAD), BorderColor::all(theme::HEADING)),
+            (
+                Node {
+                    width: Val::Px(9.0),
+                    height: Val::Px(9.0),
+                    border: UiRect::all(Val::Px(2.0)),
+                    border_radius: BorderRadius::all(Val::Px(5.0)),
+                    ..default()
+                },
+                BackgroundColor(theme::DREAD),
+                BorderColor::all(theme::HEADING)
+            ),
             theme::serif(f, "you", theme::T_LABEL, theme::DREAD),
         ],
     )
@@ -396,11 +575,17 @@ fn here(f: &ThemeFonts, x: f32, y: f32) -> impl Bundle {
 /// A richer hover tooltip: a serif title, a line of body, and the key hint.
 fn rich_tooltip(f: &ThemeFonts) -> impl Bundle {
     (
-        Node { max_width: Val::Px(260.0), ..theme::panel_node() },
+        Node {
+            max_width: Val::Px(260.0),
+            ..theme::panel_node()
+        },
         theme::panel_chrome(),
         children![
             theme::serif(f, "Search", theme::T_BODY + 3.0, theme::HEADING),
-            theme::body(f, "Comb the ruins and the stones underfoot for what the fog has hidden. Costs a turn."),
+            theme::body(
+                f,
+                "Comb the ruins and the stones underfoot for what the fog has hidden. Costs a turn."
+            ),
             theme::micro(f, "press F"),
         ],
     )

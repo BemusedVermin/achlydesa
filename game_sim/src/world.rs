@@ -47,11 +47,11 @@
 //! The three spatial operators — diffuse, advect, flow — all ride on the
 //! direction-tagged neighbour links from [`crate::grid`].
 
+use crate::fields::{Belt, Biome, CrustType, Formation, Lithology};
 use crate::grid::{Buffered, Coord, Topology};
 use crate::rng::SplitMix64;
-use config::Params;
 use crate::worldgen::{self, Generated};
-use crate::fields::{Belt, Biome, CrustType, Formation, Lithology};
+use config::Params;
 use sim::{Rng, Substrate};
 
 /// A read-only snapshot of one tile, returned to (future) actors as the
@@ -511,7 +511,8 @@ impl World {
 
             let capacity = saturation(p, temp[i]);
             let condensation = (new[i] - capacity).max(0.0);
-            let orographic = new[i] * p.orographic_coeff * upslope_in_wind(topo, elevation, wind, i);
+            let orographic =
+                new[i] * p.orographic_coeff * upslope_in_wind(topo, elevation, wind, i);
             let rain = (condensation + orographic).min(new[i]).max(0.0);
             precip[i] = rain;
             new[i] -= rain;
@@ -538,8 +539,8 @@ impl World {
                     self.snow_ice[i] += liquid; // falls as snow
                     liquid = 0.0;
                 } else {
-                    let melt = (p.melt_rate * (temp[i] - p.freeze_temp))
-                        .clamp(0.0, self.snow_ice[i]);
+                    let melt =
+                        (p.melt_rate * (temp[i] - p.freeze_temp)).clamp(0.0, self.snow_ice[i]);
                     self.snow_ice[i] -= melt;
                     liquid += melt;
                 }
@@ -605,11 +606,14 @@ impl World {
                 // The biome sets the productivity ceiling; soil fertility scales it.
                 // Climate no longer caps the ceiling directly — it does so *through*
                 // the biome it has been distilled into.
-                let k = (p.biomass_max * biome[i].profile(p).productivity * nutrient * carbon).max(0.0);
+                let k =
+                    (p.biomass_max * biome[i].profile(p).productivity * nutrient * carbon).max(0.0);
                 cc[i] = k;
 
-                let production =
-                    p.plant_growth * suit * (plant_old[i] + p.plant_seed) * (1.0 - plant_old[i] / k.max(1e-3));
+                let production = p.plant_growth
+                    * suit
+                    * (plant_old[i] + p.plant_seed)
+                    * (1.0 - plant_old[i] / k.max(1e-3));
                 npp[i] = production;
 
                 let plant_death = plant_old[i] * p.plant_mortality;
@@ -747,8 +751,8 @@ impl World {
                 let moisture = moisture_index(p, water[i], precip[i]);
                 // The biome's cover sets how readily fuel takes: grass and scrub
                 // catch eagerly, rainforest and tundra resist.
-                let dry =
-                    (fire_dryness(p, temp[i], moisture) * biome[i].profile(p).flammability).min(1.0);
+                let dry = (fire_dryness(p, temp[i], moisture) * biome[i].profile(p).flammability)
+                    .min(1.0);
                 let fuel_factor = fuel / (fuel + p.fire_fuel_half);
                 if dry > 0.0 && fuel_factor > 0.0 {
                     // Lightning.
@@ -828,7 +832,12 @@ impl World {
             .topo
             .indices()
             .map(|i| {
-                radiative_target(&self.params, self.insolation[i], self.elevation[i], self.albedo[i])
+                radiative_target(
+                    &self.params,
+                    self.insolation[i],
+                    self.elevation[i],
+                    self.albedo[i],
+                )
             })
             .collect();
         // Write the same values into both halves of the buffer.
@@ -851,8 +860,8 @@ fn insolation_factor(lat_deg: f32, decl_deg: f32) -> f32 {
 /// feedback into the climate.
 fn radiative_target(params: &Params, sun: f32, elevation: f32, albedo: f32) -> f32 {
     let land = (elevation - params.sea_level).max(0.0);
-    let base =
-        params.pole_temp + (params.equator_temp - params.pole_temp) * sun - params.lapse_rate * land;
+    let base = params.pole_temp + (params.equator_temp - params.pole_temp) * sun
+        - params.lapse_rate * land;
     base - params.albedo_temp_coeff * (albedo - params.albedo_ref)
 }
 
@@ -904,7 +913,10 @@ fn growth_suitability(params: &Params, temp: f32, moisture: f32, light: f32, lan
     let z = (temp - params.growth_temp_opt) / params.growth_temp_width;
     let temp_factor = (-z * z).exp();
     let water_factor = moisture / (moisture + params.moisture_half);
-    temp_factor.min(water_factor).min(light.clamp(0.0, 1.0)).clamp(0.0, 1.0)
+    temp_factor
+        .min(water_factor)
+        .min(light.clamp(0.0, 1.0))
+        .clamp(0.0, 1.0)
 }
 
 /// How fast decomposers work: a **Q10** temperature response (activity multiplies by
@@ -912,7 +924,9 @@ fn growth_suitability(params: &Params, temp: f32, moisture: f32, light: f32, lan
 /// moisture factor. Warm, wet soils turn litter over several times faster than cool
 /// ones, so they release nutrients — and respire carbon — far quicker.
 fn decomposition_activity(params: &Params, temp: f32, moisture: f32) -> f32 {
-    let warmth = params.decomp_q10.powf((temp - params.decomp_ref_temp) / 10.0);
+    let warmth = params
+        .decomp_q10
+        .powf((temp - params.decomp_ref_temp) / 10.0);
     let wetness = moisture / (moisture + params.moisture_half);
     (warmth * wetness).clamp(0.0, 3.0)
 }
@@ -937,7 +951,10 @@ fn classify_biome(params: &Params, bio_temp: f32, annual_precip: f32, water: boo
     if water {
         return Biome::Water;
     }
-    Biome::from_cell(belt_of(params, bio_temp), humidity_index(params, bio_temp, annual_precip))
+    Biome::from_cell(
+        belt_of(params, bio_temp),
+        humidity_index(params, bio_temp, annual_precip),
+    )
 }
 
 /// The Holdridge latitudinal belt for a mean annual biotemperature (°C).
@@ -965,7 +982,11 @@ fn belt_of(params: &Params, bio_temp: f32) -> Belt {
 /// evaporation) has a high ratio and lands in the low, arid indices.
 fn humidity_index(params: &Params, bio_temp: f32, annual_precip: f32) -> usize {
     let pet = bio_temp * params.pet_coeff;
-    let ratio = if annual_precip > 1e-6 { pet / annual_precip } else { f32::INFINITY };
+    let ratio = if annual_precip > 1e-6 {
+        pet / annual_precip
+    } else {
+        f32::INFINITY
+    };
     if ratio >= 16.0 {
         0
     } else if ratio >= 8.0 {
@@ -1057,7 +1078,10 @@ mod tests {
         for i in world.topology().indices() {
             let t = world.temperature.front()[i];
             assert!(t.is_finite(), "temperature went non-finite");
-            assert!((-100.0..100.0).contains(&t), "temperature {t} left sane range");
+            assert!(
+                (-100.0..100.0).contains(&t),
+                "temperature {t} left sane range"
+            );
         }
     }
 
@@ -1082,7 +1106,10 @@ mod tests {
         };
         let equator = row_mean(height / 2);
         let poles = (row_mean(0) + row_mean(height - 1)) / 2.0;
-        assert!(equator > poles, "equator {equator} should beat poles {poles}");
+        assert!(
+            equator > poles,
+            "equator {equator} should beat poles {poles}"
+        );
     }
 
     #[test]
@@ -1099,8 +1126,14 @@ mod tests {
             max = max.max(s);
         }
         // Polar night drives insolation to ~0; polar summer lifts it well above.
-        assert!(min < 0.05, "expected a polar night, min insolation was {min}");
-        assert!(max > 0.25, "expected a polar summer, max insolation was {max}");
+        assert!(
+            min < 0.05,
+            "expected a polar night, min insolation was {min}"
+        );
+        assert!(
+            max > 0.25,
+            "expected a polar summer, max insolation was {max}"
+        );
     }
 
     #[test]
@@ -1137,7 +1170,10 @@ mod tests {
         }
         for i in world.topology().indices() {
             assert!(world.pressure[i].is_finite(), "pressure non-finite");
-            assert!(world.wind[i][0].is_finite() && world.wind[i][1].is_finite(), "wind non-finite");
+            assert!(
+                world.wind[i][0].is_finite() && world.wind[i][1].is_finite(),
+                "wind non-finite"
+            );
             for (name, v) in [
                 ("humidity", world.humidity.front()[i]),
                 ("precipitation", world.precipitation[i]),
@@ -1157,7 +1193,11 @@ mod tests {
         let mut total = 0.0_f32;
         for _ in 0..world.params().ticks_per_year {
             world.evolve(&mut rng);
-            total += world.topology().indices().map(|i| world.precipitation[i]).sum::<f32>();
+            total += world
+                .topology()
+                .indices()
+                .map(|i| world.precipitation[i])
+                .sum::<f32>();
         }
         assert!(total > 0.0, "the whole world stayed bone dry for a year");
     }
@@ -1182,7 +1222,10 @@ mod tests {
                     .unwrap()
             })
             .unwrap();
-        assert!(world.surface_water.front()[wettest] > 0.0, "no standing water formed");
+        assert!(
+            world.surface_water.front()[wettest] > 0.0,
+            "no standing water formed"
+        );
         assert!(
             world.elevation[wettest] < mean_elev,
             "wettest tile (elev {}) should be below mean elevation ({mean_elev})",
@@ -1201,7 +1244,10 @@ mod tests {
                 any_snow = true;
             }
         }
-        assert!(any_snow, "expected snow to accumulate somewhere cold over a year");
+        assert!(
+            any_snow,
+            "expected snow to accumulate somewhere cold over a year"
+        );
         // And every snowy tile was genuinely at or below freezing when it built.
         // (Checked indirectly: snow only ever exists with the freeze logic.)
     }
@@ -1241,7 +1287,10 @@ mod tests {
             .indices()
             .map(|i| world.plant_biomass.front()[i])
             .fold(0.0_f32, f32::max);
-        assert!(greenest > 0.1, "nothing grew anywhere (max biomass {greenest})");
+        assert!(
+            greenest > 0.1,
+            "nothing grew anywhere (max biomass {greenest})"
+        );
     }
 
     #[test]
@@ -1254,8 +1303,16 @@ mod tests {
         let p = world.params();
         for i in world.topology().indices() {
             if world.elevation[i] < p.sea_level {
-                assert_eq!(world.plant_biomass.front()[i], 0.0, "plants grew in the sea");
-                assert_eq!(world.biome[i], Biome::Water, "submerged tile should read as Water");
+                assert_eq!(
+                    world.plant_biomass.front()[i],
+                    0.0,
+                    "plants grew in the sea"
+                );
+                assert_eq!(
+                    world.biome[i],
+                    Biome::Water,
+                    "submerged tile should read as Water"
+                );
             }
         }
     }
@@ -1294,9 +1351,17 @@ mod tests {
         ];
         let kinds = land_formations
             .iter()
-            .filter(|&&f| world.topology().indices().any(|i| world.biome[i].formation() == f))
+            .filter(|&&f| {
+                world
+                    .topology()
+                    .indices()
+                    .any(|i| world.biome[i].formation() == f)
+            })
             .count();
-        assert!(kinds >= 2, "expected at least two land formations, found {kinds}");
+        assert!(
+            kinds >= 2,
+            "expected at least two land formations, found {kinds}"
+        );
     }
 
     #[test]
@@ -1320,20 +1385,34 @@ mod tests {
         let dry = humidity_index(&p, bt, 5.0);
         let mid = humidity_index(&p, bt, 60.0);
         let wet = humidity_index(&p, bt, 600.0);
-        assert!(dry < mid && mid < wet, "expected dry {dry} < mid {mid} < wet {wet}");
-        assert_eq!(humidity_index(&p, bt, 0.0), 0, "no rain is the driest province");
+        assert!(
+            dry < mid && mid < wet,
+            "expected dry {dry} < mid {mid} < wet {wet}"
+        );
+        assert_eq!(
+            humidity_index(&p, bt, 0.0),
+            0,
+            "no rain is the driest province"
+        );
     }
 
     #[test]
     fn classify_biome_reads_the_extremes() {
         let p = Params::default();
-        assert_eq!(classify_biome(&p, 25.0, 100.0, true), Biome::Water, "below-sea is water");
+        assert_eq!(
+            classify_biome(&p, 25.0, 100.0, true),
+            Biome::Water,
+            "below-sea is water"
+        );
         // Hot and soaked → a tropical rain canopy.
         let hot_wet = classify_biome(&p, 26.0, 4000.0, false);
         assert_eq!(hot_wet.belt(), Some(Belt::Tropical));
         assert_eq!(hot_wet.formation(), Formation::Rainforest);
         // Cold land stays in the frozen belts whatever the moisture.
-        assert_eq!(classify_biome(&p, 1.0, 200.0, false).belt(), Some(Belt::Polar));
+        assert_eq!(
+            classify_biome(&p, 1.0, 200.0, false).belt(),
+            Some(Belt::Polar)
+        );
     }
 
     #[test]
@@ -1349,7 +1428,10 @@ mod tests {
             if b == Biome::Water {
                 continue;
             }
-            assert!(seen.contains(&b), "life zone {b:?} is never produced by from_cell");
+            assert!(
+                seen.contains(&b),
+                "life zone {b:?} is never produced by from_cell"
+            );
         }
     }
 
@@ -1377,7 +1459,10 @@ mod tests {
         };
         let wet = total_biomass(0.06); // normal water cycle
         let dry = total_biomass(0.0); // no evaporation at all
-        assert!(dry < wet * 0.2, "a rainless world greened too much (wet {wet}, dry {dry})");
+        assert!(
+            dry < wet * 0.2,
+            "a rainless world greened too much (wet {wet}, dry {dry})"
+        );
     }
 
     #[test]
@@ -1391,7 +1476,10 @@ mod tests {
             let fire = world.fire.front()[i];
             assert!(fire.is_finite() && fire >= 0.0, "fire invalid ({fire})");
             let a = world.albedo[i];
-            assert!(a.is_finite() && (0.0..=1.0).contains(&a), "albedo out of range ({a})");
+            assert!(
+                a.is_finite() && (0.0..=1.0).contains(&a),
+                "albedo out of range ({a})"
+            );
         }
     }
 
@@ -1407,7 +1495,10 @@ mod tests {
             let mut any_fire = false;
             for _ in 0..400 {
                 world.evolve(&mut rng);
-                any_fire |= world.topology().indices().any(|i| world.fire.front()[i] > 0.0);
+                any_fire |= world
+                    .topology()
+                    .indices()
+                    .any(|i| world.fire.front()[i] > 0.0);
             }
             let biomass = world
                 .topology()
@@ -1439,7 +1530,10 @@ mod tests {
             .indices()
             .map(|i| world.albedo[i])
             .fold(0.0_f32, f32::max);
-        assert!(brightest > 0.5, "snow should brighten a tile above bare ground (max {brightest})");
+        assert!(
+            brightest > 0.5,
+            "snow should brighten a tile above bare ground (max {brightest})"
+        );
     }
 
     #[test]
@@ -1447,7 +1541,10 @@ mod tests {
         let p = Params::default();
         let dark = radiative_target(&p, 1.0, 0.0, 0.10);
         let bright = radiative_target(&p, 1.0, 0.0, 0.80);
-        assert!(bright < dark, "a brighter surface must run cooler ({bright} vs {dark})");
+        assert!(
+            bright < dark,
+            "a brighter surface must run cooler ({bright} vs {dark})"
+        );
     }
 
     #[test]
@@ -1467,18 +1564,29 @@ mod tests {
             topo.indices()
                 .map(|i| topo.coord(i))
                 .filter(|&c| world.elevation(c) >= world.params().sea_level)
-                .max_by(|&a, &b| world.plant_biomass(a).partial_cmp(&world.plant_biomass(b)).unwrap())
+                .max_by(|&a, &b| {
+                    world
+                        .plant_biomass(a)
+                        .partial_cmp(&world.plant_biomass(b))
+                        .unwrap()
+                })
                 .expect("a land tile")
         };
         let before = world.plant_biomass(fuelled);
-        assert!(before > 0.5, "need real fuel to test ignition (had {before})");
+        assert!(
+            before > 0.5,
+            "need real fuel to test ignition (had {before})"
+        );
         let lit = world.ignite(fuelled, 3.0);
         assert!(lit >= 3.0, "ignite should raise the fire field ({lit})");
         assert!(world.fire(fuelled) > 0.0, "the tile should be burning");
         for _ in 0..12 {
             world.evolve(&mut rng);
         }
-        assert!(world.plant_biomass(fuelled) < before, "a kindled fire should consume the fuel it was lit on");
+        assert!(
+            world.plant_biomass(fuelled) < before,
+            "a kindled fire should consume the fuel it was lit on"
+        );
     }
 
     #[test]
@@ -1495,13 +1603,27 @@ mod tests {
             let topo = world.topology();
             topo.indices()
                 .map(|i| topo.coord(i))
-                .max_by(|&a, &b| world.surface_water(a).partial_cmp(&world.surface_water(b)).unwrap())
+                .max_by(|&a, &b| {
+                    world
+                        .surface_water(a)
+                        .partial_cmp(&world.surface_water(b))
+                        .unwrap()
+                })
                 .expect("a tile")
         };
         let before = world.surface_water(wettest);
-        assert!(before > 0.0, "need standing water to test a drought (had {before})");
+        assert!(
+            before > 0.0,
+            "need standing water to test a drought (had {before})"
+        );
         let removed = world.parch(wettest, 1.0);
-        assert!((removed - before).abs() < 1e-4, "parch should report the water it took");
-        assert!(world.surface_water(wettest) < before, "the tile should be drier after a drought");
+        assert!(
+            (removed - before).abs() < 1e-4,
+            "parch should report the water it took"
+        );
+        assert!(
+            world.surface_water(wettest) < before,
+            "the tile should be drier after a drought"
+        );
     }
 }

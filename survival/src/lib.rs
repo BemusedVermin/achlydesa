@@ -18,7 +18,11 @@ pub struct Vitals {
 
 impl Default for Vitals {
     fn default() -> Self {
-        Self { thirst: 100.0, warmth: 100.0, stamina: 100.0 }
+        Self {
+            thirst: 100.0,
+            warmth: 100.0,
+            stamina: 100.0,
+        }
     }
 }
 
@@ -88,7 +92,15 @@ impl Default for SurvivalConfig {
 pub fn survival_metabolism(
     mut commands: Commands,
     mut bodies: Query<
-        (Entity, &mut Vitals, &Position, Option<&Npc>, Option<&Abilities>, Option<&Proficiencies>, Option<&Flags>),
+        (
+            Entity,
+            &mut Vitals,
+            &Position,
+            Option<&Npc>,
+            Option<&Abilities>,
+            Option<&Proficiencies>,
+            Option<&Flags>,
+        ),
         Or<(With<Npc>, With<Player>)>,
     >,
     substrate: Res<Substrate>,
@@ -103,12 +115,16 @@ pub fn survival_metabolism(
 
         // Hardiness: Constitution + Survive blunt the day's drain (capped).
         let con = ab.map_or(0, |a| a.modifier(rpg::CON));
-        let survive = prof.and_then(|p| survive_id.map(|i| p.rank(i) as i32)).unwrap_or(0);
-        let mitigation = (con as f32 * cfg.con_offset + survive as f32 * cfg.survive_offset).clamp(0.0, cfg.max_mitigation);
+        let survive = prof
+            .and_then(|p| survive_id.map(|i| p.rank(i) as i32))
+            .unwrap_or(0);
+        let mitigation = (con as f32 * cfg.con_offset + survive as f32 * cfg.survive_offset)
+            .clamp(0.0, cfg.max_mitigation);
         let keep = 1.0 - mitigation;
 
         // Thirst: green or wet land has water at hand; only arid wastes parch you, worse in heat.
-        let biomass_frac = (world.plant_biomass(pos.0) / world.params().biomass_max).clamp(0.0, 1.0);
+        let biomass_frac =
+            (world.plant_biomass(pos.0) / world.params().biomass_max).clamp(0.0, 1.0);
         if water > cfg.water_threshold || biomass_frac > cfg.lush_threshold {
             v.thirst = (v.thirst + cfg.water_relief).min(100.0);
         } else {

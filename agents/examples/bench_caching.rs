@@ -33,7 +33,13 @@ fn main() {
     let (width, height, npcs) = (64, 48, 150);
 
     // Worldgen + warm-up happen here and are *not* timed.
-    let mut sim = Simulation::new(Setup { width, height, seed: 1, npcs, ..Default::default() });
+    let mut sim = Simulation::new(Setup {
+        width,
+        height,
+        seed: 1,
+        npcs,
+        ..Default::default()
+    });
     // One untimed tick so first-touch allocations (lazy statics, pools) don't skew the count.
     sim.run(1);
 
@@ -45,6 +51,9 @@ fn main() {
 
     let tiles = (width * height) as usize;
     println!("world {width}x{height} ({tiles} tiles), {npcs} npcs, {TICKS} ticks");
-    println!("  wall:   {dt:?}  ({:.0} ticks/s)", TICKS as f64 / dt.as_secs_f64());
+    println!(
+        "  wall:   {dt:?}  ({:.0} ticks/s)",
+        TICKS as f64 / dt.as_secs_f64()
+    );
     println!("  allocs: {allocs}  ({} /tick)", allocs as u64 / TICKS);
 }

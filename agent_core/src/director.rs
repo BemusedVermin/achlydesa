@@ -297,7 +297,11 @@ impl Director {
     /// just used, decaying back toward 0. Drives the novelty penalty / register rotation.
     fn heat(&self, beat: &Beat) -> f32 {
         let id = self.id_heat.get(&beat.id).copied().unwrap_or(0.0);
-        let tags: f32 = beat.tags.iter().map(|t| self.tag_heat.get(t).copied().unwrap_or(0.0)).sum();
+        let tags: f32 = beat
+            .tags
+            .iter()
+            .map(|t| self.tag_heat.get(t).copied().unwrap_or(0.0))
+            .sum();
         let reg = self.reg_heat.get(&beat.register).copied().unwrap_or(0.0);
         id + tags + reg
     }
@@ -318,7 +322,10 @@ impl Director {
     /// name it: this is how a prominent soul becomes *legible in the world*, met not as "a villager"
     /// but as the figure a story turns on. Surface only — never read by the tick.
     pub fn epithet_of(&self, e: Entity) -> Option<&'static str> {
-        let t = self.threads.iter().find(|t| t.lead == e || t.other == Some(e))?;
+        let t = self
+            .threads
+            .iter()
+            .find(|t| t.lead == e || t.other == Some(e))?;
         Some(epithet_for(t.spine, t.lead == e))
     }
 
@@ -326,7 +333,10 @@ impl Director {
     /// soul's situation in a single line, for a conversation to open on. `None` for a soul not in a
     /// live thread. Surface flavour only; moves no state.
     pub fn situation_of(&self, e: Entity) -> Option<&'static str> {
-        let t = self.threads.iter().find(|t| t.lead == e || t.other == Some(e))?;
+        let t = self
+            .threads
+            .iter()
+            .find(|t| t.lead == e || t.other == Some(e))?;
         Some(situation_for(t.spine, t.lead == e))
     }
 
@@ -427,12 +437,23 @@ impl MoodIds {
     /// ones it most loves to break).
     pub(crate) fn high(&self, m: &[f32]) -> f32 {
         let g = |i: Option<usize>| i.and_then(|i| m.get(i)).copied().unwrap_or(0.0);
-        g(self.joy) + g(self.hope) + g(self.love) + g(self.awe) + g(self.rapture) + g(self.elation) + 0.5 * g(self.calm)
+        g(self.joy)
+            + g(self.hope)
+            + g(self.love)
+            + g(self.awe)
+            + g(self.rapture)
+            + g(self.elation)
+            + 0.5 * g(self.calm)
     }
     /// How *down* the protagonist currently feels — the depth a relief beat reverses.
     pub(crate) fn low(&self, m: &[f32]) -> f32 {
         let g = |i: Option<usize>| i.and_then(|i| m.get(i)).copied().unwrap_or(0.0);
-        g(self.anger) + g(self.sorrow) + g(self.fear) + g(self.despair) + g(self.dread) + g(self.foreboding)
+        g(self.anger)
+            + g(self.sorrow)
+            + g(self.fear)
+            + g(self.despair)
+            + g(self.dread)
+            + g(self.foreboding)
     }
 }
 
@@ -506,7 +527,10 @@ fn cast_beat(
     // the point. Preconditions still filter, so a pin that doesn't suit is simply not told.
     if let Some(p) = pin.filter(|p| *p != proto && cands.iter().any(|c| c.e == *p))
         && let Some(role) = beat.roles().into_iter().find(|r| {
-            matches!(r, Role::Ally | Role::Foe | Role::Rival | Role::Lover | Role::Bystander) && slots[r.slot()].is_none()
+            matches!(
+                r,
+                Role::Ally | Role::Foe | Role::Rival | Role::Lover | Role::Bystander
+            ) && slots[r.slot()].is_none()
         })
     {
         slots[role.slot()] = Some(p);
@@ -529,12 +553,22 @@ fn cast_beat(
             Role::Ally => cands
                 .iter()
                 .filter(|c| !used.contains(&c.e) && c.op_of_proto > cfg.ally_threshold)
-                .max_by(|a, b| a.op_of_proto.partial_cmp(&b.op_of_proto).unwrap().then(a.e.cmp(&b.e)))
+                .max_by(|a, b| {
+                    a.op_of_proto
+                        .partial_cmp(&b.op_of_proto)
+                        .unwrap()
+                        .then(a.e.cmp(&b.e))
+                })
                 .map(|c| (c.e, c.op_of_proto.clamp(0.0, 1.0))),
             Role::Rival => cands
                 .iter()
                 .filter(|c| !used.contains(&c.e) && c.ambition > 0.01)
-                .max_by(|a, b| a.ambition.partial_cmp(&b.ambition).unwrap().then(a.e.cmp(&b.e)))
+                .max_by(|a, b| {
+                    a.ambition
+                        .partial_cmp(&b.ambition)
+                        .unwrap()
+                        .then(a.e.cmp(&b.e))
+                })
                 .map(|c| (c.e, c.ambition.clamp(0.0, 1.0))),
             Role::Foe => {
                 // Prefer someone who already bears the protagonist a grudge; else the
@@ -547,7 +581,12 @@ fn cast_beat(
                     cands
                         .iter()
                         .filter(|c| !used.contains(&c.e) && c.op_of_proto < cfg.foe_threshold)
-                        .min_by(|a, b| a.op_of_proto.partial_cmp(&b.op_of_proto).unwrap().then(a.e.cmp(&b.e)))
+                        .min_by(|a, b| {
+                            a.op_of_proto
+                                .partial_cmp(&b.op_of_proto)
+                                .unwrap()
+                                .then(a.e.cmp(&b.e))
+                        })
                 });
                 chosen.map(|c| (c.e, (-c.op_of_proto).clamp(0.3, 1.0)))
             }
@@ -560,15 +599,22 @@ fn cast_beat(
                         .unwrap()
                         .then(a.e.cmp(&b.e))
                 })
-                .map(|c| (c.e, ((c.sociability + c.op_of_proto.max(0.0)) * 0.5).clamp(0.2, 1.0))),
+                .map(|c| {
+                    (
+                        c.e,
+                        ((c.sociability + c.op_of_proto.max(0.0)) * 0.5).clamp(0.2, 1.0),
+                    )
+                }),
             Role::Mentor => cands
                 .iter()
                 .filter(|c| !used.contains(&c.e))
                 .max_by(|a, b| a.piety.partial_cmp(&b.piety).unwrap().then(a.e.cmp(&b.e)))
                 .map(|c| (c.e, c.piety.clamp(0.2, 1.0))),
-            Role::Bystander => {
-                cands.iter().filter(|c| !used.contains(&c.e)).min_by(|a, b| a.e.cmp(&b.e)).map(|c| (c.e, 0.5))
-            }
+            Role::Bystander => cands
+                .iter()
+                .filter(|c| !used.contains(&c.e))
+                .min_by(|a, b| a.e.cmp(&b.e))
+                .map(|c| (c.e, 0.5)),
         };
         let (e, fit) = chosen?;
         slots[role.slot()] = Some(e);
@@ -576,7 +622,11 @@ fn cast_beat(
         fit_sum += fit;
         fit_n += 1;
     }
-    let salience = if fit_n > 0 { fit_sum / fit_n as f32 } else { 1.0 };
+    let salience = if fit_n > 0 {
+        fit_sum / fit_n as f32
+    } else {
+        1.0
+    };
     Some((slots, salience))
 }
 
@@ -593,34 +643,51 @@ struct PreCtx<'a> {
 }
 
 /// Whether a beat's preconditions hold for a tentative cast.
-fn pre_ok(beat: &Beat, slots: &[Option<Entity>; SLOTS], cands: &[Cand], idx_of: &HashMap<Entity, usize>, reg: &Registry, ctx: &PreCtx) -> bool {
+fn pre_ok(
+    beat: &Beat,
+    slots: &[Option<Entity>; SLOTS],
+    cands: &[Cand],
+    idx_of: &HashMap<Entity, usize>,
+    reg: &Registry,
+    ctx: &PreCtx,
+) -> bool {
     let cand = |e: Entity| idx_of.get(&e).map(|&i| &cands[i]);
     for p in &beat.pre {
         let ok = match p {
             Pre::Exists { who } => slots[who.slot()].is_some(),
             Pre::TraitAtLeast { who, trait_name, v } => slots[who.slot()]
                 .and_then(cand)
-                .and_then(|c| reg.trait_id(trait_name).and_then(|t| c.traits.get(t).copied()))
+                .and_then(|c| {
+                    reg.trait_id(trait_name)
+                        .and_then(|t| c.traits.get(t).copied())
+                })
                 .is_some_and(|val| val >= *v),
             Pre::TraitAtMost { who, trait_name, v } => slots[who.slot()]
                 .and_then(cand)
-                .and_then(|c| reg.trait_id(trait_name).and_then(|t| c.traits.get(t).copied()))
+                .and_then(|c| {
+                    reg.trait_id(trait_name)
+                        .and_then(|t| c.traits.get(t).copied())
+                })
                 .is_some_and(|val| val <= *v),
             Pre::MoodAtLeast { who, mood, v } => slots[who.slot()]
                 .and_then(cand)
                 .and_then(|c| reg.mood_id(mood).and_then(|m| c.moods.get(m).copied()))
                 .is_some_and(|val| val >= *v),
-            Pre::HasGrudge { who, yes } => {
-                slots[who.slot()].and_then(cand).is_some_and(|c| c.grudge_target.is_some() == *yes)
-            }
+            Pre::HasGrudge { who, yes } => slots[who.slot()]
+                .and_then(cand)
+                .is_some_and(|c| c.grudge_target.is_some() == *yes),
             Pre::HoldsThrone { yes } => (ctx.throne_holder == Some(ctx.proto)) == *yes,
             Pre::InFaction { yes } => ctx.proto_in_faction == *yes,
             Pre::AtWar { yes } => ctx.at_war == *yes,
-            Pre::VictimNearby { need_below } => {
-                cands.iter().any(|c| ctx.region.contains(&c.pos_index) && c.need < *need_below)
-            }
-            Pre::Bonded { who, yes } => slots[who.slot()].and_then(cand).is_some_and(|c| c.bond_target.is_some() == *yes),
-            Pre::Bound { who, yes } => slots[who.slot()].and_then(cand).is_some_and(|c| c.detained == *yes),
+            Pre::VictimNearby { need_below } => cands
+                .iter()
+                .any(|c| ctx.region.contains(&c.pos_index) && c.need < *need_below),
+            Pre::Bonded { who, yes } => slots[who.slot()]
+                .and_then(cand)
+                .is_some_and(|c| c.bond_target.is_some() == *yes),
+            Pre::Bound { who, yes } => slots[who.slot()]
+                .and_then(cand)
+                .is_some_and(|c| c.detained == *yes),
             Pre::DiscoveredMarvelNearby { yes } => ctx.marvel_nearby == *yes,
         };
         if !ok {
@@ -632,7 +699,12 @@ fn pre_ok(beat: &Beat, slots: &[Option<Entity>; SLOTS], cands: &[Cand], idx_of: 
 
 /// Pick a spine for a new thread: rotate registers (recency-penalised), bias the trunk so
 /// betrayal recurs *emergently*, and don't duplicate a spine already running.
-fn pick_spine(director: &mut Director, cfg: &DirectorConfig, taken: &[Register], force_trunk: bool) -> Register {
+fn pick_spine(
+    director: &mut Director,
+    cfg: &DirectorConfig,
+    taken: &[Register],
+    force_trunk: bool,
+) -> Register {
     if force_trunk {
         return Register::Betrayal;
     }
@@ -655,13 +727,21 @@ fn pick_spine(director: &mut Director, cfg: &DirectorConfig, taken: &[Register],
 }
 
 /// Pin a thread's counterpart — the figure its arc will groom then reverse — by spine.
-fn pick_other(spine: Register, proto: Entity, cands: &[Cand], cfg: &DirectorConfig) -> Option<Entity> {
+fn pick_other(
+    spine: Register,
+    proto: Entity,
+    cands: &[Cand],
+    cfg: &DirectorConfig,
+) -> Option<Entity> {
     let warmest = || {
         cands
             .iter()
             .filter(|c| c.e != proto && c.op_of_proto > cfg.foe_threshold)
             .max_by(|a, b| {
-                (a.sociability + a.op_of_proto).partial_cmp(&(b.sociability + b.op_of_proto)).unwrap().then(a.e.cmp(&b.e))
+                (a.sociability + a.op_of_proto)
+                    .partial_cmp(&(b.sociability + b.op_of_proto))
+                    .unwrap()
+                    .then(a.e.cmp(&b.e))
             })
             .map(|c| c.e)
     };
@@ -669,18 +749,32 @@ fn pick_other(spine: Register, proto: Entity, cands: &[Cand], cfg: &DirectorConf
         cands
             .iter()
             .filter(|c| c.e != proto)
-            .min_by(|a, b| a.op_of_proto.partial_cmp(&b.op_of_proto).unwrap().then(a.e.cmp(&b.e)))
+            .min_by(|a, b| {
+                a.op_of_proto
+                    .partial_cmp(&b.op_of_proto)
+                    .unwrap()
+                    .then(a.e.cmp(&b.e))
+            })
             .map(|c| c.e)
     };
     let ambitious = || {
         cands
             .iter()
             .filter(|c| c.e != proto)
-            .max_by(|a, b| a.ambition.partial_cmp(&b.ambition).unwrap().then(a.e.cmp(&b.e)))
+            .max_by(|a, b| {
+                a.ambition
+                    .partial_cmp(&b.ambition)
+                    .unwrap()
+                    .then(a.e.cmp(&b.e))
+            })
             .map(|c| c.e)
     };
     let pious = || {
-        cands.iter().filter(|c| c.e != proto).max_by(|a, b| a.piety.partial_cmp(&b.piety).unwrap().then(a.e.cmp(&b.e))).map(|c| c.e)
+        cands
+            .iter()
+            .filter(|c| c.e != proto)
+            .max_by(|a, b| a.piety.partial_cmp(&b.piety).unwrap().then(a.e.cmp(&b.e)))
+            .map(|c| c.e)
     };
     match spine.def().casting {
         Casting::Warmest => warmest(),
@@ -739,8 +833,12 @@ pub(crate) fn director_step(
     // director picks a protagonist or a thread's lead, so the spotlight gathers near the player.
     let width = substrate.0.topology().width();
     let reach = cfg.reach;
-    let avatar_pos: Option<Coord> =
-        cast.player.as_ref().and_then(|p| p.avatar()).and_then(|a| cast.positions.get(a).ok()).map(|p| p.0);
+    let avatar_pos: Option<Coord> = cast
+        .player
+        .as_ref()
+        .and_then(|p| p.avatar())
+        .and_then(|a| cast.positions.get(a).ok())
+        .map(|p| p.0);
     let draw = |c: Coord| match avatar_pos {
         Some(ap) if hex_dist(ap, c, width) <= reach => AVATAR_DRAW,
         _ => 0.0,
@@ -752,8 +850,10 @@ pub(crate) fn director_step(
     let pie = reg.trait_id("piety");
     // Per-soul Bond/Detained, for the Cand fields the `Bonded`/`Bound` preconditions read
     // (empty until a Bond/Bind beat creates a component — so off-by-default is byte-identical).
-    let bond_det: HashMap<Entity, (Option<Entity>, bool)> =
-        bonds.iter().map(|(e, b, d)| (e, (b.map(|x| x.0), d.is_some()))).collect();
+    let bond_det: HashMap<Entity, (Option<Entity>, bool)> = bonds
+        .iter()
+        .map(|(e, b, d)| (e, (b.map(|x| x.0), d.is_some())))
+        .collect();
     let mut alive: HashSet<Entity> = HashSet::new();
     let mut cands: Vec<Cand> = Vec::new();
     {
@@ -796,9 +896,18 @@ pub(crate) fn director_step(
     director.gratuitous_now += deaths as f32 * cfg.grief_per_death;
     director.active.retain(|w| w.expires > tick);
     let cool = cfg.novelty_cool;
-    director.id_heat.values_mut().for_each(|h| *h = (*h - cool).max(0.0));
-    director.tag_heat.values_mut().for_each(|h| *h = (*h - cool).max(0.0));
-    director.reg_heat.values_mut().for_each(|h| *h = (*h - cool).max(0.0));
+    director
+        .id_heat
+        .values_mut()
+        .for_each(|h| *h = (*h - cool).max(0.0));
+    director
+        .tag_heat
+        .values_mut()
+        .for_each(|h| *h = (*h - cool).max(0.0));
+    director
+        .reg_heat
+        .values_mut()
+        .for_each(|h| *h = (*h - cool).max(0.0));
 
     // The story must go on: if the protagonist has died, promote the most *prominent*
     // soul left (the audience's standing investment — not merely the most ambitious),
@@ -837,7 +946,13 @@ pub(crate) fn director_step(
             let near = cands
                 .iter()
                 .filter(|c| hex_dist(ap, c.pos, width) <= reach)
-                .max_by(|a, b| director.prominence_of(a.e).partial_cmp(&director.prominence_of(b.e)).unwrap().then(a.e.cmp(&b.e)))
+                .max_by(|a, b| {
+                    director
+                        .prominence_of(a.e)
+                        .partial_cmp(&director.prominence_of(b.e))
+                        .unwrap()
+                        .then(a.e.cmp(&b.e))
+                })
                 .map(|c| c.e);
             match near {
                 Some(n) if n != proto => {
@@ -862,11 +977,20 @@ pub(crate) fn director_step(
     let throne_holder = stage.throne.as_ref().and_then(|t| t.holder);
 
     // --- Ambient tension readout (inspection only; the objective is drama, not this).
-    let grudges_at_proto = cands.iter().filter(|c| c.grudge_target == Some(proto)).count() as f32;
-    let cold = cands.iter().filter(|c| c.op_of_proto < cfg.foe_threshold).count() as f32;
-    let at_war = proto_seats.iter().any(|s| stage.factions.at(*s).is_some_and(|f| !f.at_war.is_empty()));
+    let grudges_at_proto = cands
+        .iter()
+        .filter(|c| c.grudge_target == Some(proto))
+        .count() as f32;
+    let cold = cands
+        .iter()
+        .filter(|c| c.op_of_proto < cfg.foe_threshold)
+        .count() as f32;
+    let at_war = proto_seats
+        .iter()
+        .any(|s| stage.factions.at(*s).is_some_and(|f| !f.at_war.is_empty()));
     let peril = if cands[pi].need < cfg.peril { 1.0 } else { 0.0 };
-    let heat = grudges_at_proto + 0.5 * cold + if at_war { 2.0 } else { 0.0 } + peril + deaths as f32;
+    let heat =
+        grudges_at_proto + 0.5 * cold + if at_war { 2.0 } else { 0.0 } + peril + deaths as f32;
     director.tension += cfg.tension_smoothing * (heat - director.tension);
     director.tension_now = director.tension;
 
@@ -921,7 +1045,9 @@ pub(crate) fn director_step(
 
     // --- Maintain the threads: drop spent ones, spawn up to the cap (the first anchored
     // on the protagonist), and choose which to advance this beat (round-robin → staggered).
-    director.threads.retain(|t| t.lead == proto || alive.contains(&t.lead));
+    director
+        .threads
+        .retain(|t| t.lead == proto || alive.contains(&t.lead));
     while director.threads.len() < cfg.max_threads {
         let taken: Vec<Register> = director.threads.iter().map(|t| t.spine).collect();
         let force_trunk = director.threads.is_empty();
@@ -956,10 +1082,19 @@ pub(crate) fn director_step(
             && let Some((reg_c, cast_c, _)) = sift_threads
                 .iter()
                 .filter(|(_, cast, _)| cast.contains(&lead))
-                .max_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal).then(a.1.cmp(&b.1)))
-        {
-            let other_c = cast_c.iter().copied().find(|&e| e != lead && idx_of.contains_key(&e) && alive.contains(&e));
-            (*reg_c, other_c.or_else(|| pick_other(*reg_c, lead, &cands, &cfg)))
+                .max_by(|a, b| {
+                    a.2.partial_cmp(&b.2)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                        .then(a.1.cmp(&b.1))
+                }) {
+            let other_c = cast_c
+                .iter()
+                .copied()
+                .find(|&e| e != lead && idx_of.contains_key(&e) && alive.contains(&e));
+            (
+                *reg_c,
+                other_c.or_else(|| pick_other(*reg_c, lead, &cands, &cfg)),
+            )
         } else {
             (spine, pick_other(spine, lead, &cands, &cfg))
         };
@@ -995,7 +1130,9 @@ pub(crate) fn director_step(
             || director.threads.iter().enumerate().any(|(i, t)| {
                 i != active_ix
                     && t.phase == Phase::Climax
-                    && idx_of.get(&t.lead).is_some_and(|&j| moods.high(&cands[j].moods) > 0.3)
+                    && idx_of
+                        .get(&t.lead)
+                        .is_some_and(|&j| moods.high(&cands[j].moods) > 0.3)
             }));
     let collide_roll = director.rng.next_f64() as f32;
     let collision = near_peak && collide_roll < cfg.collision_chance;
@@ -1005,16 +1142,36 @@ pub(crate) fn director_step(
         let topo = substrate.0.topology();
         region(topo, proto_pos, cfg.reach)
     };
-    let marvel_nearby =
-        region_tiles.iter().any(|&i| stage.features.at_index(i).iter().any(|f| f.discovered && !f.defiled));
-    let ctx = PreCtx { proto, throne_holder, proto_in_faction, at_war, region: &region_set, marvel_nearby };
+    let marvel_nearby = region_tiles.iter().any(|&i| {
+        stage
+            .features
+            .at_index(i)
+            .iter()
+            .any(|f| f.discovered && !f.defiled)
+    });
+    let ctx = PreCtx {
+        proto,
+        throne_holder,
+        proto_in_faction,
+        at_war,
+        region: &region_set,
+        marvel_nearby,
+    };
 
     // --- Score every *tellable* beat by drama × novelty ÷ resistance, biased toward the
     // active thread's phase and spine, and track the most *impactful* the world supports.
     let mut scored: Vec<(f32, usize, [Option<Entity>; SLOTS])> = Vec::new();
     let mut max_impact = 0.0f32;
     for (bi, beat) in book.0.iter().enumerate() {
-        let Some((slots, salience)) = cast_beat(beat, proto, &cands, &stage.factions, &proto_seats, &cfg, active.other) else {
+        let Some((slots, salience)) = cast_beat(
+            beat,
+            proto,
+            &cands,
+            &stage.factions,
+            &proto_seats,
+            &cfg,
+            active.other,
+        ) else {
             continue;
         };
         if !pre_ok(beat, &slots, &cands, &idx_of, &reg, &ctx) {
@@ -1024,14 +1181,27 @@ pub(crate) fn director_step(
         let lead_p = director.prominence_of(proto);
         let mut other_sum = 0.0;
         let mut other_n = 0.0;
-        for s in slots.iter().enumerate().filter(|(i, _)| *i != Role::Protagonist.slot()).filter_map(|(_, s)| *s) {
+        for s in slots
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| *i != Role::Protagonist.slot())
+            .filter_map(|(_, s)| *s)
+        {
             other_sum += director.prominence_of(s);
             other_n += 1.0;
         }
-        let other_p = if other_n > 0.0 { other_sum / other_n } else { 0.0 };
+        let other_p = if other_n > 0.0 {
+            other_sum / other_n
+        } else {
+            0.0
+        };
         let attachment = 1.0 + (lead_p + 0.5 * other_p) / cfg.prom_scale;
         // reversal — contrast with the protagonist's current feeling (times climaxes onto highs).
-        let reversal = if beat.tension >= 0.0 { 1.0 + proto_high } else { 1.0 + proto_low };
+        let reversal = if beat.tension >= 0.0 {
+            1.0 + proto_high
+        } else {
+            1.0 + proto_low
+        };
         let drama = beat.stakes.max(0.0) * attachment * reversal;
         // impact (drama realised through this cast) gates the floor; salience is the
         // inverse of resistance.
@@ -1053,10 +1223,25 @@ pub(crate) fn director_step(
         } else {
             1.0
         };
-        let trunk_bias = if beat.register.is_trunk() { cfg.trunk_bonus } else { 1.0 };
-        let collide_bias = if collision && beat.phases.contains(&Phase::Climax) { cfg.collision_bonus } else { 1.0 };
+        let trunk_bias = if beat.register.is_trunk() {
+            cfg.trunk_bonus
+        } else {
+            1.0
+        };
+        let collide_bias = if collision && beat.phases.contains(&Phase::Climax) {
+            cfg.collision_bonus
+        } else {
+            1.0
+        };
         // score = drama × novelty ÷ resistance, with the thread/rotation biases.
-        let mut score = beat.weight * drama * salience * novelty * phase_bias * spine_bias * trunk_bias * collide_bias;
+        let mut score = beat.weight
+            * drama
+            * salience
+            * novelty
+            * phase_bias
+            * spine_bias
+            * trunk_bias
+            * collide_bias;
         // The graft's trajectory bias (S5): a beat whose cast rides a live forming story is likelier
         // to be told — layered atop the snapshot `salience`. Branch-gated, so an ungrafted run never
         // multiplies by a computed value (byte-identical); RNG-free, so the draw stream is unchanged.
@@ -1092,9 +1277,18 @@ pub(crate) fn director_step(
 
     // Hard novelty floor: never tell a beat from the last two tellings while an
     // alternative exists — so the story keeps moving even as the palette narrows.
-    let recent: HashSet<&str> = director.cadence.iter().rev().take(2).map(|c| c.beat.as_str()).collect();
-    let fresh: Vec<(f32, usize, [Option<Entity>; SLOTS])> =
-        scored.iter().copied().filter(|(_, bi, _)| !recent.contains(book.0[*bi].id.as_str())).collect();
+    let recent: HashSet<&str> = director
+        .cadence
+        .iter()
+        .rev()
+        .take(2)
+        .map(|c| c.beat.as_str())
+        .collect();
+    let fresh: Vec<(f32, usize, [Option<Entity>; SLOTS])> = scored
+        .iter()
+        .copied()
+        .filter(|(_, bi, _)| !recent.contains(book.0[*bi].id.as_str()))
+        .collect();
     let mut scored = if fresh.is_empty() { scored } else { fresh };
 
     // Sample among the best few (deterministic via the director's own RNG).
@@ -1120,7 +1314,8 @@ pub(crate) fn director_step(
     let mut brightness = 0.0f32;
     // `rapture` is bright (the cult's staged ecstasy); `despair`/`dread`/`guilt`/`longing`
     // fall through as authored anguish, which is what the director should be charged for.
-    let bright_mood = |name: &str| matches!(name, "joy" | "calm" | "hope" | "love" | "awe" | "rapture");
+    let bright_mood =
+        |name: &str| matches!(name, "joy" | "calm" | "hope" | "love" | "awe" | "rapture");
 
     for effect in &beat.effects {
         match effect {
@@ -1131,20 +1326,37 @@ pub(crate) fn director_step(
                     commands.entity(w).insert(Grievance(a));
                     suffering += 2.0;
                     if let Some(c) = sinks.chronicle.as_deref_mut() {
-                        c.record(tick, EpisodeKind::GrievanceFormed, [Some(w), Some(a), None], proto_pos, None, 0);
+                        c.record(
+                            tick,
+                            EpisodeKind::GrievanceFormed,
+                            [Some(w), Some(a), None],
+                            proto_pos,
+                            None,
+                            0,
+                        );
                     }
                 }
             }
-            Effect::Sway { who, trait_name, delta } => {
+            Effect::Sway {
+                who,
+                trait_name,
+                delta,
+            } => {
                 if let Some(w) = role_entity(*who)
                     && let Some(tid) = reg.trait_id(trait_name)
                     && let Ok((.., mut pers, _, _, _, _, _)) = people.get_mut(w)
                     && let Some(v) = pers.0.get_mut(tid)
                 {
                     *v = (*v + delta).clamp(0.0, 1.0);
-                    if matches!(trait_name.as_str(), "vengeance" | "greed" | "ambition") && *delta > 0.0 {
+                    if matches!(trait_name.as_str(), "vengeance" | "greed" | "ambition")
+                        && *delta > 0.0
+                    {
                         suffering += delta * 2.0;
-                    } else if matches!(trait_name.as_str(), "forgiveness" | "contentment" | "sociability") && *delta > 0.0 {
+                    } else if matches!(
+                        trait_name.as_str(),
+                        "forgiveness" | "contentment" | "sociability"
+                    ) && *delta > 0.0
+                    {
                         brightness += delta;
                     }
                 }
@@ -1187,7 +1399,14 @@ pub(crate) fn director_step(
                             0
                         };
                         if dir != 0 {
-                            c.record(tick, EpisodeKind::OpinionCrossed, [Some(w), Some(tw), None], proto_pos, None, dir);
+                            c.record(
+                                tick,
+                                EpisodeKind::OpinionCrossed,
+                                [Some(w), Some(tw), None],
+                                proto_pos,
+                                None,
+                                dir,
+                            );
                         }
                     }
                 }
@@ -1206,7 +1425,11 @@ pub(crate) fn director_step(
             Effect::Decree => {
                 if let Some(p) = reg.predicate_id("alive") {
                     let law = Law::Taboo(p, 0);
-                    if let Some(f) = stage.factions.0.iter_mut().find(|f| proto_seats.contains(&f.seat))
+                    if let Some(f) = stage
+                        .factions
+                        .0
+                        .iter_mut()
+                        .find(|f| proto_seats.contains(&f.seat))
                         && !f.forbids((p, 0))
                     {
                         f.laws.push(law);
@@ -1215,7 +1438,10 @@ pub(crate) fn director_step(
                 }
             }
             Effect::War => {
-                let mine = proto_seats.iter().find(|s| stage.factions.at(**s).is_some()).copied();
+                let mine = proto_seats
+                    .iter()
+                    .find(|s| stage.factions.at(**s).is_some())
+                    .copied();
                 if let Some(mine) = mine {
                     let rival = stage.factions.0.iter().map(|f| f.seat).find(|s| *s != mine);
                     if let Some(rival) = rival {
@@ -1257,7 +1483,9 @@ pub(crate) fn director_step(
                 // reach (a real fact entered into the world), and fill the cast with awe.
                 for &i in &region_tiles {
                     if stage.features.at_index(i).iter().any(|f| !f.discovered) {
-                        stage.features.discover_at_index(&stage.catalog, i, Discovery::Secret);
+                        stage
+                            .features
+                            .discover_at_index(&stage.catalog, i, Discovery::Secret);
                         break;
                     }
                 }
@@ -1289,7 +1517,9 @@ pub(crate) fn director_step(
                 {
                     let a = *amount as f32;
                     match need {
-                        crate::features::NeedKind::Sustenance => needs.sustenance = (needs.sustenance + a).min(100.0),
+                        crate::features::NeedKind::Sustenance => {
+                            needs.sustenance = (needs.sustenance + a).min(100.0)
+                        }
                         crate::features::NeedKind::Rest => needs.rest = (needs.rest + a).min(100.0),
                     }
                     brightness += (a / 100.0).clamp(0.0, 0.5);
@@ -1310,7 +1540,14 @@ pub(crate) fn director_step(
                     }
                     suffering += 5.0;
                     if let Some(c) = sinks.chronicle.as_deref_mut() {
-                        c.record(tick, EpisodeKind::Killed, [role_entity(*by), Some(w), None], proto_pos, None, 0);
+                        c.record(
+                            tick,
+                            EpisodeKind::Killed,
+                            [role_entity(*by), Some(w), None],
+                            proto_pos,
+                            None,
+                            0,
+                        );
                     }
                 }
             }
@@ -1402,8 +1639,11 @@ pub(crate) fn director_step(
 
     // The wake: people in the protagonist's locale (and the cast) whose deaths in the
     // beat's shadow will be charged to the director.
-    let mut watched: HashSet<Entity> =
-        cands.iter().filter(|c| region_set.contains(&c.pos_index)).map(|c| c.e).collect();
+    let mut watched: HashSet<Entity> = cands
+        .iter()
+        .filter(|c| region_set.contains(&c.pos_index))
+        .map(|c| c.e)
+        .collect();
     for s in slots.into_iter().flatten() {
         watched.insert(s);
     }
@@ -1413,8 +1653,11 @@ pub(crate) fn director_step(
     // firsthand (fidelity 1.0) and it can begin to spread. A no-op when the gossip layer is absent.
     let event_id = director.next_event;
     director.next_event += 1;
-    let gossip_other =
-        slots.iter().enumerate().find(|(i, s)| *i != Role::Protagonist.slot() && s.is_some()).and_then(|(_, s)| *s);
+    let gossip_other = slots
+        .iter()
+        .enumerate()
+        .find(|(i, s)| *i != Role::Protagonist.slot() && s.is_some())
+        .and_then(|(_, s)| *s);
     if let Some(g) = sinks.gossip.as_deref_mut() {
         let r = crate::gossip::Rumor {
             event_id,
@@ -1429,7 +1672,10 @@ pub(crate) fn director_step(
         }
     }
 
-    director.active.push(Wake { expires: tick + cfg.wake_ttl, watched });
+    director.active.push(Wake {
+        expires: tick + cfg.wake_ttl,
+        watched,
+    });
 
     // --- Advance the active thread along its groom → climax → fall arc, and perpetuate
     // the trunk: a betrayal/loss thread's fall seeds the vengeance that becomes the next.
@@ -1465,7 +1711,8 @@ pub(crate) fn director_step(
             let id = director.next_thread;
             director.next_thread += 1;
             let other = pick_other(Register::Vengeance, proto, &cands, &cfg);
-            let ripeness = cfg.ripeness_base * (1.0 + director.prominence_of(proto) / cfg.prom_scale);
+            let ripeness =
+                cfg.ripeness_base * (1.0 + director.prominence_of(proto) / cfg.prom_scale);
             director.threads.push(Thread {
                 id,
                 spine: Register::Vengeance,
@@ -1482,7 +1729,9 @@ pub(crate) fn director_step(
     }
 
     // Record the telling and its legible cadence; heat the novelty counters; bank the cost.
-    let staged_now = suffering * cfg.anguish_scale + brightness * cfg.bright_weight + deaths as f32 * cfg.grief_per_death;
+    let staged_now = suffering * cfg.anguish_scale
+        + brightness * cfg.bright_weight
+        + deaths as f32 * cfg.grief_per_death;
     director.gratuitous_now += suffering * cfg.anguish_scale;
     director.gratuitous_total += director.gratuitous_now as f64;
     director.staged_total += staged_now as f64;
@@ -1499,9 +1748,23 @@ pub(crate) fn director_step(
     });
     // Record it as gossip material — a short append-only ring; perturbs no decision. Reuses the
     // `event_id`/`gossip_other` computed for the rumour seed above, so the log and the rumour agree.
-    director.events.push(BeatEvent { id: event_id, tick, register: beat.register, place: proto_pos, lead: proto, other: gossip_other });
+    director.events.push(BeatEvent {
+        id: event_id,
+        tick,
+        register: beat.register,
+        place: proto_pos,
+        lead: proto,
+        other: gossip_other,
+    });
     if let Some(c) = sinks.chronicle.as_deref_mut() {
-        c.record(tick, EpisodeKind::BeatFired, [Some(proto), gossip_other, None], proto_pos, Some(beat.register), 0);
+        c.record(
+            tick,
+            EpisodeKind::BeatFired,
+            [Some(proto), gossip_other, None],
+            proto_pos,
+            Some(beat.register),
+            0,
+        );
     }
     const EVENT_CAP: usize = 16;
     if director.events.len() > EVENT_CAP {

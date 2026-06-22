@@ -345,20 +345,34 @@ impl Biome {
             }
             BorealDesert | BorealDryScrub | BorealMoistForest | BorealWetForest
             | BorealRainForest => Belt::Boreal,
-            CoolTemperateDesert | CoolTemperateDesertScrub | CoolTemperateSteppe
-            | CoolTemperateMoistForest | CoolTemperateWetForest | CoolTemperateRainForest => {
-                Belt::CoolTemperate
-            }
-            WarmTemperateDesert | WarmTemperateDesertScrub | WarmTemperateThornScrub
-            | WarmTemperateDryForest | WarmTemperateMoistForest | WarmTemperateWetForest
+            CoolTemperateDesert
+            | CoolTemperateDesertScrub
+            | CoolTemperateSteppe
+            | CoolTemperateMoistForest
+            | CoolTemperateWetForest
+            | CoolTemperateRainForest => Belt::CoolTemperate,
+            WarmTemperateDesert
+            | WarmTemperateDesertScrub
+            | WarmTemperateThornScrub
+            | WarmTemperateDryForest
+            | WarmTemperateMoistForest
+            | WarmTemperateWetForest
             | WarmTemperateRainForest => Belt::WarmTemperate,
-            SubtropicalDesert | SubtropicalDesertScrub | SubtropicalThornWoodland
-            | SubtropicalDryForest | SubtropicalMoistForest | SubtropicalWetForest
+            SubtropicalDesert
+            | SubtropicalDesertScrub
+            | SubtropicalThornWoodland
+            | SubtropicalDryForest
+            | SubtropicalMoistForest
+            | SubtropicalWetForest
             | SubtropicalRainForest => Belt::Subtropical,
-            TropicalDesert | TropicalDesertScrub | TropicalThornWoodland | TropicalVeryDryForest
-            | TropicalDryForest | TropicalMoistForest | TropicalWetForest | TropicalRainForest => {
-                Belt::Tropical
-            }
+            TropicalDesert
+            | TropicalDesertScrub
+            | TropicalThornWoodland
+            | TropicalVeryDryForest
+            | TropicalDryForest
+            | TropicalMoistForest
+            | TropicalWetForest
+            | TropicalRainForest => Belt::Tropical,
         })
     }
 
@@ -379,20 +393,37 @@ impl Biome {
                 Formation::Desert
             }
             // Scrub, thorn and dry-shrub zones.
-            BorealDryScrub | CoolTemperateDesertScrub | WarmTemperateDesertScrub
-            | WarmTemperateThornScrub | SubtropicalDesertScrub | SubtropicalThornWoodland
-            | TropicalDesertScrub | TropicalThornWoodland => Formation::Shrubland,
+            BorealDryScrub
+            | CoolTemperateDesertScrub
+            | WarmTemperateDesertScrub
+            | WarmTemperateThornScrub
+            | SubtropicalDesertScrub
+            | SubtropicalThornWoodland
+            | TropicalDesertScrub
+            | TropicalThornWoodland => Formation::Shrubland,
             // Open grassy steppe.
             CoolTemperateSteppe => Formation::Grassland,
             // Closed forest.
-            BorealMoistForest | BorealWetForest | CoolTemperateMoistForest
-            | CoolTemperateWetForest | WarmTemperateDryForest | WarmTemperateMoistForest
-            | SubtropicalDryForest | SubtropicalMoistForest | TropicalVeryDryForest
-            | TropicalDryForest | TropicalMoistForest => Formation::Forest,
+            BorealMoistForest
+            | BorealWetForest
+            | CoolTemperateMoistForest
+            | CoolTemperateWetForest
+            | WarmTemperateDryForest
+            | WarmTemperateMoistForest
+            | SubtropicalDryForest
+            | SubtropicalMoistForest
+            | TropicalVeryDryForest
+            | TropicalDryForest
+            | TropicalMoistForest => Formation::Forest,
             // The lushest, wettest canopies.
-            BorealRainForest | CoolTemperateRainForest | WarmTemperateWetForest
-            | WarmTemperateRainForest | SubtropicalWetForest | SubtropicalRainForest
-            | TropicalWetForest | TropicalRainForest => Formation::Rainforest,
+            BorealRainForest
+            | CoolTemperateRainForest
+            | WarmTemperateWetForest
+            | WarmTemperateRainForest
+            | SubtropicalWetForest
+            | SubtropicalRainForest
+            | TropicalWetForest
+            | TropicalRainForest => Formation::Rainforest,
         }
     }
 

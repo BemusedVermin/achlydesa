@@ -275,7 +275,11 @@ pub struct RpgData {
 }
 
 fn index<'a>(names: impl IntoIterator<Item = &'a String>) -> HashMap<String, usize> {
-    names.into_iter().enumerate().map(|(i, n)| (n.clone(), i)).collect()
+    names
+        .into_iter()
+        .enumerate()
+        .map(|(i, n)| (n.clone(), i))
+        .collect()
 }
 
 impl RpgData {
@@ -293,16 +297,33 @@ impl RpgData {
         Self::resolve(attrs, skills, foci, edges)
     }
 
-    fn resolve(attrs: Vec<AttrDef>, skills: Vec<SkillInfo>, foci: Vec<Focus>, edges: Vec<Edge>) -> Result<Self, LoadError> {
+    fn resolve(
+        attrs: Vec<AttrDef>,
+        skills: Vec<SkillInfo>,
+        foci: Vec<Focus>,
+        edges: Vec<Edge>,
+    ) -> Result<Self, LoadError> {
         if attrs.len() != ATTR_COUNT {
-            return Err(LoadError::Attributes(format!("expected {ATTR_COUNT} attributes, got {}", attrs.len())));
+            return Err(LoadError::Attributes(format!(
+                "expected {ATTR_COUNT} attributes, got {}",
+                attrs.len()
+            )));
         }
         let attr_names: Vec<String> = attrs.into_iter().map(|a| a.name).collect();
         let attr_ids = index(&attr_names);
         let skill_ids = index(skills.iter().map(|s| &s.name));
         let focus_ids = index(foci.iter().map(|f| &f.name));
         let edge_ids = index(edges.iter().map(|e| &e.name));
-        let data = Self { attr_names, attr_ids, skills, skill_ids, foci, focus_ids, edges, edge_ids };
+        let data = Self {
+            attr_names,
+            attr_ids,
+            skills,
+            skill_ids,
+            foci,
+            focus_ids,
+            edges,
+            edge_ids,
+        };
         data.validate()?;
         Ok(data)
     }
@@ -316,7 +337,8 @@ impl RpgData {
                 Grant::Focus { focus, .. } => self.focus_ids.contains_key(focus),
                 Grant::Flag(_) | Grant::PowerTier(_) => true,
             };
-            ok.then_some(()).ok_or_else(|| LoadError::UnknownRef(format!("{g:?}")))
+            ok.then_some(())
+                .ok_or_else(|| LoadError::UnknownRef(format!("{g:?}")))
         };
         for f in &self.foci {
             for lvl in &f.levels {
@@ -382,7 +404,8 @@ impl RpgData {
             match g {
                 Grant::SkillRank { skill, by } => {
                     if let Some(&id) = self.skill_ids.get(skill) {
-                        out.proficiencies.ranks[id] = (out.proficiencies.ranks[id] + by).clamp(PROF_UNSKILLED, PROF_MAX);
+                        out.proficiencies.ranks[id] =
+                            (out.proficiencies.ranks[id] + by).clamp(PROF_UNSKILLED, PROF_MAX);
                     }
                 }
                 Grant::AttrBonus { attr, by } => {
@@ -434,8 +457,12 @@ pub fn roll(rng: &mut dyn Rng, data: &RpgData) -> Rolled {
     }
     let mut out = Rolled {
         abilities: Abilities { scores },
-        proficiencies: Proficiencies { ranks: vec![PROF_UNSKILLED; data.skills.len()] },
-        foci: FociHeld { levels: vec![0; data.foci.len()] },
+        proficiencies: Proficiencies {
+            ranks: vec![PROF_UNSKILLED; data.skills.len()],
+        },
+        foci: FociHeld {
+            levels: vec![0; data.foci.len()],
+        },
         flags: Flags::default(),
         power: PowerTier(0),
         edge: None,
@@ -448,7 +475,8 @@ pub fn roll(rng: &mut dyn Rng, data: &RpgData) -> Rolled {
     for _ in 0..2 {
         if !data.skills.is_empty() {
             let s = rng.gen_range(data.skills.len());
-            out.proficiencies.ranks[s] = (out.proficiencies.ranks[s] + 1).clamp(PROF_UNSKILLED, PROF_MAX);
+            out.proficiencies.ranks[s] =
+                (out.proficiencies.ranks[s] + 1).clamp(PROF_UNSKILLED, PROF_MAX);
         }
     }
     out
@@ -513,19 +541,46 @@ mod tests {
         // With the DICE_TAKE baseline, the authored WWN ladder reads as the tabletop's:
         // an unskilled everyman clears EASY but not NORMAL, the competent clear NORMAL, and
         // FORMIDABLE wants a specialist.
-        assert!(check(0, 0, 0, EASY).succeeded(), "an everyman manages an easy task");
-        assert!(matches!(check(0, 0, 0, NORMAL), CheckOutcome::Fail(-1)), "but not a normal one");
-        assert!(check(1, 0, 0, NORMAL).succeeded(), "a competent hand clears NORMAL");
-        assert!(matches!(check(2, 3, 0, NORMAL), CheckOutcome::Strong(4)), "a specialist aces it");
-        assert!(matches!(check(0, 0, 1, NORMAL), CheckOutcome::Pass(0)), "margin 0 meets the difficulty");
-        assert!(!check(2, 2, 0, FORMIDABLE).succeeded(), "the merely-good still fail the formidable");
-        assert!(check(2, 4, 0, FORMIDABLE).succeeded(), "the specialist clears the formidable");
+        assert!(
+            check(0, 0, 0, EASY).succeeded(),
+            "an everyman manages an easy task"
+        );
+        assert!(
+            matches!(check(0, 0, 0, NORMAL), CheckOutcome::Fail(-1)),
+            "but not a normal one"
+        );
+        assert!(
+            check(1, 0, 0, NORMAL).succeeded(),
+            "a competent hand clears NORMAL"
+        );
+        assert!(
+            matches!(check(2, 3, 0, NORMAL), CheckOutcome::Strong(4)),
+            "a specialist aces it"
+        );
+        assert!(
+            matches!(check(0, 0, 1, NORMAL), CheckOutcome::Pass(0)),
+            "margin 0 meets the difficulty"
+        );
+        assert!(
+            !check(2, 2, 0, FORMIDABLE).succeeded(),
+            "the merely-good still fail the formidable"
+        );
+        assert!(
+            check(2, 4, 0, FORMIDABLE).succeeded(),
+            "the specialist clears the formidable"
+        );
     }
 
     #[test]
     fn saves_take_the_better_of_two() {
-        let a = Abilities { scores: [18, 8, 8, 8, 8, 8] };
-        assert_eq!(a.save(Save::Physical), SAVE_BASE - 2, "STR 18 → +2 defends Physical");
+        let a = Abilities {
+            scores: [18, 8, 8, 8, 8, 8],
+        };
+        assert_eq!(
+            a.save(Save::Physical),
+            SAVE_BASE - 2,
+            "STR 18 → +2 defends Physical"
+        );
         assert_eq!(a.save(Save::Mental), SAVE_BASE, "WIS/CHA 8 → +0");
     }
 

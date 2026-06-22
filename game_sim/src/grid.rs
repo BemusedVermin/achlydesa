@@ -170,7 +170,11 @@ impl Topology {
             let w = hex_world(n);
             let (dx, dy) = (w[0] - origin[0], w[1] - origin[1]);
             let len = (dx * dx + dy * dy).sqrt();
-            let dir = if len > 0.0 { [dx / len, dy / len] } else { [0.0, 0.0] };
+            let dir = if len > 0.0 {
+                [dx / len, dy / len]
+            } else {
+                [0.0, 0.0]
+            };
             out.push(Link { to, dir });
         }
         out
@@ -315,7 +319,10 @@ mod tests {
         // ...and the six of them cancel out (the star is symmetric).
         let sx: f32 = links.iter().map(|l| l.dir[0]).sum();
         let sy: f32 = links.iter().map(|l| l.dir[1]).sum();
-        assert!(sx.abs() < 1e-3 && sy.abs() < 1e-3, "directions should cancel");
+        assert!(
+            sx.abs() < 1e-3 && sy.abs() < 1e-3,
+            "directions should cancel"
+        );
     }
 
     #[test]

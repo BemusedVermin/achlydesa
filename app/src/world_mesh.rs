@@ -34,7 +34,11 @@ pub fn top_of(sim: &Simulation, c: Coord) -> f32 {
     let gw = sim.substrate();
     let sea = gw.params().sea_level;
     let elev = gw.elevation(c);
-    if Terrain::of(elev, sea) == Terrain::Ocean { 0.0 } else { land_height(elev - sea) }
+    if Terrain::of(elev, sea) == Terrain::Ocean {
+        0.0
+    } else {
+        land_height(elev - sea)
+    }
 }
 
 /// Build the merged mesh for a set of tiles (one chunk's worth), looking neighbour wall heights up
@@ -50,14 +54,20 @@ pub fn build_mesh(sim: &Simulation, coords: &[Coord], heights: &HashMap<(i32, i3
         let centre = tile_world(c.col, c.row);
         let (top, rgb) = if terrain == Terrain::Ocean {
             let depth01 = ((sea - elev) / DEPTH_SCALE).clamp(0.0, 1.0);
-            (0.0, palette::vary(palette::water_rgb(depth01), tile_seed(c.col, c.row, 0x5EE2)))
+            (
+                0.0,
+                palette::vary(palette::water_rgb(depth01), tile_seed(c.col, c.row, 0x5EE2)),
+            )
         } else {
             let fert = gw.carrying_capacity(c).clamp(0.0, 1.0);
             let lit = palette::snow_blend(
                 palette::ground_rgb(terrain, gw.biome(c).formation(), fert),
                 elev - sea,
             );
-            (land_height(elev - sea), palette::vary(lit, tile_seed(c.col, c.row, 0x5EED)))
+            (
+                land_height(elev - sea),
+                palette::vary(lit, tile_seed(c.col, c.row, 0x5EED)),
+            )
         };
         add_top(&mut b, centre, top, rgb);
         add_walls(&mut b, centre, top, rgb, heights);
@@ -78,7 +88,13 @@ fn add_top(b: &mut MeshBuf, centre: Vec2, top: f32, rgb: [f32; 3]) {
 
 /// Side walls, one per edge, dropping only as far as the exposed face needs: to the neighbour's
 /// height where there is one, to bedrock at the map's edge. Darkened for cheap relief shading.
-fn add_walls(b: &mut MeshBuf, centre: Vec2, top: f32, rgb: [f32; 3], height: &HashMap<(i32, i32), f32>) {
+fn add_walls(
+    b: &mut MeshBuf,
+    centre: Vec2,
+    top: f32,
+    rgb: [f32; 3],
+    height: &HashMap<(i32, i32), f32>,
+) {
     let side = palette::lerp([0.0, 0.0, 0.0], rgb, SIDE_SHADE);
     let cs = hex_corners(centre);
     for k in 0..6 {
@@ -86,12 +102,22 @@ fn add_walls(b: &mut MeshBuf, centre: Vec2, top: f32, rgb: [f32; 3], height: &Ha
         let nx = cs[(k + 1) % 6];
         // The neighbour across this edge sits two apothems out along the edge normal.
         let neighbour = centre + ((a + nx) * 0.5 - centre) * 2.0;
-        let floor = height.get(&qkey(neighbour)).copied().unwrap_or(BEDROCK).min(top);
+        let floor = height
+            .get(&qkey(neighbour))
+            .copied()
+            .unwrap_or(BEDROCK)
+            .min(top);
         if top - floor <= 1e-4 {
             continue; // this edge is buried against an equal-or-taller neighbour
         }
         // Wound so the face points outward (away from centre), or back-face culling hides it.
-        b.quad(Vec3::new(a.x, top, a.y), Vec3::new(nx.x, top, nx.y), Vec3::new(nx.x, floor, nx.y), Vec3::new(a.x, floor, a.y), side);
+        b.quad(
+            Vec3::new(a.x, top, a.y),
+            Vec3::new(nx.x, top, nx.y),
+            Vec3::new(nx.x, floor, nx.y),
+            Vec3::new(a.x, floor, a.y),
+            side,
+        );
     }
 }
 
@@ -111,7 +137,10 @@ mod tests {
             let c = (verts[0] + verts[1] + verts[2]) / 3.0;
             if n.y.abs() < 0.5 {
                 // A side wall: its horizontal normal must point away from the centre (origin).
-                assert!(Vec2::new(n.x, n.z).dot(Vec2::new(c.x, c.z)) > 0.0, "wall faces inward: n={n:?}");
+                assert!(
+                    Vec2::new(n.x, n.z).dot(Vec2::new(c.x, c.z)) > 0.0,
+                    "wall faces inward: n={n:?}"
+                );
                 walls += 1;
             } else {
                 assert!(n.y > 0.0, "top face must point up, got {n:?}");

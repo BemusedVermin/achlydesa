@@ -21,7 +21,9 @@ pub struct Rng {
 
 impl Rng {
     pub fn new(seed: u64) -> Self {
-        Self { state: seed ^ 0x2545_F491_4F6C_DD1D }
+        Self {
+            state: seed ^ 0x2545_F491_4F6C_DD1D,
+        }
     }
     fn next_u64(&mut self) -> u64 {
         self.state = self.state.wrapping_add(0x9E37_79B9_7F4A_7C15);
@@ -39,7 +41,11 @@ impl Rng {
     }
     /// Uniform integer in `0..n`.
     pub fn int(&mut self, n: u32) -> u32 {
-        if n == 0 { 0 } else { (self.next_u64() % n as u64) as u32 }
+        if n == 0 {
+            0
+        } else {
+            (self.next_u64() % n as u64) as u32
+        }
     }
     pub fn chance(&mut self, p: f32) -> bool {
         self.unit() < p
@@ -66,7 +72,15 @@ fn basis(dir: Vec3) -> (Vec3, Vec3) {
 }
 
 /// A tapered n-gon prism (a limb / trunk) from `p0` (radius `r0`) to `p1` (radius `r1`).
-pub fn prism(buf: &mut MeshBuf, p0: Vec3, p1: Vec3, r0: f32, r1: f32, sides: usize, color: [f32; 3]) {
+pub fn prism(
+    buf: &mut MeshBuf,
+    p0: Vec3,
+    p1: Vec3,
+    r0: f32,
+    r1: f32,
+    sides: usize,
+    color: [f32; 3],
+) {
     let axis = (p1 - p0).normalize_or_zero();
     let (u, v) = basis(axis);
     let ring = |c: Vec3, r: f32| -> Vec<Vec3> {
@@ -85,7 +99,15 @@ pub fn prism(buf: &mut MeshBuf, p0: Vec3, p1: Vec3, r0: f32, r1: f32, sides: usi
 }
 
 /// A cone rising `height` from `base` along `dir`, base radius `radius`.
-pub fn cone(buf: &mut MeshBuf, base: Vec3, dir: Vec3, height: f32, radius: f32, sides: usize, color: [f32; 3]) {
+pub fn cone(
+    buf: &mut MeshBuf,
+    base: Vec3,
+    dir: Vec3,
+    height: f32,
+    radius: f32,
+    sides: usize,
+    color: [f32; 3],
+) {
     let (u, v) = basis(dir.normalize_or_zero());
     let apex = base + dir.normalize_or_zero() * height;
     let ring: Vec<Vec3> = (0..sides)
@@ -105,23 +127,55 @@ pub fn cone(buf: &mut MeshBuf, base: Vec3, dir: Vec3, height: f32, radius: f32, 
 fn ico() -> ([Vec3; 12], [[usize; 3]; 20]) {
     let t = (1.0 + 5f32.sqrt()) / 2.0;
     let v = [
-        Vec3::new(-1.0, t, 0.0), Vec3::new(1.0, t, 0.0), Vec3::new(-1.0, -t, 0.0), Vec3::new(1.0, -t, 0.0),
-        Vec3::new(0.0, -1.0, t), Vec3::new(0.0, 1.0, t), Vec3::new(0.0, -1.0, -t), Vec3::new(0.0, 1.0, -t),
-        Vec3::new(t, 0.0, -1.0), Vec3::new(t, 0.0, 1.0), Vec3::new(-t, 0.0, -1.0), Vec3::new(-t, 0.0, 1.0),
+        Vec3::new(-1.0, t, 0.0),
+        Vec3::new(1.0, t, 0.0),
+        Vec3::new(-1.0, -t, 0.0),
+        Vec3::new(1.0, -t, 0.0),
+        Vec3::new(0.0, -1.0, t),
+        Vec3::new(0.0, 1.0, t),
+        Vec3::new(0.0, -1.0, -t),
+        Vec3::new(0.0, 1.0, -t),
+        Vec3::new(t, 0.0, -1.0),
+        Vec3::new(t, 0.0, 1.0),
+        Vec3::new(-t, 0.0, -1.0),
+        Vec3::new(-t, 0.0, 1.0),
     ]
     .map(|p| p.normalize());
     let f = [
-        [0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11],
-        [1, 5, 9], [5, 11, 4], [11, 10, 2], [10, 7, 6], [7, 1, 8],
-        [3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9],
-        [4, 9, 5], [2, 4, 11], [6, 2, 10], [8, 6, 7], [9, 8, 1],
+        [0, 11, 5],
+        [0, 5, 1],
+        [0, 1, 7],
+        [0, 7, 10],
+        [0, 10, 11],
+        [1, 5, 9],
+        [5, 11, 4],
+        [11, 10, 2],
+        [10, 7, 6],
+        [7, 1, 8],
+        [3, 9, 4],
+        [3, 4, 2],
+        [3, 2, 6],
+        [3, 6, 8],
+        [3, 8, 9],
+        [4, 9, 5],
+        [2, 4, 11],
+        [6, 2, 10],
+        [8, 6, 7],
+        [9, 8, 1],
     ];
     (v, f)
 }
 
 /// A faceted blob: an icosahedron scaled by `radii`, each vertex pushed in/out by up to
 /// `jitter`, flat-shaded. Foliage when round and green; a boulder when squat and grey.
-pub fn blob(buf: &mut MeshBuf, center: Vec3, radii: Vec3, color: [f32; 3], rng: &mut Rng, jitter: f32) {
+pub fn blob(
+    buf: &mut MeshBuf,
+    center: Vec3,
+    radii: Vec3,
+    color: [f32; 3],
+    rng: &mut Rng,
+    jitter: f32,
+) {
     let (v, faces) = ico();
     let disp: [f32; 12] = std::array::from_fn(|_| 1.0 + rng.range(-jitter, jitter));
     let p = |i: usize| center + (v[i] * disp[i]) * radii;
@@ -133,17 +187,29 @@ pub fn blob(buf: &mut MeshBuf, center: Vec3, radii: Vec3, color: [f32; 3], rng: 
 // ── Colour helpers (all cool-tinted to share the world's mood) ────────────────────────────────
 
 fn wood(rng: &mut Rng) -> [f32; 3] {
-    tinted([rng.range(0.24, 0.34), rng.range(0.17, 0.23), rng.range(0.10, 0.14)])
+    tinted([
+        rng.range(0.24, 0.34),
+        rng.range(0.17, 0.23),
+        rng.range(0.10, 0.14),
+    ])
 }
 fn leaf(rng: &mut Rng) -> [f32; 3] {
     let g = rng.range(0.30, 0.46);
     tinted([g * rng.range(0.45, 0.65), g, g * rng.range(0.30, 0.45)])
 }
 fn needle(rng: &mut Rng) -> [f32; 3] {
-    tinted([rng.range(0.12, 0.20), rng.range(0.28, 0.38), rng.range(0.20, 0.28)])
+    tinted([
+        rng.range(0.12, 0.20),
+        rng.range(0.28, 0.38),
+        rng.range(0.20, 0.28),
+    ])
 }
 fn scrub(rng: &mut Rng) -> [f32; 3] {
-    tinted([rng.range(0.30, 0.40), rng.range(0.36, 0.46), rng.range(0.20, 0.28)])
+    tinted([
+        rng.range(0.30, 0.40),
+        rng.range(0.36, 0.46),
+        rng.range(0.20, 0.28),
+    ])
 }
 fn deadwood(rng: &mut Rng) -> [f32; 3] {
     let g = rng.range(0.52, 0.66);
@@ -153,7 +219,11 @@ fn stone(rng: &mut Rng) -> [f32; 3] {
     // A wider value range plus a little warm/cool drift, so a scatter of rock isn't one flat grey.
     let g = rng.range(0.32, 0.56);
     let warm = rng.range(-0.05, 0.07);
-    tinted([(g + warm).clamp(0.0, 1.0), g, (g - warm * 0.6).clamp(0.0, 1.0)])
+    tinted([
+        (g + warm).clamp(0.0, 1.0),
+        g,
+        (g - warm * 0.6).clamp(0.0, 1.0),
+    ])
 }
 
 // ── The prop kinds and their generators ───────────────────────────────────────────────────────
@@ -184,8 +254,14 @@ pub enum Prop {
 
 impl Prop {
     /// The vegetation/rock kinds and how many variants of each to pre-generate.
-    pub const NATURAL: &'static [(Prop, u32)] =
-        &[(Prop::Broadleaf, 6), (Prop::Conifer, 6), (Prop::Shrub, 5), (Prop::DeadTree, 5), (Prop::GrassTuft, 4), (Prop::Boulder, 6)];
+    pub const NATURAL: &'static [(Prop, u32)] = &[
+        (Prop::Broadleaf, 6),
+        (Prop::Conifer, 6),
+        (Prop::Shrub, 5),
+        (Prop::DeadTree, 5),
+        (Prop::GrassTuft, 4),
+        (Prop::Boulder, 6),
+    ];
 
     /// The built-structure kinds and their variant counts.
     pub const BUILDINGS: &'static [(Prop, u32)] = &[
@@ -205,14 +281,28 @@ impl Prop {
 }
 
 /// Recursive branching: a tapered limb, then either a foliage cluster (leaf) or child limbs.
-fn branch(buf: &mut MeshBuf, base: Vec3, dir: Vec3, len: f32, rad: f32, depth: u32, rng: &mut Rng, wd: [f32; 3], lf: [f32; 3]) {
+fn branch(
+    buf: &mut MeshBuf,
+    base: Vec3,
+    dir: Vec3,
+    len: f32,
+    rad: f32,
+    depth: u32,
+    rng: &mut Rng,
+    wd: [f32; 3],
+    lf: [f32; 3],
+) {
     let dir = dir.normalize_or_zero();
     let tip = base + dir * len;
     prism(buf, base, tip, rad, rad * 0.62, 5, wd);
     if depth == 0 {
         let puffs = 1 + rng.int(2);
         for _ in 0..puffs {
-            let off = Vec3::new(rng.range(-0.25, 0.25), rng.range(-0.05, 0.25), rng.range(-0.25, 0.25)) * len;
+            let off = Vec3::new(
+                rng.range(-0.25, 0.25),
+                rng.range(-0.05, 0.25),
+                rng.range(-0.25, 0.25),
+            ) * len;
             let r = len * rng.range(0.55, 0.85);
             blob(buf, tip + off, Vec3::new(r, r * 0.85, r), lf, rng, 0.22);
         }
@@ -220,8 +310,23 @@ fn branch(buf: &mut MeshBuf, base: Vec3, dir: Vec3, len: f32, rad: f32, depth: u
     }
     let kids = 2 + rng.int(2);
     for _ in 0..kids {
-        let nd = dir + Vec3::new(rng.range(-1.0, 1.0), rng.range(0.1, 0.7), rng.range(-1.0, 1.0)) * 0.6;
-        branch(buf, tip, nd, len * rng.range(0.6, 0.78), rad * 0.62, depth - 1, rng, wd, lf);
+        let nd = dir
+            + Vec3::new(
+                rng.range(-1.0, 1.0),
+                rng.range(0.1, 0.7),
+                rng.range(-1.0, 1.0),
+            ) * 0.6;
+        branch(
+            buf,
+            tip,
+            nd,
+            len * rng.range(0.6, 0.78),
+            rad * 0.62,
+            depth - 1,
+            rng,
+            wd,
+            lf,
+        );
     }
 }
 
@@ -229,7 +334,17 @@ fn gen_broadleaf(rng: &mut Rng) -> MeshBuf {
     let mut b = MeshBuf::default();
     let (wd, lf) = (wood(rng), leaf(rng));
     let h = rng.range(0.9, 1.5);
-    branch(&mut b, Vec3::ZERO, Vec3::Y, h * 0.5, h * 0.06, 1, rng, wd, lf);
+    branch(
+        &mut b,
+        Vec3::ZERO,
+        Vec3::Y,
+        h * 0.5,
+        h * 0.06,
+        1,
+        rng,
+        wd,
+        lf,
+    );
     b
 }
 
@@ -255,7 +370,14 @@ fn gen_shrub(rng: &mut Rng) -> MeshBuf {
     for _ in 0..lobes {
         let off = Vec3::new(rng.range(-0.18, 0.18), 0.0, rng.range(-0.18, 0.18));
         let r = rng.range(0.22, 0.38);
-        blob(&mut b, off + Vec3::Y * r * 0.8, Vec3::new(r, r * 0.7, r), c, rng, 0.28);
+        blob(
+            &mut b,
+            off + Vec3::Y * r * 0.8,
+            Vec3::new(r, r * 0.7, r),
+            c,
+            rng,
+            0.28,
+        );
     }
     b
 }
@@ -269,7 +391,16 @@ fn gen_dead_tree(rng: &mut Rng) -> MeshBuf {
     b
 }
 
-fn dead_branch(buf: &mut MeshBuf, base: Vec3, dir: Vec3, len: f32, rad: f32, depth: u32, rng: &mut Rng, wd: [f32; 3]) {
+fn dead_branch(
+    buf: &mut MeshBuf,
+    base: Vec3,
+    dir: Vec3,
+    len: f32,
+    rad: f32,
+    depth: u32,
+    rng: &mut Rng,
+    wd: [f32; 3],
+) {
     let dir = dir.normalize_or_zero();
     let tip = base + dir * len;
     prism(buf, base, tip, rad, rad * 0.6, 5, wd);
@@ -278,8 +409,22 @@ fn dead_branch(buf: &mut MeshBuf, base: Vec3, dir: Vec3, len: f32, rad: f32, dep
     }
     let kids = 2 + rng.int(2);
     for _ in 0..kids {
-        let nd = dir + Vec3::new(rng.range(-1.2, 1.2), rng.range(0.0, 0.5), rng.range(-1.2, 1.2)) * 0.8;
-        dead_branch(buf, tip, nd, len * rng.range(0.55, 0.72), rad * 0.6, depth - 1, rng, wd);
+        let nd = dir
+            + Vec3::new(
+                rng.range(-1.2, 1.2),
+                rng.range(0.0, 0.5),
+                rng.range(-1.2, 1.2),
+            ) * 0.8;
+        dead_branch(
+            buf,
+            tip,
+            nd,
+            len * rng.range(0.55, 0.72),
+            rad * 0.6,
+            depth - 1,
+            rng,
+            wd,
+        );
     }
 }
 
@@ -287,7 +432,11 @@ fn gen_grass_tuft(rng: &mut Rng) -> MeshBuf {
     let mut b = MeshBuf::default();
     let blades = 3 + rng.int(3);
     for _ in 0..blades {
-        let c = tinted([rng.range(0.30, 0.42), rng.range(0.42, 0.55), rng.range(0.18, 0.26)]);
+        let c = tinted([
+            rng.range(0.30, 0.42),
+            rng.range(0.42, 0.55),
+            rng.range(0.18, 0.26),
+        ]);
         let base = Vec3::new(rng.range(-0.12, 0.12), 0.0, rng.range(-0.12, 0.12));
         let h = rng.range(0.15, 0.3);
         let lean = Vec3::new(rng.range(-0.08, 0.08), h, rng.range(-0.08, 0.08));
@@ -305,11 +454,25 @@ fn gen_boulder(rng: &mut Rng) -> MeshBuf {
     let mut b = MeshBuf::default();
     let c = stone(rng);
     let r = rng.range(0.3, 0.55);
-    blob(&mut b, Vec3::Y * r * 0.55, Vec3::new(r, r * rng.range(0.55, 0.8), r * rng.range(0.85, 1.15)), c, rng, 0.34);
+    blob(
+        &mut b,
+        Vec3::Y * r * 0.55,
+        Vec3::new(r, r * rng.range(0.55, 0.8), r * rng.range(0.85, 1.15)),
+        c,
+        rng,
+        0.34,
+    );
     if rng.chance(0.6) {
         let r2 = r * rng.range(0.4, 0.7);
         let off = Vec3::new(rng.range(-0.3, 0.3), 0.0, rng.range(-0.3, 0.3));
-        blob(&mut b, off + Vec3::Y * r2 * 0.5, Vec3::new(r2, r2 * 0.7, r2), stone(rng), rng, 0.34);
+        blob(
+            &mut b,
+            off + Vec3::Y * r2 * 0.5,
+            Vec3::new(r2, r2 * 0.7, r2),
+            stone(rng),
+            rng,
+            0.34,
+        );
     }
     b
 }
@@ -317,13 +480,25 @@ fn gen_boulder(rng: &mut Rng) -> MeshBuf {
 // ── Building primitives & material palette ────────────────────────────────────────────────────
 
 fn wattle(rng: &mut Rng) -> [f32; 3] {
-    tinted([rng.range(0.50, 0.60), rng.range(0.42, 0.50), rng.range(0.28, 0.34)])
+    tinted([
+        rng.range(0.50, 0.60),
+        rng.range(0.42, 0.50),
+        rng.range(0.28, 0.34),
+    ])
 }
 fn thatch(rng: &mut Rng) -> [f32; 3] {
-    tinted([rng.range(0.40, 0.50), rng.range(0.33, 0.40), rng.range(0.18, 0.24)])
+    tinted([
+        rng.range(0.40, 0.50),
+        rng.range(0.33, 0.40),
+        rng.range(0.18, 0.24),
+    ])
 }
 fn slate(rng: &mut Rng) -> [f32; 3] {
-    tinted([rng.range(0.27, 0.35), rng.range(0.29, 0.35), rng.range(0.33, 0.40)])
+    tinted([
+        rng.range(0.27, 0.35),
+        rng.range(0.29, 0.35),
+        rng.range(0.33, 0.40),
+    ])
 }
 /// The cult's false gold — a cold, pale gilt.
 fn gold() -> [f32; 3] {
@@ -333,12 +508,48 @@ fn gold() -> [f32; 3] {
 /// An axis-aligned box centred at `c` with half-extents `he`.
 fn cuboid(buf: &mut MeshBuf, c: Vec3, he: Vec3, color: [f32; 3]) {
     let p = |sx: f32, sy: f32, sz: f32| c + Vec3::new(sx * he.x, sy * he.y, sz * he.z);
-    buf.quad(p(1.0, -1.0, -1.0), p(1.0, 1.0, -1.0), p(1.0, 1.0, 1.0), p(1.0, -1.0, 1.0), color); // +X
-    buf.quad(p(-1.0, -1.0, 1.0), p(-1.0, 1.0, 1.0), p(-1.0, 1.0, -1.0), p(-1.0, -1.0, -1.0), color); // -X
-    buf.quad(p(-1.0, -1.0, 1.0), p(1.0, -1.0, 1.0), p(1.0, 1.0, 1.0), p(-1.0, 1.0, 1.0), color); // +Z
-    buf.quad(p(1.0, -1.0, -1.0), p(-1.0, -1.0, -1.0), p(-1.0, 1.0, -1.0), p(1.0, 1.0, -1.0), color); // -Z
-    buf.quad(p(-1.0, 1.0, -1.0), p(-1.0, 1.0, 1.0), p(1.0, 1.0, 1.0), p(1.0, 1.0, -1.0), color); // +Y
-    buf.quad(p(-1.0, -1.0, -1.0), p(1.0, -1.0, -1.0), p(1.0, -1.0, 1.0), p(-1.0, -1.0, 1.0), color); // -Y
+    buf.quad(
+        p(1.0, -1.0, -1.0),
+        p(1.0, 1.0, -1.0),
+        p(1.0, 1.0, 1.0),
+        p(1.0, -1.0, 1.0),
+        color,
+    ); // +X
+    buf.quad(
+        p(-1.0, -1.0, 1.0),
+        p(-1.0, 1.0, 1.0),
+        p(-1.0, 1.0, -1.0),
+        p(-1.0, -1.0, -1.0),
+        color,
+    ); // -X
+    buf.quad(
+        p(-1.0, -1.0, 1.0),
+        p(1.0, -1.0, 1.0),
+        p(1.0, 1.0, 1.0),
+        p(-1.0, 1.0, 1.0),
+        color,
+    ); // +Z
+    buf.quad(
+        p(1.0, -1.0, -1.0),
+        p(-1.0, -1.0, -1.0),
+        p(-1.0, 1.0, -1.0),
+        p(1.0, 1.0, -1.0),
+        color,
+    ); // -Z
+    buf.quad(
+        p(-1.0, 1.0, -1.0),
+        p(-1.0, 1.0, 1.0),
+        p(1.0, 1.0, 1.0),
+        p(1.0, 1.0, -1.0),
+        color,
+    ); // +Y
+    buf.quad(
+        p(-1.0, -1.0, -1.0),
+        p(1.0, -1.0, -1.0),
+        p(1.0, -1.0, 1.0),
+        p(-1.0, -1.0, 1.0),
+        color,
+    ); // -Y
 }
 
 /// A four-sided pyramid roof rising `h` above a rectangle (half-widths `hx`,`hz`) at `base`.
@@ -368,27 +579,68 @@ fn gable_roof(buf: &mut MeshBuf, base: Vec3, hx: f32, hz: f32, h: f32, color: [f
 
 fn gen_hut(rng: &mut Rng) -> MeshBuf {
     let mut b = MeshBuf::default();
-    let (w, d, h) = (rng.range(0.22, 0.30), rng.range(0.22, 0.30), rng.range(0.20, 0.28));
+    let (w, d, h) = (
+        rng.range(0.22, 0.30),
+        rng.range(0.22, 0.30),
+        rng.range(0.20, 0.28),
+    );
     cuboid(&mut b, Vec3::Y * h, Vec3::new(w, h, d), wattle(rng));
-    pyramid_roof(&mut b, Vec3::Y * (2.0 * h), w * 1.18, d * 1.18, rng.range(0.18, 0.28), thatch(rng));
+    pyramid_roof(
+        &mut b,
+        Vec3::Y * (2.0 * h),
+        w * 1.18,
+        d * 1.18,
+        rng.range(0.18, 0.28),
+        thatch(rng),
+    );
     b
 }
 
 fn gen_house(rng: &mut Rng) -> MeshBuf {
     let mut b = MeshBuf::default();
-    let (w, d, h) = (rng.range(0.30, 0.40), rng.range(0.22, 0.30), rng.range(0.26, 0.34));
-    let wall = if rng.chance(0.5) { wattle(rng) } else { stone(rng) };
+    let (w, d, h) = (
+        rng.range(0.30, 0.40),
+        rng.range(0.22, 0.30),
+        rng.range(0.26, 0.34),
+    );
+    let wall = if rng.chance(0.5) {
+        wattle(rng)
+    } else {
+        stone(rng)
+    };
     cuboid(&mut b, Vec3::Y * h, Vec3::new(w, h, d), wall);
-    let roof = if rng.chance(0.5) { slate(rng) } else { thatch(rng) };
-    gable_roof(&mut b, Vec3::Y * (2.0 * h), w * 1.1, d * 1.12, rng.range(0.2, 0.32), roof);
+    let roof = if rng.chance(0.5) {
+        slate(rng)
+    } else {
+        thatch(rng)
+    };
+    gable_roof(
+        &mut b,
+        Vec3::Y * (2.0 * h),
+        w * 1.1,
+        d * 1.12,
+        rng.range(0.2, 0.32),
+        roof,
+    );
     b
 }
 
 fn gen_hall(rng: &mut Rng) -> MeshBuf {
     let mut b = MeshBuf::default();
-    let (w, d, h) = (rng.range(0.45, 0.60), rng.range(0.26, 0.34), rng.range(0.32, 0.42));
+    let (w, d, h) = (
+        rng.range(0.45, 0.60),
+        rng.range(0.26, 0.34),
+        rng.range(0.32, 0.42),
+    );
     cuboid(&mut b, Vec3::Y * h, Vec3::new(w, h, d), stone(rng));
-    gable_roof(&mut b, Vec3::Y * (2.0 * h), w * 1.06, d * 1.12, rng.range(0.22, 0.34), slate(rng));
+    gable_roof(
+        &mut b,
+        Vec3::Y * (2.0 * h),
+        w * 1.06,
+        d * 1.12,
+        rng.range(0.22, 0.34),
+        slate(rng),
+    );
     b
 }
 
@@ -396,10 +648,29 @@ fn gen_keep(rng: &mut Rng) -> MeshBuf {
     let mut b = MeshBuf::default();
     let r = rng.range(0.26, 0.34);
     let h = rng.range(0.7, 1.0);
-    cuboid(&mut b, Vec3::Y * (h * 0.5), Vec3::new(r, h * 0.5, r), stone(rng));
+    cuboid(
+        &mut b,
+        Vec3::Y * (h * 0.5),
+        Vec3::new(r, h * 0.5, r),
+        stone(rng),
+    );
     let cr = r * 0.26;
-    for (sx, sz) in [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0), (0.0, -1.0), (1.0, 0.0), (0.0, 1.0), (-1.0, 0.0)] {
-        cuboid(&mut b, Vec3::new(sx * r, h + cr, sz * r), Vec3::splat(cr), stone(rng));
+    for (sx, sz) in [
+        (-1.0, -1.0),
+        (1.0, -1.0),
+        (1.0, 1.0),
+        (-1.0, 1.0),
+        (0.0, -1.0),
+        (1.0, 0.0),
+        (0.0, 1.0),
+        (-1.0, 0.0),
+    ] {
+        cuboid(
+            &mut b,
+            Vec3::new(sx * r, h + cr, sz * r),
+            Vec3::splat(cr),
+            stone(rng),
+        );
     }
     b
 }
@@ -407,7 +678,12 @@ fn gen_keep(rng: &mut Rng) -> MeshBuf {
 fn gen_temple(rng: &mut Rng) -> MeshBuf {
     let mut b = MeshBuf::default();
     let (w, d) = (rng.range(0.40, 0.50), rng.range(0.30, 0.40));
-    cuboid(&mut b, Vec3::Y * 0.05, Vec3::new(w * 1.18, 0.05, d * 1.18), stone(rng)); // step
+    cuboid(
+        &mut b,
+        Vec3::Y * 0.05,
+        Vec3::new(w * 1.18, 0.05, d * 1.18),
+        stone(rng),
+    ); // step
     cuboid(&mut b, Vec3::Y * 0.13, Vec3::new(w, 0.07, d), stone(rng)); // platform
     let colh = rng.range(0.40, 0.55);
     let st = stone(rng);
@@ -416,8 +692,20 @@ fn gen_temple(rng: &mut Rng) -> MeshBuf {
         prism(&mut b, foot, foot + Vec3::Y * colh, 0.045, 0.04, 6, st);
     }
     let roof_y = 0.2 + colh;
-    cuboid(&mut b, Vec3::Y * (roof_y + 0.05), Vec3::new(w * 1.06, 0.05, d * 1.06), slate(rng));
-    gable_roof(&mut b, Vec3::Y * (roof_y + 0.1), w * 0.95, d * 0.95, rng.range(0.18, 0.26), gold());
+    cuboid(
+        &mut b,
+        Vec3::Y * (roof_y + 0.05),
+        Vec3::new(w * 1.06, 0.05, d * 1.06),
+        slate(rng),
+    );
+    gable_roof(
+        &mut b,
+        Vec3::Y * (roof_y + 0.1),
+        w * 0.95,
+        d * 0.95,
+        rng.range(0.18, 0.26),
+        gold(),
+    );
     b
 }
 
@@ -425,8 +713,24 @@ fn gen_tower(rng: &mut Rng) -> MeshBuf {
     let mut b = MeshBuf::default();
     let r = rng.range(0.18, 0.26);
     let h = rng.range(0.9, 1.4);
-    prism(&mut b, Vec3::ZERO, Vec3::Y * h, r * 1.1, r * 0.85, 6, stone(rng));
-    cone(&mut b, Vec3::Y * h, Vec3::Y, rng.range(0.26, 0.4), r * 1.3, 6, slate(rng));
+    prism(
+        &mut b,
+        Vec3::ZERO,
+        Vec3::Y * h,
+        r * 1.1,
+        r * 0.85,
+        6,
+        stone(rng),
+    );
+    cone(
+        &mut b,
+        Vec3::Y * h,
+        Vec3::Y,
+        rng.range(0.26, 0.4),
+        r * 1.3,
+        6,
+        slate(rng),
+    );
     b
 }
 
@@ -434,9 +738,25 @@ fn gen_beacon(rng: &mut Rng) -> MeshBuf {
     let mut b = MeshBuf::default();
     let r = rng.range(0.16, 0.22);
     let h = rng.range(0.8, 1.1);
-    prism(&mut b, Vec3::ZERO, Vec3::Y * h, r * 1.1, r * 0.9, 6, stone(rng));
+    prism(
+        &mut b,
+        Vec3::ZERO,
+        Vec3::Y * h,
+        r * 1.1,
+        r * 0.9,
+        6,
+        stone(rng),
+    );
     // A pale flame that never feeds — bright, but not literally lit (no emissive material).
-    cone(&mut b, Vec3::Y * (h + 0.03), Vec3::Y, 0.24, 0.12, 5, [0.95, 0.6, 0.22]);
+    cone(
+        &mut b,
+        Vec3::Y * (h + 0.03),
+        Vec3::Y,
+        0.24,
+        0.12,
+        5,
+        [0.95, 0.6, 0.22],
+    );
     b
 }
 
@@ -449,7 +769,12 @@ fn gen_stone_ring(rng: &mut Rng) -> MeshBuf {
         let p = Vec3::new(rad * a.cos(), 0.0, rad * a.sin());
         let sh = rng.range(0.32, 0.58);
         let sw = rng.range(0.06, 0.10);
-        cuboid(&mut b, p + Vec3::Y * sh, Vec3::new(sw, sh, sw * 1.4), stone(rng));
+        cuboid(
+            &mut b,
+            p + Vec3::Y * sh,
+            Vec3::new(sw, sh, sw * 1.4),
+            stone(rng),
+        );
     }
     b
 }
@@ -469,7 +794,14 @@ fn gen_cairn(rng: &mut Rng) -> MeshBuf {
     let layers = 3 + rng.int(2);
     let (mut y, mut r) = (0.0, rng.range(0.30, 0.40));
     for _ in 0..layers {
-        blob(&mut b, Vec3::Y * (y + r * 0.5), Vec3::new(r, r * 0.6, r), stone(rng), rng, 0.3);
+        blob(
+            &mut b,
+            Vec3::Y * (y + r * 0.5),
+            Vec3::new(r, r * 0.6, r),
+            stone(rng),
+            rng,
+            0.3,
+        );
         y += r * 0.7;
         r *= 0.7;
     }
@@ -484,7 +816,11 @@ fn gen_ruin(rng: &mut Rng) -> MeshBuf {
         let p = Vec3::new(rng.range(-w, w), 0.0, rng.range(-d, d));
         let hh = rng.range(0.12, 0.4);
         let (sw, sl) = (rng.range(0.05, 0.11), rng.range(0.12, 0.3));
-        let he = if rng.chance(0.5) { Vec3::new(sl, hh, sw) } else { Vec3::new(sw, hh, sl) };
+        let he = if rng.chance(0.5) {
+            Vec3::new(sl, hh, sw)
+        } else {
+            Vec3::new(sw, hh, sl)
+        };
         cuboid(&mut b, p + Vec3::Y * hh, he, stone(rng));
     }
     b
@@ -495,7 +831,14 @@ fn gen_shrine(rng: &mut Rng) -> MeshBuf {
     let h = rng.range(0.25, 0.35);
     prism(&mut b, Vec3::ZERO, Vec3::Y * h, 0.05, 0.04, 4, wood(rng));
     pyramid_roof(&mut b, Vec3::Y * h, 0.1, 0.1, 0.12, thatch(rng));
-    blob(&mut b, Vec3::Y * 0.05, Vec3::splat(0.06), stone(rng), rng, 0.3);
+    blob(
+        &mut b,
+        Vec3::Y * 0.05,
+        Vec3::splat(0.06),
+        stone(rng),
+        rng,
+        0.3,
+    );
     b
 }
 
@@ -545,7 +888,9 @@ impl PropLibrary {
     }
 
     pub fn register(&mut self, meshes: &mut Assets<Mesh>, prop: Prop, count: u32) {
-        let handles = (0..count).map(|v| meshes.add(generate(prop, v).into_mesh())).collect();
+        let handles = (0..count)
+            .map(|v| meshes.add(generate(prop, v).into_mesh()))
+            .collect();
         self.variants.insert(prop, handles);
     }
 }
@@ -553,7 +898,10 @@ impl PropLibrary {
 /// Build the natural-prop library (trees, scrub, rock) and the built structures, registering a
 /// handful of variants of each kind.
 pub fn build_library(meshes: &mut Assets<Mesh>, material: Handle<StandardMaterial>) -> PropLibrary {
-    let mut lib = PropLibrary { variants: HashMap::default(), material };
+    let mut lib = PropLibrary {
+        variants: HashMap::default(),
+        material,
+    };
     for &(prop, count) in Prop::NATURAL.iter().chain(Prop::BUILDINGS) {
         lib.register(meshes, prop, count);
     }

@@ -113,11 +113,19 @@ pub struct RegisterDef {
 impl RegisterDef {
     /// The earned epithet for the lead (`is_lead`) or the pinned other.
     pub fn epithet(&self, is_lead: bool) -> &'static str {
-        if is_lead { self.epithet_lead } else { self.epithet_other }
+        if is_lead {
+            self.epithet_lead
+        } else {
+            self.epithet_other
+        }
     }
     /// The one-line situational opener for the lead or the pinned other.
     pub fn situation(&self, is_lead: bool) -> &'static str {
-        if is_lead { self.situation_lead } else { self.situation_other }
+        if is_lead {
+            self.situation_lead
+        } else {
+            self.situation_other
+        }
     }
 }
 
@@ -190,7 +198,10 @@ impl Register {
                 situation_other: "grieving a loss the famine took.",
                 ..storied
             },
-            Loss => RegisterDef { seeds_vengeance: true, ..storied },
+            Loss => RegisterDef {
+                seeds_vengeance: true,
+                ..storied
+            },
             Romance => RegisterDef {
                 bright: true,
                 seeds_vengeance: true,
@@ -217,10 +228,23 @@ impl Register {
                 situation_other: "awed by something it cannot name.",
                 ..storied
             },
-            Reunion => RegisterDef { bright: true, casting: Casting::Pious, ..storied },
-            Sacrifice => RegisterDef { seeds_vengeance: true, ..storied },
-            Redemption => RegisterDef { bright: true, ..storied },
-            Relief => RegisterDef { bright: true, ..storied },
+            Reunion => RegisterDef {
+                bright: true,
+                casting: Casting::Pious,
+                ..storied
+            },
+            Sacrifice => RegisterDef {
+                seeds_vengeance: true,
+                ..storied
+            },
+            Redemption => RegisterDef {
+                bright: true,
+                ..storied
+            },
+            Relief => RegisterDef {
+                bright: true,
+                ..storied
+            },
             Grace => RegisterDef {
                 bright: true,
                 epithet_lead: "the Redeemed",
@@ -270,9 +294,17 @@ pub enum Pre {
     /// `who` must have been cast at all (the role found a fit).
     Exists { who: Role },
     /// The named trait of `who` is at least `v` (`0..1`).
-    TraitAtLeast { who: Role, trait_name: String, v: f32 },
+    TraitAtLeast {
+        who: Role,
+        trait_name: String,
+        v: f32,
+    },
     /// The named trait of `who` is at most `v`.
-    TraitAtMost { who: Role, trait_name: String, v: f32 },
+    TraitAtMost {
+        who: Role,
+        trait_name: String,
+        v: f32,
+    },
     /// The named mood of `who` is at least `v` — lets a beat key off a *feeling* a prior
     /// beat stirred (grief, fear, fury), so storylets chain into arcs.
     MoodAtLeast { who: Role, mood: String, v: f32 },
@@ -337,7 +369,11 @@ pub enum Effect {
     Grudge { who: Role, against: Role },
     /// Shift a personality trait of `who` by `delta` (embolden ambition, stoke
     /// vengeance, wear away forgiveness). Clamped to `0..1`.
-    Sway { who: Role, trait_name: String, delta: f32 },
+    Sway {
+        who: Role,
+        trait_name: String,
+        delta: f32,
+    },
     /// Shift a mood of `who` by `delta` (kindle anger, strike fear, lift joy).
     Stir { who: Role, mood: String, delta: f32 },
     /// Move `who`'s opinion of `toward` by `delta` — poison a friendship toward
@@ -368,7 +404,11 @@ pub enum Effect {
     /// Restore a need of `who` — the bright twin of [`Afflict`]: heal a struck body, feed
     /// the starving. Mirrors the affordance [`Relieve`](crate::features::EffectDef::Relieve)
     /// write to [`Needs`](crate::people::Needs). Material grace.
-    Relieve { who: Role, need: crate::features::NeedKind, amount: i32 },
+    Relieve {
+        who: Role,
+        need: crate::features::NeedKind,
+        amount: i32,
+    },
     /// Slay `who` (by `by`). **Interim**: a mortal wound the metabolism finishes next tick (a
     /// plausible in-world death preserving the deniability rule); true Slay routes through
     /// combat later. The apex of a vengeance or atrocity beat; `by` is the slayer (recorded
@@ -478,7 +518,11 @@ impl Beat {
                 | Effect::Exalt { who, .. }
                 | Effect::Bind { who, .. }
                 | Effect::Free { who, .. } => push(*who),
-                Effect::Decree | Effect::War | Effect::Disaster { .. } | Effect::Reveal | Effect::Defile => {}
+                Effect::Decree
+                | Effect::War
+                | Effect::Disaster { .. }
+                | Effect::Reveal
+                | Effect::Defile => {}
             }
         }
         rs
@@ -494,7 +538,8 @@ impl BeatBook {
     /// The defaults shipped with the crate.
     pub fn bundled() -> Self {
         let book = Self::from_ron(Bundled::get(Asset::Beats)).expect("bundled beats are valid RON");
-        book.validate(&Registry::bundled()).expect("bundled beats resolve against the bundled registry");
+        book.validate(&Registry::bundled())
+            .expect("bundled beats resolve against the bundled registry");
         book
     }
 
@@ -510,10 +555,13 @@ impl BeatBook {
             for e in &b.effects {
                 match e {
                     Effect::Sway { trait_name, .. } => {
-                        reg.trait_id(trait_name).ok_or_else(|| format!("beat '{}': unknown trait '{trait_name}'", b.id))?;
+                        reg.trait_id(trait_name).ok_or_else(|| {
+                            format!("beat '{}': unknown trait '{trait_name}'", b.id)
+                        })?;
                     }
                     Effect::Stir { mood, .. } => {
-                        reg.mood_id(mood).ok_or_else(|| format!("beat '{}': unknown mood '{mood}'", b.id))?;
+                        reg.mood_id(mood)
+                            .ok_or_else(|| format!("beat '{}': unknown mood '{mood}'", b.id))?;
                     }
                     _ => {}
                 }
@@ -521,10 +569,13 @@ impl BeatBook {
             for p in &b.pre {
                 match p {
                     Pre::TraitAtLeast { trait_name, .. } | Pre::TraitAtMost { trait_name, .. } => {
-                        reg.trait_id(trait_name).ok_or_else(|| format!("beat '{}': unknown trait '{trait_name}'", b.id))?;
+                        reg.trait_id(trait_name).ok_or_else(|| {
+                            format!("beat '{}': unknown trait '{trait_name}'", b.id)
+                        })?;
                     }
                     Pre::MoodAtLeast { mood, .. } => {
-                        reg.mood_id(mood).ok_or_else(|| format!("beat '{}': unknown mood '{mood}'", b.id))?;
+                        reg.mood_id(mood)
+                            .ok_or_else(|| format!("beat '{}': unknown mood '{mood}'", b.id))?;
                     }
                     _ => {}
                 }
@@ -541,10 +592,25 @@ mod tests {
     #[test]
     fn bundled_beats_load_and_resolve() {
         let book = BeatBook::bundled();
-        assert!(book.0.len() >= 20, "the beat library should be richly stocked, got {}", book.0.len());
+        assert!(
+            book.0.len() >= 20,
+            "the beat library should be richly stocked, got {}",
+            book.0.len()
+        );
         // The free-form tone tags are represented (novelty registers).
-        for tag in ["betrayal", "political", "ambition", "disaster", "relief", "vengeance", "revolt"] {
-            assert!(book.0.iter().any(|b| b.has_tag(tag)), "no beat carries the '{tag}' tone tag");
+        for tag in [
+            "betrayal",
+            "political",
+            "ambition",
+            "disaster",
+            "relief",
+            "vengeance",
+            "revolt",
+        ] {
+            assert!(
+                book.0.iter().any(|b| b.has_tag(tag)),
+                "no beat carries the '{tag}' tone tag"
+            );
         }
         // The palette is broad — not all tragedy. The brighter registers the director
         // grooms (decision #8) are stocked alongside the trunk and its tributaries.
@@ -557,9 +623,15 @@ mod tests {
             Register::Sacrifice,
             Register::Grace,
         ] {
-            assert!(book.0.iter().any(|b| b.register == reg), "no beat plays the {reg:?} register");
+            assert!(
+                book.0.iter().any(|b| b.register == reg),
+                "no beat plays the {reg:?} register"
+            );
         }
-        assert!(book.0.iter().any(|b| b.register.is_bright()), "the palette has no brighter register at all");
+        assert!(
+            book.0.iter().any(|b| b.register.is_bright()),
+            "the palette has no brighter register at all"
+        );
     }
 
     #[test]

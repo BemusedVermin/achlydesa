@@ -27,7 +27,10 @@ use crate::factions::{Allegiance, Detained, Factions, Law, Opinion};
 use crate::features::{Discovery, EffectDef, FeatureCatalog, Features, NeedKind};
 use crate::goals::Goals;
 use crate::norms::{Modality, Norm, Norms};
-use crate::plan::{Affordance, AffordEffect, Deed, Facts, MarketSnapshot, Need, PlanCtx, PlanState, Step, Stock, plan};
+use crate::plan::{
+    AffordEffect, Affordance, Deed, Facts, MarketSnapshot, Need, PlanCtx, PlanState, Step, Stock,
+    plan,
+};
 use crate::{Position, Substrate};
 use bevy_ecs::prelude::*;
 use game_sim::{Coord, SplitMix64, Topology, World as GameWorld};
@@ -199,7 +202,9 @@ pub fn build_affordances(
         let at = topo.coord(i);
         let needs_discovery = catalog.def(f.kind).discovery != Discovery::Landmark;
         for ad in &catalog.def(f.kind).affordances {
-            let Some(effect) = resolve_effect(&ad.effect, reg) else { continue };
+            let Some(effect) = resolve_effect(&ad.effect, reg) else {
+                continue;
+            };
             sites.push(AffordanceSite {
                 at,
                 tile: i,
@@ -217,16 +222,25 @@ pub fn build_affordances(
 
 fn resolve_effect(e: &EffectDef, reg: &Registry) -> Option<AffordEffect> {
     Some(match e {
-        EffectDef::Relieve { need, amount } => AffordEffect::Relieve { need: need_of(*need), amount: *amount },
+        EffectDef::Relieve { need, amount } => AffordEffect::Relieve {
+            need: need_of(*need),
+            amount: *amount,
+        },
         EffectDef::Yield { good, units, skill } => {
             let g = reg.good_id(good)?;
             let sk = match skill {
                 Some(n) => Some(reg.skill_id(n)?),
                 None => None,
             };
-            AffordEffect::Yield { good: g, units: *units, skill: sk }
+            AffordEffect::Yield {
+                good: g,
+                units: *units,
+                skill: sk,
+            }
         }
-        EffectDef::Teach { skill } => AffordEffect::Teach { skill: reg.skill_id(skill)? },
+        EffectDef::Teach { skill } => AffordEffect::Teach {
+            skill: reg.skill_id(skill)?,
+        },
     })
 }
 
@@ -375,7 +389,9 @@ impl MoveGraph {
 fn adjacent_or_on(world: &GameWorld, pos: Coord, market: Coord) -> bool {
     pos == market || {
         let topo = world.topology();
-        topo.neighbors(topo.index_of(pos)).iter().any(|l| topo.coord(l.to) == market)
+        topo.neighbors(topo.index_of(pos))
+            .iter()
+            .any(|l| topo.coord(l.to) == market)
     }
 }
 
@@ -412,7 +428,11 @@ pub(crate) fn people_plan(
             Option<&Detained>,
             &Allegiance,
         ),
-        (With<Npc>, Without<crate::Suspended>, Without<crate::Dormant>),
+        (
+            With<Npc>,
+            Without<crate::Suspended>,
+            Without<crate::Dormant>,
+        ),
     >,
     markets: Query<(&Position, &Market), Without<Npc>>,
     substrate: Res<Substrate>,
@@ -433,7 +453,11 @@ pub(crate) fn people_plan(
         .map(|(p, m)| MarketSnapshot {
             pos: p.0,
             stock: m.stock.clone(),
-            price_basis: m.price_basis.iter().map(|&x| x.round().max(0.0) as u32).collect(),
+            price_basis: m
+                .price_basis
+                .iter()
+                .map(|&x| x.round().max(0.0) as u32)
+                .collect(),
             money: m.money,
         })
         .collect();
@@ -468,112 +492,153 @@ pub(crate) fn people_plan(
     // rebuilt — but as one contiguous buffer for allocation-free O(1) lookups. The
     // movement graph is *static*, so it lives in `move_graph` and is never rebuilt.
     let topo = substrate.0.topology();
-    let resources_cache: Vec<[f32; ResourceKind::COUNT]> =
-        (0..topo.len()).map(|i| read_resources(&substrate.0, topo.coord(i))).collect();
+    let resources_cache: Vec<[f32; ResourceKind::COUNT]> = (0..topo.len())
+        .map(|i| read_resources(&substrate.0, topo.coord(i)))
+        .collect();
 
     // Planning touches no shared mutable state (only this person's `Plan`), so it
     // is order-independent — safe to run across threads.
-    npcs.par_iter_mut().for_each(|(entity, needs, skills, inv, mut plan_c, pos, personality, mood, grievance, known, detained, allegiance)| {
-        // A person in a faction's cells does nothing — its plan is suspended.
-        if detained.is_some() {
-            plan_c.goal = None;
-            plan_c.steps.clear();
-            return;
-        }
-        // Ground the relational facts this agent reasons about into the planner's
-        // flat fact vector (predicate × role). `enthroned(self)` reflects whether
-        // this agent rules; `alive(foe)` whether its grudge still draws breath. Each
-        // gets the deed that would change it, if the agent is in a position to.
-        let mut facts = Facts::from_elem(0i64, reg.predicate_count() * ROLE_COUNT);
-        let mut deeds = Vec::new();
-        if let (Some(t), Some(e)) = (throne, enthroned) {
-            facts[fact_slot(e, 0)] = i64::from(t.holder == Some(entity));
-            if ambition.is_some_and(|a| personality.0.get(a).is_some_and(|&v| v > 0.6)) {
-                deeds.push(Deed { at: t.tile, fact: fact_slot(e, 0), value: 1 });
+    npcs.par_iter_mut().for_each(
+        |(
+            entity,
+            needs,
+            skills,
+            inv,
+            mut plan_c,
+            pos,
+            personality,
+            mood,
+            grievance,
+            known,
+            detained,
+            allegiance,
+        )| {
+            // A person in a faction's cells does nothing — its plan is suspended.
+            if detained.is_some() {
+                plan_c.goal = None;
+                plan_c.steps.clear();
+                return;
             }
-        }
-        if let (Some(g), Some(a)) = (grievance, alive)
-            && let Some(&foe_pos) = people_pos.get(&g.0)
-        {
-            facts[fact_slot(a, 1)] = 1; // the foe lives
-            deeds.push(Deed { at: foe_pos, fact: fact_slot(a, 1), value: 0 });
-        }
-
-        let start = PlanState {
-            sustenance: needs.sustenance.round() as i32,
-            rest: needs.rest.round() as i32,
-            money: inv.money,
-            stock: Stock::from_slice(&inv.stock),
-            pos: pos.0,
-            facts,
-            learned: Stock::from_elem(0u32, reg.skill_count()),
-        };
-
-        // This person's *effective* norms: the society's, plus a prohibition for each
-        // of its factions' taboos — so a member is reluctant to break its faction's law
-        // (its appeal suppressed), not merely policed for breaking it. Built only when
-        // the agent has faction laws; otherwise the society's norms stand unchanged.
-        let faction_taboos: Vec<(PredicateId, i64)> = allegiance
-            .0
-            .iter()
-            .filter_map(|b| factions.at(b.seat))
-            .flat_map(|f| f.laws.iter())
-            .filter_map(|l| if let Law::Taboo(p, v) = l { Some((*p, *v)) } else { None })
-            .collect();
-        let extra: Norms;
-        let effective: &Norms = if faction_taboos.is_empty() {
-            &norms
-        } else {
-            let mut e = (*norms).clone();
-            for (p, v) in faction_taboos {
-                if !e.0.iter().any(|n| n.act == (p, v) && n.modality == Modality::Forbidden) {
-                    e.0.push(Norm { act: (p, v), modality: Modality::Forbidden, weight: FACTION_LAW_WEIGHT, when: None, defiance: law_defiance });
+            // Ground the relational facts this agent reasons about into the planner's
+            // flat fact vector (predicate × role). `enthroned(self)` reflects whether
+            // this agent rules; `alive(foe)` whether its grudge still draws breath. Each
+            // gets the deed that would change it, if the agent is in a position to.
+            let mut facts = Facts::from_elem(0i64, reg.predicate_count() * ROLE_COUNT);
+            let mut deeds = Vec::new();
+            if let (Some(t), Some(e)) = (throne, enthroned) {
+                facts[fact_slot(e, 0)] = i64::from(t.holder == Some(entity));
+                if ambition.is_some_and(|a| personality.0.get(a).is_some_and(|&v| v > 0.6)) {
+                    deeds.push(Deed {
+                        at: t.tile,
+                        fact: fact_slot(e, 0),
+                        value: 1,
+                    });
                 }
             }
-            extra = e;
-            &extra
-        };
+            if let (Some(g), Some(a)) = (grievance, alive)
+                && let Some(&foe_pos) = people_pos.get(&g.0)
+            {
+                facts[fact_slot(a, 1)] = 1; // the foe lives
+                deeds.push(Deed {
+                    at: foe_pos,
+                    fact: fact_slot(a, 1),
+                    value: 0,
+                });
+            }
 
-        // The goals worth pursuing now, best first — already excluding satisfied and
-        // appeal-vetoed (e.g. taboo) wants, so the planner never falls through to one.
-        let agenda = goals.agenda(&start, &reg, &personality.0, &mood.0, effective);
-        let chosen = agenda.first().copied();
-
-        if plan_c.goal != chosen || plan_c.steps.is_empty() {
-            let resources = |c: Coord| resources_cache[topo.index_of(c)];
-            let neighbors = |c: Coord| move_graph.neighbors(topo.index_of(c));
-            let ctx = PlanCtx {
-                reg: &reg,
-                econ: &econ,
-                needs_cfg: &needs_cfg,
-                skills: &skills.0,
-                markets: &snapshots,
-                deeds: &deeds,
-                affordances: &affordances,
-                known: &|i| known.0.contains(&i),
-                resources: &resources,
-                neighbors: &neighbors,
-                node_budget: NODE_BUDGET,
+            let start = PlanState {
+                sustenance: needs.sustenance.round() as i32,
+                rest: needs.rest.round() as i32,
+                money: inv.money,
+                stock: Stock::from_slice(&inv.stock),
+                pos: pos.0,
+                facts,
+                learned: Stock::from_elem(0u32, reg.skill_count()),
             };
-            let mut goal = None;
-            let mut steps = Vec::new();
-            for &i in &agenda {
-                // Plan the next reachable leg of the goal, not the whole distance.
-                let target = goals.0[i].condition.planning_target(&start, &reg);
-                let s = plan(&target, &start, &ctx);
-                if !s.is_empty() {
-                    goal = Some(i);
-                    steps = s;
-                    break;
+
+            // This person's *effective* norms: the society's, plus a prohibition for each
+            // of its factions' taboos — so a member is reluctant to break its faction's law
+            // (its appeal suppressed), not merely policed for breaking it. Built only when
+            // the agent has faction laws; otherwise the society's norms stand unchanged.
+            let faction_taboos: Vec<(PredicateId, i64)> = allegiance
+                .0
+                .iter()
+                .filter_map(|b| factions.at(b.seat))
+                .flat_map(|f| f.laws.iter())
+                .filter_map(|l| {
+                    if let Law::Taboo(p, v) = l {
+                        Some((*p, *v))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            let extra: Norms;
+            let effective: &Norms = if faction_taboos.is_empty() {
+                &norms
+            } else {
+                let mut e = (*norms).clone();
+                for (p, v) in faction_taboos {
+                    if !e
+                        .0
+                        .iter()
+                        .any(|n| n.act == (p, v) && n.modality == Modality::Forbidden)
+                    {
+                        e.0.push(Norm {
+                            act: (p, v),
+                            modality: Modality::Forbidden,
+                            weight: FACTION_LAW_WEIGHT,
+                            when: None,
+                            defiance: law_defiance,
+                        });
+                    }
                 }
+                extra = e;
+                &extra
+            };
+
+            // The goals worth pursuing now, best first — already excluding satisfied and
+            // appeal-vetoed (e.g. taboo) wants, so the planner never falls through to one.
+            let agenda = goals.agenda(&start, &reg, &personality.0, &mood.0, effective);
+            let chosen = agenda.first().copied();
+
+            if plan_c.goal != chosen || plan_c.steps.is_empty() {
+                let resources = |c: Coord| resources_cache[topo.index_of(c)];
+                let neighbors = |c: Coord| move_graph.neighbors(topo.index_of(c));
+                let ctx = PlanCtx {
+                    reg: &reg,
+                    econ: &econ,
+                    needs_cfg: &needs_cfg,
+                    skills: &skills.0,
+                    markets: &snapshots,
+                    deeds: &deeds,
+                    affordances: &affordances,
+                    known: &|i| known.0.contains(&i),
+                    resources: &resources,
+                    neighbors: &neighbors,
+                    node_budget: NODE_BUDGET,
+                };
+                let mut goal = None;
+                let mut steps = Vec::new();
+                for &i in &agenda {
+                    // Plan the next reachable leg of the goal, not the whole distance.
+                    let target = goals.0[i].condition.planning_target(&start, &reg);
+                    let s = plan(&target, &start, &ctx);
+                    if !s.is_empty() {
+                        goal = Some(i);
+                        steps = s;
+                        break;
+                    }
+                }
+                plan_c.goal = goal;
+                plan_c.steps = steps.into_iter().collect();
+                // Record whether the act now being pursued is a forbidden one, so a kill
+                // carried through despite the taboo is marked a transgression at the deed.
+                plan_c.illicit =
+                    goal.is_some_and(|i| effective.forbids(goals.0[i].act, &start, &reg));
             }
-            plan_c.goal = goal;
-            plan_c.steps = steps.into_iter().collect();
-            // Record whether the act now being pursued is a forbidden one, so a kill
-            // carried through despite the taboo is marked a transgression at the deed.
-            plan_c.illicit = goal.is_some_and(|i| effective.forbids(goals.0[i].act, &start, &reg));
-        }
-    });
+        },
+    );
 }
 
 /// Act phase: every person performs the next step of its plan against the live
@@ -596,7 +661,11 @@ pub(crate) fn people_execute(
             &Known,
             Option<&Detained>,
         ),
-        (With<Npc>, Without<crate::Suspended>, Without<crate::Dormant>),
+        (
+            With<Npc>,
+            Without<crate::Suspended>,
+            Without<crate::Dormant>,
+        ),
     >,
     lieges: Query<(Entity, &Liege), With<Npc>>,
     mut markets: Query<(Entity, &Position, &mut Market), Without<Npc>>,
@@ -625,7 +694,9 @@ pub(crate) fn people_execute(
         vassals_of.entry(liege.0).or_default().push(vassal);
     }
 
-    for (entity, mut needs, mut skills, mut inv, mut plan_c, mut pos, grievance, known, detained) in &mut npcs {
+    for (entity, mut needs, mut skills, mut inv, mut plan_c, mut pos, grievance, known, detained) in
+        &mut npcs
+    {
         if detained.is_some() {
             continue; // held by enforcers — cannot act
         }
@@ -650,7 +721,9 @@ pub(crate) fn people_execute(
                 let relief = match hunger.as_deref().copied().unwrap_or_default() {
                     crate::HungerModel::Flat => needs_cfg.eat_grass_relief,
                     crate::HungerModel::TileBiomass => {
-                        let frac = (substrate.0.plant_biomass(pos.0) / substrate.0.params().biomass_max).clamp(0.0, 1.0);
+                        let frac = (substrate.0.plant_biomass(pos.0)
+                            / substrate.0.params().biomass_max)
+                            .clamp(0.0, 1.0);
                         needs_cfg.eat_grass_relief * frac
                     }
                 };
@@ -664,7 +737,9 @@ pub(crate) fn people_execute(
             }
             Step::Make(i) => {
                 let r = &reg.recipes()[i];
-                let level = r.resource.map(|k| read_resources(&substrate.0, pos.0)[k.idx()]);
+                let level = r
+                    .resource
+                    .map(|k| read_resources(&substrate.0, pos.0)[k.idx()]);
                 let resource_ok = level.is_none_or(|l| l >= r.min_resource);
                 let inputs_ok = !r.inputs.iter().any(|&(g, qty)| inv.stock[g] < qty);
                 let can_practise = skills.0.get(r.skill).is_some_and(|&s| s > 0.0);
@@ -689,13 +764,22 @@ pub(crate) fn people_execute(
                     true
                 }
             }
-            Step::Buy { good, units, market } => {
+            Step::Buy {
+                good,
+                units,
+                market,
+            } => {
                 let (entity, mpos) = market_entities[market];
                 if !adjacent_or_on(&substrate.0, pos.0, mpos) {
                     false
                 } else {
                     let (_, _, mut m) = markets.get_mut(entity).unwrap();
-                    let p = price(&reg, &econ, good, m.price_basis[good].round().max(0.0) as u32);
+                    let p = price(
+                        &reg,
+                        &econ,
+                        good,
+                        m.price_basis[good].round().max(0.0) as u32,
+                    );
                     let bought = units.min(m.stock[good]).min((inv.money / p.max(1)) as u32);
                     if bought > 0 {
                         inv.money -= bought as i64 * p;
@@ -708,13 +792,22 @@ pub(crate) fn people_execute(
                     }
                 }
             }
-            Step::Sell { good, units, market } => {
+            Step::Sell {
+                good,
+                units,
+                market,
+            } => {
                 let (entity, mpos) = market_entities[market];
                 if !adjacent_or_on(&substrate.0, pos.0, mpos) {
                     false
                 } else {
                     let (_, _, mut m) = markets.get_mut(entity).unwrap();
-                    let p = price(&reg, &econ, good, m.price_basis[good].round().max(0.0) as u32);
+                    let p = price(
+                        &reg,
+                        &econ,
+                        good,
+                        m.price_basis[good].round().max(0.0) as u32,
+                    );
                     let sold = units.min((m.money / p.max(1)) as u32).min(inv.stock[good]);
                     if sold > 0 {
                         inv.stock[good] -= sold;
@@ -744,13 +837,27 @@ pub(crate) fn people_execute(
                     {
                         events.0.push((prev, AgentEvent::Deposed));
                         if let Some(c) = chronicle.as_deref_mut() {
-                            c.record(tick, EpisodeKind::Deposed, [Some(prev), Some(entity), None], pos.0, None, 0);
+                            c.record(
+                                tick,
+                                EpisodeKind::Deposed,
+                                [Some(prev), Some(entity), None],
+                                pos.0,
+                                None,
+                                0,
+                            );
                         }
                     }
                     t.holder = Some(entity);
                     events.0.push((entity, AgentEvent::Crowned));
                     if let Some(c) = chronicle.as_deref_mut() {
-                        c.record(tick, EpisodeKind::Crowned, [Some(entity), None, None], pos.0, None, 0);
+                        c.record(
+                            tick,
+                            EpisodeKind::Crowned,
+                            [Some(entity), None, None],
+                            pos.0,
+                            None,
+                            0,
+                        );
                     }
                     true
                 } else if let Some(foe) = grievance.map(|g| g.0)
@@ -764,7 +871,14 @@ pub(crate) fn people_execute(
                     // The apex narratable deed — recorded with its true cast (slayer, victim)
                     // before the body leaves the world.
                     if let Some(c) = chronicle.as_deref_mut() {
-                        c.record(tick, EpisodeKind::Killed, [Some(entity), Some(foe), None], pos.0, None, 0);
+                        c.record(
+                            tick,
+                            EpisodeKind::Killed,
+                            [Some(entity), Some(foe), None],
+                            pos.0,
+                            None,
+                            0,
+                        );
                     }
                     commands.entity(foe).despawn();
                     // A killing done in the teeth of a taboo is a transgression — it
@@ -772,7 +886,14 @@ pub(crate) fn people_execute(
                     if plan_c.illicit {
                         events.0.push((entity, AgentEvent::Transgressed));
                         if let Some(c) = chronicle.as_deref_mut() {
-                            c.record(tick, EpisodeKind::Transgressed, [Some(entity), None, None], pos.0, None, 0);
+                            c.record(
+                                tick,
+                                EpisodeKind::Transgressed,
+                                [Some(entity), None, None],
+                                pos.0,
+                                None,
+                                0,
+                            );
                         }
                     }
                     // The slain lord's vassals inherit his quarrel: each takes up a
@@ -782,7 +903,14 @@ pub(crate) fn people_execute(
                             if v != entity {
                                 commands.entity(v).insert(Grievance(entity));
                                 if let Some(c) = chronicle.as_deref_mut() {
-                                    c.record(tick, EpisodeKind::GrievanceFormed, [Some(v), Some(entity), None], pos.0, None, 0);
+                                    c.record(
+                                        tick,
+                                        EpisodeKind::GrievanceFormed,
+                                        [Some(v), Some(entity), None],
+                                        pos.0,
+                                        None,
+                                        0,
+                                    );
                                 }
                             }
                         }
@@ -797,12 +925,16 @@ pub(crate) fn people_execute(
             // depletion). Working a depletable site draws it down — the stigmergic mark.
             Step::Use(i) => match world_affordances.0.get_mut(i) {
                 Some(site)
-                    if site.at == pos.0 && site.available() && (!site.needs_discovery || known.0.contains(&site.tile)) =>
+                    if site.at == pos.0
+                        && site.available()
+                        && (!site.needs_discovery || known.0.contains(&site.tile)) =>
                 {
                     let applied = match site.effect {
                         AffordEffect::Relieve { need, amount } => {
                             match need {
-                                Need::Sustenance => needs.sustenance = (needs.sustenance + amount as f32).min(100.0),
+                                Need::Sustenance => {
+                                    needs.sustenance = (needs.sustenance + amount as f32).min(100.0)
+                                }
                                 Need::Rest => needs.rest = (needs.rest + amount as f32).min(100.0),
                             }
                             true
@@ -853,10 +985,15 @@ pub(crate) fn people_execute(
 /// of anger hardens into vengeance, a life of joy into contentment. This is nurture
 /// shaping disposition; it does not revert. Opposed traits move the other way.
 /// Per-agent and order-free — runs in parallel.
-pub(crate) fn mood_shapes_traits(mut people: Query<(&mut Personality, &Mood), With<Npc>>, reg: Res<Registry>) {
+pub(crate) fn mood_shapes_traits(
+    mut people: Query<(&mut Personality, &Mood), With<Npc>>,
+    reg: Res<Registry>,
+) {
     people.par_iter_mut().for_each(|(mut p, mood)| {
         for m in 0..mood.0.len() {
-            let Some((t, rate)) = reg.mood_shapes(m) else { continue };
+            let Some((t, rate)) = reg.mood_shapes(m) else {
+                continue;
+            };
             let delta = mood.0[m] * rate;
             if delta > 0.0 {
                 p.0[t] = (p.0[t] + delta).min(1.0);
@@ -908,7 +1045,14 @@ pub fn people_metabolism(
             }
             // An unattributed death (starvation) — `parties[0]` the dead, before despawn.
             if let Some(c) = chronicle.as_deref_mut() {
-                c.record(tick, EpisodeKind::Death, [Some(entity), None, None], pos.0, None, 0);
+                c.record(
+                    tick,
+                    EpisodeKind::Death,
+                    [Some(entity), None, None],
+                    pos.0,
+                    None,
+                    0,
+                );
             }
             commands.entity(entity).despawn();
         }
@@ -924,7 +1068,13 @@ pub fn people_metabolism(
 /// the bakers — and any extra callings (when `per_agent > 1`, the few who do more
 /// than one thing) are drawn from `rng`. `per_agent == 0` (or ≥ the skill count)
 /// makes an unspecialised generalist afforded every trade.
-fn birth_skills(skill_count: usize, per_agent: usize, n: usize, initial: f32, rng: &mut SplitMix64) -> Vec<f32> {
+fn birth_skills(
+    skill_count: usize,
+    per_agent: usize,
+    n: usize,
+    initial: f32,
+    rng: &mut SplitMix64,
+) -> Vec<f32> {
     if skill_count == 0 {
         return Vec::new();
     }
@@ -986,11 +1136,14 @@ pub fn spawn_markets(
         .map(|_| {
             let coord = fertile[rng.gen_range(fertile.len())];
             let entity = world
-                .spawn((Position(coord), Market {
-                    stock: vec![stock; reg.good_count()],
-                    money,
-                    price_basis: vec![stock as f32; reg.good_count()],
-                }))
+                .spawn((
+                    Position(coord),
+                    Market {
+                        stock: vec![stock; reg.good_count()],
+                        money,
+                        price_basis: vec![stock as f32; reg.good_count()],
+                    },
+                ))
                 .id();
             (entity, coord)
         })
@@ -1004,7 +1157,9 @@ pub fn spawn_markets(
 pub(crate) fn smooth_prices(mut markets: Query<&mut Market, Without<Npc>>, econ: Res<EconRes>) {
     let alpha = econ.price_smoothing.clamp(0.0, 1.0);
     for mut m in &mut markets {
-        let Market { stock, price_basis, .. } = &mut *m;
+        let Market {
+            stock, price_basis, ..
+        } = &mut *m;
         for (basis, &s) in price_basis.iter_mut().zip(stock.iter()) {
             *basis += alpha * (s as f32 - *basis);
         }
@@ -1026,11 +1181,14 @@ pub fn spawn_markets_at(
         .iter()
         .map(|&coord| {
             let entity = world
-                .spawn((Position(coord), Market {
-                    stock: vec![stock; reg.good_count()],
-                    money,
-                    price_basis: vec![stock as f32; reg.good_count()],
-                }))
+                .spawn((
+                    Position(coord),
+                    Market {
+                        stock: vec![stock; reg.good_count()],
+                        money,
+                        price_basis: vec![stock as f32; reg.good_count()],
+                    },
+                ))
                 .id();
             (entity, coord)
         })
@@ -1130,17 +1288,31 @@ pub fn spawn_npcs(
                 (d.baseline + jitter * d.spread).clamp(0.0, 1.0)
             })
             .collect();
-        if n < ambitious && let Some(a) = ambition {
+        if n < ambitious
+            && let Some(a) = ambition
+        {
             personality[a] = 1.0;
         }
-        let skills = birth_skills(reg.skill_count(), professions_per_agent, n, initial_skill, &mut prof_rng);
+        let skills = birth_skills(
+            reg.skill_count(),
+            professions_per_agent,
+            n,
+            initial_skill,
+            &mut prof_rng,
+        );
         let id = world
             .spawn((
                 Npc,
                 Position(coord),
-                Needs { sustenance: needs_cfg.initial_sustenance, rest: needs_cfg.initial_rest },
+                Needs {
+                    sustenance: needs_cfg.initial_sustenance,
+                    rest: needs_cfg.initial_rest,
+                },
                 Skills(skills),
-                Inventory { money: initial_money, stock: stock.clone() },
+                Inventory {
+                    money: initial_money,
+                    stock: stock.clone(),
+                },
                 Plan::default(),
                 Patron(markets[m].0),
                 Personality(personality),
@@ -1164,7 +1336,9 @@ pub fn spawn_npcs(
     // strikes a lord down, that lord's vassal inherits the quarrel — a chain of
     // vengeance the duty norm drives home.
     for j in 0..vassals.min(count.saturating_sub(2 * feuds)) {
-        world.entity_mut(ids[2 * feuds + j]).insert(Liege(ids[feuds + j]));
+        world
+            .entity_mut(ids[2 * feuds + j])
+            .insert(Liege(ids[feuds + j]));
     }
 }
 
@@ -1179,18 +1353,30 @@ mod tests {
         // whipsaw — converging without overshoot.
         let mut world = World::new();
         world.insert_resource(EconRes(EconConfig::default())); // smoothing 0.15
-        let e = world.spawn(Market { stock: vec![100], money: 0, price_basis: vec![0.0] }).id();
+        let e = world
+            .spawn(Market {
+                stock: vec![100],
+                money: 0,
+                price_basis: vec![0.0],
+            })
+            .id();
         let mut sched = Schedule::default();
         sched.add_systems(smooth_prices);
 
         sched.run(&mut world);
         let basis = world.get::<Market>(e).unwrap().price_basis[0];
-        assert!((basis - 15.0).abs() < 1e-3, "0.15 of the way from 0 to 100 is 15, got {basis}");
+        assert!(
+            (basis - 15.0).abs() < 1e-3,
+            "0.15 of the way from 0 to 100 is 15, got {basis}"
+        );
 
         for _ in 0..300 {
             sched.run(&mut world);
         }
         let basis = world.get::<Market>(e).unwrap().price_basis[0];
-        assert!(basis <= 100.0 && (basis - 100.0).abs() < 0.5, "should converge to stock without overshoot, got {basis}");
+        assert!(
+            basis <= 100.0 && (basis - 100.0).abs() < 0.5,
+            "should converge to stock without overshoot, got {basis}"
+        );
     }
 }

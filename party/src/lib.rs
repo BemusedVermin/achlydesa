@@ -62,7 +62,11 @@ impl Default for PartyConfig {
         // wants a genuinely social avatar (+3) to talk a stranger into following — but a soul you
         // have *won over* through conversation drops toward EASY, so recruiting is earned through
         // speech, not handed out. (The disliked can't be recruited at all.)
-        Self { recruit_difficulty: 10, disposition_weight: 4.0, max_size: 0 }
+        Self {
+            recruit_difficulty: 10,
+            disposition_weight: 4.0,
+            max_size: 0,
+        }
     }
 }
 
@@ -79,9 +83,21 @@ mod tests {
     #[test]
     fn disposition_eases_with_a_warm_opinion() {
         let cfg = PartyConfig::default(); // base 10, weight 4
-        assert_eq!(disposition_difficulty(&cfg, 0.0), 10, "a neutral stranger is hard");
-        assert_eq!(disposition_difficulty(&cfg, 1.0), 6, "a devoted soul recruits easily");
-        assert_eq!(disposition_difficulty(&cfg, -1.0), 14, "a hated one is beyond reach");
+        assert_eq!(
+            disposition_difficulty(&cfg, 0.0),
+            10,
+            "a neutral stranger is hard"
+        );
+        assert_eq!(
+            disposition_difficulty(&cfg, 1.0),
+            6,
+            "a devoted soul recruits easily"
+        );
+        assert_eq!(
+            disposition_difficulty(&cfg, -1.0),
+            14,
+            "a hated one is beyond reach"
+        );
     }
 
     #[test]

@@ -70,7 +70,11 @@ pub struct Chronicle {
 impl Chronicle {
     /// A fresh chronicle holding at most `cap` recent episodes (oldest dropped past the cap).
     pub fn new(cap: usize) -> Self {
-        Self { ring: VecDeque::new(), cap: cap.max(1), next_id: 0 }
+        Self {
+            ring: VecDeque::new(),
+            cap: cap.max(1),
+            next_id: 0,
+        }
     }
 
     /// Append an episode at `tick`. Called from the guarded emit taps; records intent (the
@@ -86,7 +90,15 @@ impl Chronicle {
     ) {
         let id = self.next_id;
         self.next_id += 1;
-        self.ring.push_back(Episode { id, tick, kind, parties, place, register, detail });
+        self.ring.push_back(Episode {
+            id,
+            tick,
+            kind,
+            parties,
+            place,
+            register,
+            detail,
+        });
         while self.ring.len() > self.cap {
             self.ring.pop_front();
         }

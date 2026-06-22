@@ -143,126 +143,183 @@ pub fn spawn(commands: &mut Commands, f: &ThemeFonts) {
                     d.spawn((
                         ConvoText::Initial,
                         Text::new(""),
-                        TextFont { font: f.serif.clone(), font_size: PORTRAIT_D * 0.42, ..default() },
+                        TextFont {
+                            font: f.serif.clone(),
+                            font_size: PORTRAIT_D * 0.42,
+                            ..default()
+                        },
                         TextColor(theme::HEADING),
                     ));
                 });
-                col.spawn((ConvoText::Name, theme::serif(f, "", theme::T_TITLE, theme::HEADING)));
+                col.spawn((
+                    ConvoText::Name,
+                    theme::serif(f, "", theme::T_TITLE, theme::HEADING),
+                ));
                 col.spawn((
                     ConvoText::Dispo,
-                    Node { max_width: px(210.0), ..default() },
+                    Node {
+                        max_width: px(210.0),
+                        ..default()
+                    },
                     Text::new(""),
-                    TextFont { font: f.mono.clone(), font_size: theme::T_LABEL, ..default() },
+                    TextFont {
+                        font: f.mono.clone(),
+                        font_size: theme::T_LABEL,
+                        ..default()
+                    },
                     TextColor(theme::TEXT_DIM),
                 ));
             });
 
             // Right column: Dialog (grows) over Speak Choices.
-            root.spawn(Node { flex_grow: 1.0, flex_direction: FlexDirection::Column, row_gap: px(theme::SP_MD), ..default() })
-                .with_children(|right| {
-                    // Dialog well.
-                    right.spawn((Node { flex_grow: 1.0, ..well().0 }, well().1, well().2)).with_children(|b| {
+            root.spawn(Node {
+                flex_grow: 1.0,
+                flex_direction: FlexDirection::Column,
+                row_gap: px(theme::SP_MD),
+                ..default()
+            })
+            .with_children(|right| {
+                // Dialog well.
+                right
+                    .spawn((
+                        Node {
+                            flex_grow: 1.0,
+                            ..well().0
+                        },
+                        well().1,
+                        well().2,
+                    ))
+                    .with_children(|b| {
                         b.spawn((
                             ConvoText::Dialog,
-                            Node { width: Val::Percent(100.0), ..default() },
+                            Node {
+                                width: Val::Percent(100.0),
+                                ..default()
+                            },
                             Text::new(""),
-                            TextFont { font: f.mono.clone(), font_size: theme::T_BODY, ..default() },
+                            TextFont {
+                                font: f.mono.clone(),
+                                font_size: theme::T_BODY,
+                                ..default()
+                            },
                             TextColor(theme::TEXT),
                         ));
                     });
-                    // Speak-choices well.
-                    right
-                        .spawn((
+                // Speak-choices well.
+                right
+                    .spawn((
+                        Node {
+                            height: px(190.0),
+                            flex_direction: FlexDirection::Column,
+                            row_gap: px(theme::SP_SM),
+                            justify_content: JustifyContent::SpaceBetween,
+                            ..well().0
+                        },
+                        well().1,
+                        well().2,
+                    ))
+                    .with_children(|sc| {
+                        // The charge on offer (a thread figure's request) — shown only when there
+                        // is one (toggled by `update_quest_offer`).
+                        sc.spawn((
+                            QuestAccept,
+                            Button,
                             Node {
-                                height: px(190.0),
-                                flex_direction: FlexDirection::Column,
-                                row_gap: px(theme::SP_SM),
-                                justify_content: JustifyContent::SpaceBetween,
-                                ..well().0
-                            },
-                            well().1,
-                            well().2,
-                        ))
-                        .with_children(|sc| {
-                            // The charge on offer (a thread figure's request) — shown only when there
-                            // is one (toggled by `update_quest_offer`).
-                            sc.spawn((
-                                QuestAccept,
-                                Button,
-                                Node {
-                                    display: Display::None,
-                                    width: Val::Percent(100.0),
-                                    padding: UiRect::axes(px(theme::SP_MD), px(theme::SP_XS)),
-                                    border: UiRect::all(px(theme::BORDER_W)),
-                                    border_radius: BorderRadius::all(px(theme::RADIUS_SM)),
-                                    justify_content: JustifyContent::Center,
-                                    ..default()
-                                },
-                                BackgroundColor(CHOICE_BG),
-                                BorderColor::all(theme::AWE),
-                            ))
-                            .with_children(|b| {
-                                b.spawn((QuestAcceptLabel, theme::mono(f, "", theme::T_LABEL, theme::HEADING)));
-                            });
-                            // The deterministic social acts, as clickable choices.
-                            sc.spawn(Node {
-                                flex_direction: FlexDirection::Row,
-                                flex_wrap: FlexWrap::Wrap,
-                                column_gap: px(theme::SP_SM),
-                                row_gap: px(theme::SP_XS),
+                                display: Display::None,
+                                width: Val::Percent(100.0),
+                                padding: UiRect::axes(px(theme::SP_MD), px(theme::SP_XS)),
+                                border: UiRect::all(px(theme::BORDER_W)),
+                                border_radius: BorderRadius::all(px(theme::RADIUS_SM)),
+                                justify_content: JustifyContent::Center,
                                 ..default()
-                            })
-                            .with_children(|row| {
-                                for (i, (_, _, verb)) in crate::QUICK_ACTS.iter().enumerate() {
-                                    row.spawn((
-                                        SpeakChoice(i),
-                                        Button,
-                                        Node {
-                                            padding: UiRect::axes(px(theme::SP_MD), px(theme::SP_XS)),
-                                            border: UiRect::all(px(theme::BORDER_W)),
-                                            border_radius: BorderRadius::all(px(theme::RADIUS_SM)),
-                                            ..default()
-                                        },
-                                        BackgroundColor(CHOICE_BG),
-                                        BorderColor::all(theme::BORDER),
-                                    ))
-                                    .with_children(|b| {
-                                        b.spawn(theme::mono(f, cap(verb), theme::T_LABEL, theme::TEXT));
-                                    });
-                                }
-                            });
-                            // Intervene in the drama: talk the soul down, or feed its grievance — a
-                            // real lever on the director's threads (persuasion-scaled).
-                            sc.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(theme::SP_SM), ..default() })
-                                .with_children(|row| {
-                                    for (calm, label) in [(true, "counsel peace"), (false, "stoke grievance")] {
-                                        let edge = if calm { theme::AWE } else { Color::srgb(0.80, 0.42, 0.38) };
-                                        row.spawn((
-                                            CounselChoice(calm),
-                                            Button,
-                                            Node {
-                                                padding: UiRect::axes(px(theme::SP_MD), px(theme::SP_XS)),
-                                                border: UiRect::all(px(theme::BORDER_W)),
-                                                border_radius: BorderRadius::all(px(theme::RADIUS_SM)),
-                                                ..default()
-                                            },
-                                            BackgroundColor(CHOICE_BG),
-                                            BorderColor::all(edge),
-                                        ))
-                                        .with_children(|b| {
-                                            b.spawn(theme::mono(f, cap(label), theme::T_LABEL, theme::TEXT));
-                                        });
-                                    }
-                                });
-                            // The free-text line / prompt.
-                            sc.spawn((
-                                ConvoText::Footer,
-                                Text::new(""),
-                                TextFont { font: f.mono.clone(), font_size: theme::T_LABEL, ..default() },
-                                TextColor(theme::TEXT_DIM),
+                            },
+                            BackgroundColor(CHOICE_BG),
+                            BorderColor::all(theme::AWE),
+                        ))
+                        .with_children(|b| {
+                            b.spawn((
+                                QuestAcceptLabel,
+                                theme::mono(f, "", theme::T_LABEL, theme::HEADING),
                             ));
                         });
-                });
+                        // The deterministic social acts, as clickable choices.
+                        sc.spawn(Node {
+                            flex_direction: FlexDirection::Row,
+                            flex_wrap: FlexWrap::Wrap,
+                            column_gap: px(theme::SP_SM),
+                            row_gap: px(theme::SP_XS),
+                            ..default()
+                        })
+                        .with_children(|row| {
+                            for (i, (_, _, verb)) in crate::QUICK_ACTS.iter().enumerate() {
+                                row.spawn((
+                                    SpeakChoice(i),
+                                    Button,
+                                    Node {
+                                        padding: UiRect::axes(px(theme::SP_MD), px(theme::SP_XS)),
+                                        border: UiRect::all(px(theme::BORDER_W)),
+                                        border_radius: BorderRadius::all(px(theme::RADIUS_SM)),
+                                        ..default()
+                                    },
+                                    BackgroundColor(CHOICE_BG),
+                                    BorderColor::all(theme::BORDER),
+                                ))
+                                .with_children(|b| {
+                                    b.spawn(theme::mono(f, cap(verb), theme::T_LABEL, theme::TEXT));
+                                });
+                            }
+                        });
+                        // Intervene in the drama: talk the soul down, or feed its grievance — a
+                        // real lever on the director's threads (persuasion-scaled).
+                        sc.spawn(Node {
+                            flex_direction: FlexDirection::Row,
+                            column_gap: px(theme::SP_SM),
+                            ..default()
+                        })
+                        .with_children(|row| {
+                            for (calm, label) in
+                                [(true, "counsel peace"), (false, "stoke grievance")]
+                            {
+                                let edge = if calm {
+                                    theme::AWE
+                                } else {
+                                    Color::srgb(0.80, 0.42, 0.38)
+                                };
+                                row.spawn((
+                                    CounselChoice(calm),
+                                    Button,
+                                    Node {
+                                        padding: UiRect::axes(px(theme::SP_MD), px(theme::SP_XS)),
+                                        border: UiRect::all(px(theme::BORDER_W)),
+                                        border_radius: BorderRadius::all(px(theme::RADIUS_SM)),
+                                        ..default()
+                                    },
+                                    BackgroundColor(CHOICE_BG),
+                                    BorderColor::all(edge),
+                                ))
+                                .with_children(|b| {
+                                    b.spawn(theme::mono(
+                                        f,
+                                        cap(label),
+                                        theme::T_LABEL,
+                                        theme::TEXT,
+                                    ));
+                                });
+                            }
+                        });
+                        // The free-text line / prompt.
+                        sc.spawn((
+                            ConvoText::Footer,
+                            Text::new(""),
+                            TextFont {
+                                font: f.mono.clone(),
+                                font_size: theme::T_LABEL,
+                                ..default()
+                            },
+                            TextColor(theme::TEXT_DIM),
+                        ));
+                    });
+            });
         });
 
     spawn_chooser(commands, f);
@@ -303,7 +360,12 @@ fn spawn_chooser(commands: &mut Commands, f: &ThemeFonts) {
                 theme::panel_chrome(),
             ))
             .with_children(|panel| {
-                panel.spawn(theme::serif(f, "Speak with whom?", theme::T_TITLE, theme::HEADING));
+                panel.spawn(theme::serif(
+                    f,
+                    "Speak with whom?",
+                    theme::T_TITLE,
+                    theme::HEADING,
+                ));
                 panel.spawn(theme::divider());
                 for i in 0..TALK_ROWS {
                     panel
@@ -324,7 +386,11 @@ fn spawn_chooser(commands: &mut Commands, f: &ThemeFonts) {
                             b.spawn((
                                 TalkRowLabel(i),
                                 Text::new(""),
-                                TextFont { font: f.mono.clone(), font_size: theme::T_BODY, ..default() },
+                                TextFont {
+                                    font: f.mono.clone(),
+                                    font_size: theme::T_BODY,
+                                    ..default()
+                                },
                                 TextColor(theme::TEXT),
                             ));
                         });
@@ -358,7 +424,9 @@ pub fn update_convo_panel(
     // The soul's live disposition toward you, shifting as choices land.
     let avatar = game.sim.player_avatar();
     let dispo = {
-        let op = avatar.and_then(|a| game.sim.opinion_of(c.listener, a)).unwrap_or(0.0);
+        let op = avatar
+            .and_then(|a| game.sim.opinion_of(c.listener, a))
+            .unwrap_or(0.0);
         let word = crate::disposition_word(op);
         if avatar.is_some_and(|a| game.sim.bears_grudge(c.listener, a)) {
             format!("{word}, and bears an old grudge")
@@ -368,8 +436,17 @@ pub fn update_convo_panel(
     };
 
     // Portrait sigil — the speaker's archetype tint + initial.
-    let initial = c.name.chars().next().map(|ch| ch.to_uppercase().to_string()).unwrap_or_default();
-    let tint = hud::archetype_tint(&format!("{}/{}", game.sim.archetype_of(c.listener).unwrap_or(""), c.name));
+    let initial = c
+        .name
+        .chars()
+        .next()
+        .map(|ch| ch.to_uppercase().to_string())
+        .unwrap_or_default();
+    let tint = hud::archetype_tint(&format!(
+        "{}/{}",
+        game.sim.archetype_of(c.listener).unwrap_or(""),
+        c.name
+    ));
     if let Ok(mut bg) = portrait.single_mut() {
         bg.0 = tint;
     }
@@ -387,7 +464,10 @@ pub fn update_convo_panel(
     }
 
     let footer = if game.voice.is_ready() {
-        format!("> {}_\n(type & Enter to speak · click a choice · Esc to leave)", c.input)
+        format!(
+            "> {}_\n(type & Enter to speak · click a choice · Esc to leave)",
+            c.input
+        )
     } else {
         "the voice sleeps — choose what to say, or Esc to leave".to_string()
     };
@@ -406,14 +486,25 @@ pub fn update_convo_panel(
 /// Light the speak-choice buttons on hover.
 pub fn style_speak_choices(mut q: Query<(&Interaction, &mut BackgroundColor), With<SpeakChoice>>) {
     for (interaction, mut bg) in &mut q {
-        bg.0 = if matches!(interaction, Interaction::Hovered | Interaction::Pressed) { CHOICE_BG_HOT } else { CHOICE_BG };
+        bg.0 = if matches!(interaction, Interaction::Hovered | Interaction::Pressed) {
+            CHOICE_BG_HOT
+        } else {
+            CHOICE_BG
+        };
     }
 }
 
 /// Apply a clicked speak choice — the deterministic, model-free social act on the soul you're talking
 /// to. Lands the authored intent (scaled by the avatar's speech skill) and notes it in the dialog.
-pub fn speak_choice_click(mut game: NonSendMut<Game>, q: Query<(&SpeakChoice, &Interaction), Changed<Interaction>>) {
-    let Some(idx) = q.iter().find(|(_, i)| **i == Interaction::Pressed).map(|(s, _)| s.0) else {
+pub fn speak_choice_click(
+    mut game: NonSendMut<Game>,
+    q: Query<(&SpeakChoice, &Interaction), Changed<Interaction>>,
+) {
+    let Some(idx) = q
+        .iter()
+        .find(|(_, i)| **i == Interaction::Pressed)
+        .map(|(s, _)| s.0)
+    else {
         return;
     };
     let Some(&(_, intent, verb)) = crate::QUICK_ACTS.get(idx) else {
@@ -426,27 +517,51 @@ pub fn speak_choice_click(mut game: NonSendMut<Game>, q: Query<(&SpeakChoice, &I
     let name = g.sim.display_name(npc);
     g.sim.player_talk(npc, intent);
     if let Some(c) = g.convo.as_mut() {
-        c.transcript.push(Line { from_player: true, prefix: String::new(), text: Some(format!("[you {verb} {name}]")), reveal: f32::MAX, pending: None });
+        c.transcript.push(Line {
+            from_player: true,
+            prefix: String::new(),
+            text: Some(format!("[you {verb} {name}]")),
+            reveal: f32::MAX,
+            pending: None,
+        });
         let overflow = c.transcript.len().saturating_sub(10);
         if overflow > 0 {
             c.transcript.drain(0..overflow);
         }
     }
-    let dispo = g.sim.player_avatar().and_then(|a| g.sim.opinion_of(npc, a)).map(crate::disposition_word).unwrap_or("unmoved");
+    let dispo = g
+        .sim
+        .player_avatar()
+        .and_then(|a| g.sim.opinion_of(npc, a))
+        .map(crate::disposition_word)
+        .unwrap_or("unmoved");
     g.status = format!("You {verb} {name}. {name} now {dispo}.");
 }
 
 /// Light the intervention buttons on hover (the same feel as the speak choices).
-pub fn style_counsel_choices(mut q: Query<(&Interaction, &mut BackgroundColor), With<CounselChoice>>) {
+pub fn style_counsel_choices(
+    mut q: Query<(&Interaction, &mut BackgroundColor), With<CounselChoice>>,
+) {
     for (interaction, mut bg) in &mut q {
-        bg.0 = if matches!(interaction, Interaction::Hovered | Interaction::Pressed) { CHOICE_BG_HOT } else { CHOICE_BG };
+        bg.0 = if matches!(interaction, Interaction::Hovered | Interaction::Pressed) {
+            CHOICE_BG_HOT
+        } else {
+            CHOICE_BG
+        };
     }
 }
 
 /// Apply a clicked intervention — counsel the soul toward peace, or stoke its grievance — through
 /// `player_counsel` (persuasion-scaled), noting what your words did in the dialog and the status.
-pub fn counsel_click(mut game: NonSendMut<Game>, q: Query<(&CounselChoice, &Interaction), Changed<Interaction>>) {
-    let Some(calm) = q.iter().find(|(_, i)| **i == Interaction::Pressed).map(|(c, _)| c.0) else {
+pub fn counsel_click(
+    mut game: NonSendMut<Game>,
+    q: Query<(&CounselChoice, &Interaction), Changed<Interaction>>,
+) {
+    let Some(calm) = q
+        .iter()
+        .find(|(_, i)| **i == Interaction::Pressed)
+        .map(|(c, _)| c.0)
+    else {
         return;
     };
     let g = &mut *game;
@@ -482,16 +597,25 @@ pub fn update_quest_offer(
 ) {
     let offer = game.convo.as_ref().and_then(|c| c.offer.as_ref());
     if let Ok(mut node) = btn.single_mut() {
-        node.display = if offer.is_some() { Display::Flex } else { Display::None };
+        node.display = if offer.is_some() {
+            Display::Flex
+        } else {
+            Display::None
+        };
     }
     if let Ok(mut text) = label.single_mut() {
-        text.0 = offer.map(|q| format!("Take up the charge: {}", q.objective)).unwrap_or_default();
+        text.0 = offer
+            .map(|q| format!("Take up the charge: {}", q.objective))
+            .unwrap_or_default();
     }
 }
 
 /// Accept the offered charge — move it from the conversation's offer into the avatar's charges, and
 /// note it in the dialog and the status line.
-pub fn quest_accept_click(mut game: NonSendMut<Game>, q: Query<&Interaction, (With<QuestAccept>, Changed<Interaction>)>) {
+pub fn quest_accept_click(
+    mut game: NonSendMut<Game>,
+    q: Query<&Interaction, (With<QuestAccept>, Changed<Interaction>)>,
+) {
     if !q.iter().any(|i| *i == Interaction::Pressed) {
         return;
     }
@@ -526,7 +650,11 @@ pub fn update_talk_chooser(
 ) {
     let active = game.talk_choices.is_some() && game.convo.is_none() && !game.paused;
     if let Ok(mut v) = root.single_mut() {
-        *v = if active { Visibility::Visible } else { Visibility::Hidden };
+        *v = if active {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        };
     }
     if !active {
         return;
@@ -539,7 +667,11 @@ pub fn update_talk_chooser(
             let n = game.sim.display_name(e);
             // A soul the director has woven into a story wears its arc here ("the Betrayed"), so the
             // figures who matter stand out from the crowd; otherwise its archetype.
-            match game.sim.npc_epithet(e).or_else(|| game.sim.archetype_of(e).map(str::to_string)) {
+            match game
+                .sim
+                .npc_epithet(e)
+                .or_else(|| game.sim.archetype_of(e).map(str::to_string))
+            {
                 Some(tag) => format!("{n}  —  {tag}"),
                 None => n,
             }
@@ -548,7 +680,11 @@ pub fn update_talk_chooser(
     for (row, interaction, mut node, mut bg) in &mut rows {
         let shown = row.0 < names.len();
         node.display = if shown { Display::Flex } else { Display::None };
-        bg.0 = if shown && matches!(interaction, Interaction::Hovered | Interaction::Pressed) { CHOICE_BG_HOT } else { CHOICE_BG };
+        bg.0 = if shown && matches!(interaction, Interaction::Hovered | Interaction::Pressed) {
+            CHOICE_BG_HOT
+        } else {
+            CHOICE_BG
+        };
     }
     for (lbl, mut text) in &mut labels {
         text.0 = names.get(lbl.0).cloned().unwrap_or_default();
@@ -556,8 +692,15 @@ pub fn update_talk_chooser(
 }
 
 /// Clicking a chooser row opens the conversation with that soul.
-pub fn talk_row_click(mut game: NonSendMut<Game>, q: Query<(&TalkRow, &Interaction), Changed<Interaction>>) {
-    let Some(i) = q.iter().find(|(_, it)| **it == Interaction::Pressed).map(|(r, _)| r.0) else {
+pub fn talk_row_click(
+    mut game: NonSendMut<Game>,
+    q: Query<(&TalkRow, &Interaction), Changed<Interaction>>,
+) {
+    let Some(i) = q
+        .iter()
+        .find(|(_, it)| **it == Interaction::Pressed)
+        .map(|(r, _)| r.0)
+    else {
         return;
     };
     let pick = game.talk_choices.as_ref().and_then(|v| v.get(i)).copied();

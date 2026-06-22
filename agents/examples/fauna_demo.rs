@@ -19,10 +19,19 @@ fn main() {
         carnivores: 140,
         ..Default::default()
     });
-    println!("seeded {} herbivores, {} carnivores; running 300 days…", sim.fauna_count(), sim.carnivore_count());
+    println!(
+        "seeded {} herbivores, {} carnivores; running 300 days…",
+        sim.fauna_count(),
+        sim.carnivore_count()
+    );
     sim.run(300);
 
-    let names: Vec<String> = sim.bestiary().species.iter().map(|s| s.name.clone()).collect();
+    let names: Vec<String> = sim
+        .bestiary()
+        .species
+        .iter()
+        .map(|s| s.name.clone())
+        .collect();
     let census = sim.fauna_census();
     let gw = sim.substrate();
 
@@ -35,15 +44,25 @@ fn main() {
         *e.1.entry(f).or_default() += 1;
     }
 
-    println!("\n{} creatures alive across {} species:", census.len(), by_species.len());
-    println!("  {:<16} {:>5}   where they live (by formation)", "species", "n");
+    println!(
+        "\n{} creatures alive across {} species:",
+        census.len(),
+        by_species.len()
+    );
+    println!(
+        "  {:<16} {:>5}   where they live (by formation)",
+        "species", "n"
+    );
     let mut rows: Vec<_> = by_species.into_iter().collect();
-    rows.sort_by(|a, b| b.1 .0.cmp(&a.1 .0));
+    rows.sort_by(|a, b| b.1.0.cmp(&a.1.0));
     for (si, (total, forms)) in rows {
         let mut fs: Vec<_> = forms.into_iter().collect();
         fs.sort_by(|a, b| b.1.cmp(&a.1));
-        let where_str: Vec<String> =
-            fs.iter().take(3).map(|(f, n)| format!("{f:?} {}%", 100 * n / total.max(1))).collect();
+        let where_str: Vec<String> = fs
+            .iter()
+            .take(3)
+            .map(|(f, n)| format!("{f:?} {}%", 100 * n / total.max(1)))
+            .collect();
         println!("  {:<16} {total:>5}   {}", names[si], where_str.join(", "));
     }
 }

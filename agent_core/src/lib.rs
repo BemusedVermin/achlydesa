@@ -40,32 +40,47 @@ pub mod player;
 pub mod sift;
 
 pub use ai::{Consideration, Curve, Input};
-pub use data::{GoodDef, GoodId, MoodDef, MoodId, Recipe, Registry, ResourceKind, SkillId, TraitDef, TraitId};
 pub use beats::{Beat, BeatBook, Effect, Phase, Pre, Register, Role};
 pub use chronicle::{Chronicle, Episode, EpisodeKind};
-pub use sift::{Axis, InterestAxis, Sift, SiftBook, SiftPattern, SiftPatternId, SiftStatus, ThreadCandidate};
-pub use dialogue::{Dialogue, DialogueConfig, IntentBook, SlmRealizer, SpeechAct, TextGen, Utterance};
-pub use player::{Player, PlayerKnowledge, PlayerState, PlayerView, Rumor, SearchOutcome, Terrain, TileInfo};
-pub use game_sim::{Coord, Topology};
+pub use data::{
+    GoodDef, GoodId, MoodDef, MoodId, Recipe, Registry, ResourceKind, SkillId, TraitDef, TraitId,
+};
+pub use dialogue::{
+    Dialogue, DialogueConfig, IntentBook, SlmRealizer, SpeechAct, TextGen, Utterance,
+};
 pub use director::{Cadence, Director, DirectorConfig, Protagonist, Thread};
 pub use events::{AgentEvent, Appraisals, EventQueue};
-pub use factions::{Allegiance, Bond, Detained, Faction, FactionConfig, Factions, Government, Law, Opinion};
-pub use fauna::{Bestiary, Carnivore, Diet, Energy, FaunaConfig, FaunaRng, Form, Herbivore, Species, SpeciesId};
-pub use features::{
-    AffordanceDef, Category, Discovery, EffectDef, Feature, FeatureCatalog, FeatureConfig, FeatureDef, FeatureId,
-    Features, FindState, NeedKind,
+pub use factions::{
+    Allegiance, Bond, Detained, Faction, FactionConfig, Factions, Government, Law, Opinion,
 };
+pub use fauna::{
+    Bestiary, Carnivore, Diet, Energy, FaunaConfig, FaunaRng, Form, Herbivore, Species, SpeciesId,
+};
+pub use features::{
+    AffordanceDef, Category, Discovery, EffectDef, Feature, FeatureCatalog, FeatureConfig,
+    FeatureDef, FeatureId, Features, FindState, NeedKind,
+};
+pub use game_sim::{Coord, Topology};
 pub use goals::{Goal, Goals};
+pub use player::{
+    Player, PlayerKnowledge, PlayerState, PlayerView, Rumor, SearchOutcome, Terrain, TileInfo,
+};
+pub use sift::{
+    Axis, InterestAxis, Sift, SiftBook, SiftPattern, SiftPatternId, SiftStatus, ThreadCandidate,
+};
 // Only `Gossip` is re-exported at the root; `gossip::Rumor` would clash with `player::Rumor`
 // (a different concept — a place heard-of, not a beat overheard), so reach it via the module.
 pub use gossip::Gossip;
 pub use norms::{Modality, Norm, Norms};
 pub use observe::{Census, Retelling, RetoldThread, Violation, check};
 pub use people::{
-    AffordanceSite, EconConfig, Grievance, Inventory, Known, Liege, Market, Mood, Needs, NeedsConfig, Npc, Patron,
-    Personality, Plan, Skills, Throne, WorldAffordances, price,
+    AffordanceSite, EconConfig, Grievance, Inventory, Known, Liege, Market, Mood, Needs,
+    NeedsConfig, Npc, Patron, Personality, Plan, Skills, Throne, WorldAffordances, price,
 };
-pub use plan::{Affordance, AffordEffect, Condition, Deed, GoodSel, MarketSnapshot, Need, PlanCtx, PlanState, Step, plan};
+pub use plan::{
+    AffordEffect, Affordance, Condition, Deed, GoodSel, MarketSnapshot, Need, PlanCtx, PlanState,
+    Step, plan,
+};
 
 // --- Shared components / resources ---
 
@@ -117,7 +132,10 @@ pub struct SimRadius {
 
 impl Default for SimRadius {
     fn default() -> Self {
-        Self { radius: None, far_stride: 1 }
+        Self {
+            radius: None,
+            far_stride: 1,
+        }
     }
 }
 
@@ -159,14 +177,19 @@ pub(crate) fn lod_dormancy(
     npcs: Query<(Entity, &Position, Has<Dormant>), With<people::Npc>>,
 ) {
     let Some(r) = cfg.radius else { return };
-    let Some(avatar) = player.avatar() else { return };
-    let Ok(&Position(ac)) = positions.get(avatar) else { return };
+    let Some(avatar) = player.avatar() else {
+        return;
+    };
+    let Ok(&Position(ac)) = positions.get(avatar) else {
+        return;
+    };
     let width = substrate.0.topology().width();
     let tick = substrate.0.tick();
     let stride = cfg.far_stride.max(1) as u64;
     for (e, &Position(p), dormant) in &npcs {
         // Active = near, or it's this NPC's turn on the coarse clock (staggered by entity id).
-        let active = within(ac, p, r, width) || stride <= 1 || tick % stride == e.to_bits() % stride;
+        let active =
+            within(ac, p, r, width) || stride <= 1 || tick % stride == e.to_bits() % stride;
         match (active, dormant) {
             (true, true) => {
                 commands.entity(e).remove::<Dormant>();

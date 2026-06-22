@@ -81,12 +81,20 @@ impl Appraisals {
             let traits = d
                 .traits
                 .into_iter()
-                .map(|(n, delta)| reg.trait_id(&n).map(|t| (t, delta)).ok_or(AppraisalError::UnknownTrait(n)))
+                .map(|(n, delta)| {
+                    reg.trait_id(&n)
+                        .map(|t| (t, delta))
+                        .ok_or(AppraisalError::UnknownTrait(n))
+                })
                 .collect::<Result<Vec<_>, _>>()?;
             let moods = d
                 .moods
                 .into_iter()
-                .map(|(n, delta)| reg.mood_id(&n).map(|m| (m, delta)).ok_or(AppraisalError::UnknownMood(n)))
+                .map(|(n, delta)| {
+                    reg.mood_id(&n)
+                        .map(|m| (m, delta))
+                        .ok_or(AppraisalError::UnknownMood(n))
+                })
                 .collect::<Result<Vec<_>, _>>()?;
             map.insert(d.event, EventEffects { traits, moods });
         }
@@ -124,8 +132,12 @@ pub(crate) fn appraise(
     mut people: Query<(&mut Personality, &mut Mood), With<Npc>>,
 ) {
     for (e, event) in events.0.drain(..) {
-        let Ok((mut p, mut mood)) = people.get_mut(e) else { continue };
-        let Some(eff) = appraisals.effects(event.key()) else { continue };
+        let Ok((mut p, mut mood)) = people.get_mut(e) else {
+            continue;
+        };
+        let Some(eff) = appraisals.effects(event.key()) else {
+            continue;
+        };
         for &(t, delta) in &eff.traits {
             p.0[t] = (p.0[t] + delta).clamp(0.0, 1.0);
             if let Some(o) = reg.opposes(t) {

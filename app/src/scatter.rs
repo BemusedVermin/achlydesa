@@ -17,7 +17,12 @@ pub struct Decor;
 
 /// Dress each tile revealed this frame (the `fresh` delta from [`crate::ground::Explored`]). The
 /// delta is already de-duplicated, so every tile is decorated exactly once with no per-frame rescan.
-pub fn decorate_fresh(commands: &mut Commands, lib: &PropLibrary, sim: &Simulation, fresh: &[Coord]) {
+pub fn decorate_fresh(
+    commands: &mut Commands,
+    lib: &PropLibrary,
+    sim: &Simulation,
+    fresh: &[Coord],
+) {
     let gw = sim.substrate();
     for &c in fresh {
         decorate_tile(commands, lib, gw, c);
@@ -26,8 +31,19 @@ pub fn decorate_fresh(commands: &mut Commands, lib: &PropLibrary, sim: &Simulati
 
 /// Spawn one prop instance: a library variant of `prop`, dropped at a seeded spot inside the
 /// hex with a random facing and size.
-fn place(commands: &mut Commands, lib: &PropLibrary, prop: Prop, centre: Vec2, top: f32, rng: &mut Rng, scale: (f32, f32), spread: f32) {
-    let Some(mesh) = lib.pick(prop, rng) else { return };
+fn place(
+    commands: &mut Commands,
+    lib: &PropLibrary,
+    prop: Prop,
+    centre: Vec2,
+    top: f32,
+    rng: &mut Rng,
+    scale: (f32, f32),
+    spread: f32,
+) {
+    let Some(mesh) = lib.pick(prop, rng) else {
+        return;
+    };
     let a = rng.range(0.0, TAU);
     let r = HEX_R * spread * rng.unit().sqrt();
     let (ox, oz) = (r * a.cos(), r * a.sin());
@@ -62,8 +78,21 @@ fn decorate_tile(commands: &mut Commands, lib: &PropLibrary, gw: &GameWorld, c: 
             // The lushest canopy: more crowns, broadleaf-dominant, no dead wood.
             let n = 3 + rng.int(4); // 3–6
             for _ in 0..n {
-                let prop = if rng.chance(0.8) { Prop::Broadleaf } else { Prop::Conifer };
-                place(commands, lib, prop, centre, top, &mut rng, (0.95, 1.4), 0.74);
+                let prop = if rng.chance(0.8) {
+                    Prop::Broadleaf
+                } else {
+                    Prop::Conifer
+                };
+                place(
+                    commands,
+                    lib,
+                    prop,
+                    centre,
+                    top,
+                    &mut rng,
+                    (0.95, 1.4),
+                    0.74,
+                );
             }
         }
         Formation::Forest => {
@@ -76,20 +105,37 @@ fn decorate_tile(commands: &mut Commands, lib: &PropLibrary, gw: &GameWorld, c: 
                 } else {
                     Prop::Broadleaf
                 };
-                place(commands, lib, prop, centre, top, &mut rng, (0.8, 1.25), 0.72);
+                place(
+                    commands,
+                    lib,
+                    prop,
+                    centre,
+                    top,
+                    &mut rng,
+                    (0.8, 1.25),
+                    0.72,
+                );
             }
         }
         Formation::Shrubland => {
             let n = 1 + rng.int(3); // 1–3
             for _ in 0..n {
-                let prop = if rng.chance(0.2) { Prop::Broadleaf } else { Prop::Shrub };
+                let prop = if rng.chance(0.2) {
+                    Prop::Broadleaf
+                } else {
+                    Prop::Shrub
+                };
                 place(commands, lib, prop, centre, top, &mut rng, (0.8, 1.2), 0.74);
             }
         }
         Formation::Grassland => {
             let n = 1 + rng.int(3);
             for _ in 0..n {
-                let prop = if rng.chance(0.18) { Prop::Shrub } else { Prop::GrassTuft };
+                let prop = if rng.chance(0.18) {
+                    Prop::Shrub
+                } else {
+                    Prop::GrassTuft
+                };
                 place(commands, lib, prop, centre, top, &mut rng, (0.8, 1.4), 0.78);
             }
         }
@@ -97,8 +143,21 @@ fn decorate_tile(commands: &mut Commands, lib: &PropLibrary, gw: &GameWorld, c: 
             if rng.chance(0.6) {
                 let n = 1 + rng.int(2);
                 for _ in 0..n {
-                    let prop = if rng.chance(0.3) { Prop::DeadTree } else { Prop::Shrub };
-                    place(commands, lib, prop, centre, top, &mut rng, (0.6, 0.95), 0.76);
+                    let prop = if rng.chance(0.3) {
+                        Prop::DeadTree
+                    } else {
+                        Prop::Shrub
+                    };
+                    place(
+                        commands,
+                        lib,
+                        prop,
+                        centre,
+                        top,
+                        &mut rng,
+                        (0.6, 0.95),
+                        0.76,
+                    );
                 }
             }
         }
@@ -113,6 +172,15 @@ fn decorate_tile(commands: &mut Commands, lib: &PropLibrary, gw: &GameWorld, c: 
         _ => 0,
     };
     for _ in 0..rocks {
-        place(commands, lib, Prop::Boulder, centre, top, &mut rng, (0.7, 1.4), 0.7);
+        place(
+            commands,
+            lib,
+            Prop::Boulder,
+            centre,
+            top,
+            &mut rng,
+            (0.7, 1.4),
+            0.7,
+        );
     }
 }

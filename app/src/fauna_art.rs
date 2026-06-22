@@ -13,7 +13,7 @@
 
 use crate::mesh::MeshBuf;
 use crate::palette::tinted;
-use crate::props::{blob, cone, prism, Rng};
+use crate::props::{Rng, blob, cone, prism};
 use agents::{Bestiary, Form};
 use bevy::prelude::*;
 use std::f32::consts::{PI, TAU};
@@ -78,7 +78,14 @@ fn quad_for(form: Form, s: f32) -> Quad {
     }
 }
 
-fn build_quadruped(b: &mut MeshBuf, form: Form, s: f32, color: [f32; 3], dark: [f32; 3], rng: &mut Rng) {
+fn build_quadruped(
+    b: &mut MeshBuf,
+    form: Form,
+    s: f32,
+    color: [f32; 3],
+    dark: [f32; 3],
+    rng: &mut Rng,
+) {
     let p = quad_for(form, s);
     // Torso.
     blob(b, Vec3::new(0.0, p.body_y, 0.0), p.body, color, rng, 0.12);
@@ -98,7 +105,15 @@ fn build_quadruped(b: &mut MeshBuf, form: Form, s: f32, color: [f32; 3], dark: [
     // Tail, trailing back (-Z) and down.
     let tail_base = Vec3::new(0.0, p.body_y + p.body.y * 0.2, -p.body.z * 0.85);
     let tail_tip = tail_base + Vec3::new(0.0, -p.body_y * 0.35, -p.tail_len);
-    prism(b, tail_base, tail_tip, p.leg_r * 0.9, p.leg_r * 0.3, 4, color);
+    prism(
+        b,
+        tail_base,
+        tail_tip,
+        p.leg_r * 0.9,
+        p.leg_r * 0.3,
+        4,
+        color,
+    );
 }
 
 fn build_serpent(b: &mut MeshBuf, s: f32, color: [f32; 3], rng: &mut Rng) {
@@ -122,8 +137,23 @@ fn build_serpent(b: &mut MeshBuf, s: f32, color: [f32; 3], rng: &mut Rng) {
 fn build_drifter(b: &mut MeshBuf, s: f32, color: [f32; 3], dark: [f32; 3], rng: &mut Rng) {
     let y = s * 0.55; // it floats above the ground
     // A domed bell body.
-    blob(b, Vec3::new(0.0, y, 0.0), Vec3::new(s * 0.30, s * 0.36, s * 0.30), color, rng, 0.16);
-    cone(b, Vec3::new(0.0, y - s * 0.34, 0.0), -Vec3::Y, s * 0.18, s * 0.26, 6, color);
+    blob(
+        b,
+        Vec3::new(0.0, y, 0.0),
+        Vec3::new(s * 0.30, s * 0.36, s * 0.30),
+        color,
+        rng,
+        0.16,
+    );
+    cone(
+        b,
+        Vec3::new(0.0, y - s * 0.34, 0.0),
+        -Vec3::Y,
+        s * 0.18,
+        s * 0.26,
+        6,
+        color,
+    );
     // Hanging tendrils.
     let n = 4;
     for k in 0..n {
@@ -162,14 +192,23 @@ pub struct FaunaArt {
 }
 
 /// Build a creature mesh for every species in the bestiary.
-pub fn build_fauna_art(meshes: &mut Assets<Mesh>, material: Handle<StandardMaterial>, bestiary: &Bestiary) -> FaunaArt {
+pub fn build_fauna_art(
+    meshes: &mut Assets<Mesh>,
+    material: Handle<StandardMaterial>,
+    bestiary: &Bestiary,
+) -> FaunaArt {
     let handles = bestiary
         .species
         .iter()
         .enumerate()
-        .map(|(i, sp)| meshes.add(build_creature(sp.form, sp.size, sp.color, i as u64 + 1).into_mesh()))
+        .map(|(i, sp)| {
+            meshes.add(build_creature(sp.form, sp.size, sp.color, i as u64 + 1).into_mesh())
+        })
         .collect();
-    FaunaArt { meshes: handles, material }
+    FaunaArt {
+        meshes: handles,
+        material,
+    }
 }
 
 // ── Live creatures: component + animation ────────────────────────────────────────────
@@ -200,10 +239,25 @@ fn jitter(id: u64) -> (f32, f32) {
 }
 
 /// Spawn a creature entity at `pos`.
-pub fn spawn_creature(commands: &mut Commands, art: &FaunaArt, id: u64, species: usize, form: Form, pos: Vec3) {
+pub fn spawn_creature(
+    commands: &mut Commands,
+    art: &FaunaArt,
+    id: u64,
+    species: usize,
+    form: Form,
+    pos: Vec3,
+) {
     let (phase, scale) = jitter(id);
     commands.spawn((
-        Fauna { id, form, phase, scale, pos, target: pos, facing: 0.0 },
+        Fauna {
+            id,
+            form,
+            phase,
+            scale,
+            pos,
+            target: pos,
+            facing: 0.0,
+        },
         Mesh3d(art.meshes[species].clone()),
         MeshMaterial3d(art.material.clone()),
         Transform::from_translation(pos),
@@ -291,15 +345,28 @@ mod tests {
 
     #[test]
     fn every_form_builds_real_geometry() {
-        for form in [Form::Strider, Form::Lumberer, Form::Prowler, Form::Critter, Form::Serpent, Form::Drifter] {
-            let n = build_creature(form, 1.0, [0.5, 0.5, 0.5], 7).into_mesh().count_vertices();
+        for form in [
+            Form::Strider,
+            Form::Lumberer,
+            Form::Prowler,
+            Form::Critter,
+            Form::Serpent,
+            Form::Drifter,
+        ] {
+            let n = build_creature(form, 1.0, [0.5, 0.5, 0.5], 7)
+                .into_mesh()
+                .count_vertices();
             assert!(n > 0, "{form:?} produced an empty creature mesh");
         }
     }
 
     #[test]
     fn creature_generation_is_deterministic() {
-        let count = || build_creature(Form::Strider, 1.2, [0.4, 0.5, 0.3], 3).into_mesh().count_vertices();
+        let count = || {
+            build_creature(Form::Strider, 1.2, [0.4, 0.5, 0.3], 3)
+                .into_mesh()
+                .count_vertices()
+        };
         assert_eq!(count(), count());
     }
 }
