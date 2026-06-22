@@ -162,9 +162,10 @@ fn gossip_line(
         // one and we have it; otherwise the generic noun line (the old `(_, None)` / `_` fallback).
         if def.told.contains("{other}") {
             match other {
-                Some(o) => {
-                    fill_template(&def.told, &[("{lead}", lead), ("{other}", o), ("{noun}", noun)])
-                }
+                Some(o) => fill_template(
+                    &def.told,
+                    &[("{lead}", lead), ("{other}", o), ("{noun}", noun)],
+                ),
                 None => format!("They say {lead} is caught up in a {noun}."),
             }
         } else {

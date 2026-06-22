@@ -145,7 +145,10 @@ fn scan_file(file: &syn::File, rel: &str, out: &mut Vec<Finding>) {
             detector: "string_ids",
             key: rel.to_string(),
             score: det.id_count,
-            note: format!("{} hardcoded `*_id(\"…\")` content-name lookups", det.id_count),
+            note: format!(
+                "{} hardcoded `*_id(\"…\")` content-name lookups",
+                det.id_count
+            ),
         });
     }
     out.append(&mut det.findings);
@@ -221,7 +224,10 @@ impl<'ast> Visit<'ast> for Detector<'_> {
                 detector: "const_all",
                 key: format!("{}::{}", self.rel, c.ident),
                 score: n,
-                note: format!("const `{}`: a parallel `[{elem}; {n}]` enum roster", c.ident),
+                note: format!(
+                    "const `{}`: a parallel `[{elem}; {n}]` enum roster",
+                    c.ident
+                ),
             });
         }
         syn::visit::visit_item_const(self, c);
@@ -345,7 +351,9 @@ pub fn load_baseline(path: &Path) -> std::io::Result<Baseline> {
 pub fn write_baseline(path: &Path, findings: &[Finding]) -> std::io::Result<()> {
     let mut s = String::new();
     s.push_str("# coupling-lint baseline — the known coupling this repo still carries.\n");
-    s.push_str("# Format: <detector> <key> <max-score>. The ratchet fails on anything NEW or any\n");
+    s.push_str(
+        "# Format: <detector> <key> <max-score>. The ratchet fails on anything NEW or any\n",
+    );
     s.push_str("# finding above its score here. Regenerate with `cargo run -p coupling-lint -- --bless`.\n");
     s.push_str("# Lower a number when you pay coupling down; never raise one without review.\n");
     for f in findings {
