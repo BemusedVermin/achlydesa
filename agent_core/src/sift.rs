@@ -200,8 +200,9 @@ pub enum SiftStatus {
 }
 
 /// A forming (or formed) story the sifter perceived: the pattern, how far it got, the cast it bound,
-/// the episodes that constitute it, and its interest.
-#[derive(Clone, Debug)]
+/// the episodes that constitute it, and its interest. `PartialEq` is what the incremental ==
+/// retrospective oracle test compares (both paths emit candidates in one canonical order).
+#[derive(Clone, Debug, PartialEq)]
 pub struct ThreadCandidate {
     pub pattern: SiftPatternId,
     pub status: SiftStatus,
@@ -226,6 +227,11 @@ pub struct Sift {
     candidates: Vec<ThreadCandidate>,
     /// Base-rate counters per pattern — how often each has been seen (the `Rarity` axis).
     seen: HashMap<usize, u64>,
+    /// The **incremental** matcher's running state: every partial match opened so far (one per
+    /// episode that started a pattern), advanced greedily as later episodes arrive. Unused by the
+    /// retrospective path. Folding the ring's episodes in tick order leaves this identical to the
+    /// retrospective per-start matches (the oracle equality, verified in tests).
+    open: Vec<(usize, RawMatch)>,
 }
 
 impl Sift {
@@ -254,28 +260,82 @@ impl Sift {
     /// against `book`, scoring each on the read-only world snapshot `reads`. Pure — it touches no
     /// sim state. The episodes must be in tick order (the ring's natural order).
     pub(crate) fn resift(&mut self, ring: &[Episode], book: &SiftBook, reads: &SiftReads) {
-        self.candidates.clear();
-        self.seen.clear();
-
-        // First pass: collect every raw match, and tally base rates per pattern.
         let mut raws: Vec<(usize, RawMatch)> = Vec::new();
         for (pi, pat) in book.0.iter().enumerate() {
-            let mut matches = find_matches(pat, ring, reads.now);
-            // Dedup: the same (pattern, bound cast) found from many starts is one story — keep the
-            // best (most matched, then earliest), so a candidate is reported once.
-            matches.sort_by(|a, b| {
-                cast_key(a).cmp(&cast_key(b)).then(b.matched.cmp(&a.matched)).then(a.first_tick.cmp(&b.first_tick))
-            });
-            matches.dedup_by(|a, b| cast_key(a) == cast_key(b));
-            for m in matches {
-                *self.seen.entry(pi).or_insert(0) += 1;
+            for m in find_matches(pat, ring, reads.now) {
                 raws.push((pi, m));
             }
         }
+        self.finalize(raws, book, reads);
+    }
 
-        // Second pass: classify + score (rarity reads the tallies from the first pass).
-        for (pi, m) in raws {
-            let pat = &book.0[pi];
+    /// Fold one episode into the **incremental** matcher's [`open`](Self::open) state: advance every
+    /// open match whose next step this episode satisfies (binding-consistent, still inside its
+    /// window), then open a fresh match for every pattern this episode can start. Advance *then*
+    /// spawn, so an episode never advances the match it just opened — mirroring the retrospective
+    /// scan, which begins each start at the *next* episode. Pure structural matching (no scoring).
+    /// Feed episodes in tick order.
+    pub(crate) fn ingest(&mut self, ep: &Episode, book: &SiftBook) {
+        for (pi, m) in self.open.iter_mut() {
+            let pat = &book.0[*pi];
+            if m.matched >= pat.window.len() {
+                continue; // already complete
+            }
+            if ep.tick.saturating_sub(m.first_tick) > pat.window_ticks {
+                continue; // its window has closed
+            }
+            if try_step(&mut m.env, &pat.window[m.matched], ep) {
+                m.support.push(ep.id);
+                m.last_tick = ep.tick;
+                m.place = ep.place;
+                m.matched += 1;
+            }
+        }
+        for (pi, pat) in book.0.iter().enumerate() {
+            let mut env: Vec<(String, Entity)> = Vec::new();
+            if try_step(&mut env, &pat.window[0], ep) {
+                self.open.push((
+                    pi,
+                    RawMatch { env, support: vec![ep.id], matched: 1, first_tick: ep.tick, last_tick: ep.tick, place: ep.place },
+                ));
+            }
+        }
+    }
+
+    /// Recompute the ranked candidates from the accumulated [`open`](Self::open) matches against the
+    /// live `reads`. With the same episode sequence fed to [`ingest`](Self::ingest), this yields the
+    /// **same** candidates the retrospective [`resift`](Self::resift) would (the S8.2 oracle).
+    pub(crate) fn recompute(&mut self, book: &SiftBook, reads: &SiftReads) {
+        let raws: Vec<(usize, RawMatch)> = self
+            .open
+            .iter()
+            .filter(|(pi, m)| m.matched >= book.0[*pi].emerging_at)
+            .map(|(pi, m)| (*pi, m.clone()))
+            .collect();
+        self.finalize(raws, book, reads);
+    }
+
+    /// Shared back end for both matchers: dedup the raw matches to one per `(pattern, cast)` (keeping
+    /// the most-advanced, then earliest), tally the base rates the `Rarity` axis reads, classify +
+    /// score each, and emit the candidates in **one canonical order** — so the retrospective and
+    /// incremental paths, given the same raw matches, produce byte-identical candidate lists.
+    fn finalize(&mut self, mut raws: Vec<(usize, RawMatch)>, book: &SiftBook, reads: &SiftReads) {
+        self.candidates.clear();
+        self.seen.clear();
+
+        raws.sort_by(|x, y| {
+            x.0.cmp(&y.0)
+                .then_with(|| cast_key(&x.1).cmp(&cast_key(&y.1)))
+                .then(y.1.matched.cmp(&x.1.matched))
+                .then(x.1.first_tick.cmp(&y.1.first_tick))
+        });
+        raws.dedup_by(|x, y| x.0 == y.0 && cast_key(&x.1) == cast_key(&y.1));
+
+        for (pi, _) in &raws {
+            *self.seen.entry(*pi).or_insert(0) += 1;
+        }
+        for (pi, m) in &raws {
+            let pat = &book.0[*pi];
             let n = pat.window.len();
             let status = if m.matched >= n {
                 SiftStatus::Resolved
@@ -286,9 +346,9 @@ impl Sift {
             } else {
                 SiftStatus::Emerging
             };
-            let interest = self.score(pat, pi, &m, reads);
+            let interest = self.score(pat, *pi, m, reads);
             self.candidates.push(ThreadCandidate {
-                pattern: SiftPatternId(pi),
+                pattern: SiftPatternId(*pi),
                 status,
                 cast: m.env.iter().map(|(_, e)| *e).collect(),
                 tension: pat.tension.clone(),
@@ -300,6 +360,16 @@ impl Sift {
                 last_updated: m.last_tick,
             });
         }
+        // Canonical order: (pattern, cast) is unique per surviving candidate, so this is a total,
+        // input-order-independent sort — the key to the two paths agreeing byte-for-byte.
+        self.candidates.sort_by(|a, b| {
+            a.pattern
+                .0
+                .cmp(&b.pattern.0)
+                .then_with(|| a.cast.cmp(&b.cast))
+                .then(a.first_seen.cmp(&b.first_seen))
+                .then(a.support.first().cmp(&b.support.first()))
+        });
     }
 
     /// Sum the pattern's interest axes (each curve output is `0..1`), grounded on `reads`.
@@ -318,6 +388,7 @@ impl Sift {
 
 /// One raw match before classification: the bound environment (in binding order), the supporting
 /// episode ids, how many window steps matched, and its temporal/spatial extent.
+#[derive(Clone, Debug)]
 struct RawMatch {
     env: Vec<(String, Entity)>,
     support: Vec<u64>,
@@ -562,6 +633,27 @@ pub fn run_retrospective(world: &mut World) -> Option<Sift> {
     Some(sift)
 }
 
+/// Run **both** matchers over the world's current Chronicle (the retrospective oracle, and the
+/// incremental matcher fed the ring's episodes in tick order) and report whether they agree
+/// byte-for-byte — the S8.2 acceptance check, over a real run. `None` when the sift layer is off.
+/// Dev/test only; reads the world and changes no sim state.
+pub fn paths_agree(world: &mut World) -> Option<bool> {
+    let book = world.get_resource::<SiftBook>()?.clone();
+    let ring: Vec<Episode> = world.get_resource::<Chronicle>()?.recent().copied().collect();
+    let reads = gather_reads(world);
+
+    let mut retro = Sift::default();
+    retro.resift(&ring, &book, &reads);
+
+    let mut incr = Sift::default();
+    for ep in &ring {
+        incr.ingest(ep, &book);
+    }
+    incr.recompute(&book, &reads);
+
+    Some(retro.candidates == incr.candidates)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -647,5 +739,63 @@ mod tests {
         assert_eq!(feud.status, SiftStatus::Resolved, "all three steps matched -> the arc resolved");
         assert_eq!(feud.support.as_slice(), &[0, 2, 3], "the stranger's grudge (id 1) is not part of it");
         assert!(feud.interest > 0.0, "a feud that reaches a killing carries bloodshed interest");
+    }
+
+    /// The S8.2 oracle: the incremental matcher (fed the ring episode-by-episode in tick order)
+    /// produces byte-identical candidates to the retrospective matcher over the whole ring. Built on
+    /// a ring exercising several patterns, two casts, a duplicate start (dedup), and a populated
+    /// snapshot so the scoring axes (convergence, opinion, mood) all contribute.
+    #[test]
+    fn the_incremental_matcher_agrees_with_the_retrospective_oracle() {
+        let mut w = World::new();
+        let (a, b, c, d) = (w.spawn_empty().id(), w.spawn_empty().id(), w.spawn_empty().id(), w.spawn_empty().id());
+        let at = Coord::new(2, 3);
+        let ep = |id, tick, kind, p0: Entity, p1: Option<Entity>, detail| Episode {
+            id,
+            tick,
+            kind,
+            parties: [Some(p0), p1, None],
+            place: at,
+            register: None,
+            detail,
+        };
+        let ring = vec![
+            ep(0, 1, EpisodeKind::GrievanceFormed, a, Some(b), 0),
+            ep(1, 3, EpisodeKind::GrievanceFormed, a, Some(b), 0), // duplicate cast -> dedup
+            ep(2, 4, EpisodeKind::GrievanceFormed, c, Some(d), 0),
+            ep(3, 6, EpisodeKind::OpinionCrossed, a, Some(b), -1), // A->B sours
+            ep(4, 7, EpisodeKind::WarDeclared, c, Some(d), 0),
+            ep(5, 9, EpisodeKind::OpinionCrossed, c, Some(d), 1), // C->D warms (a_grudge_forgiven)
+            ep(6, 11, EpisodeKind::Killed, a, Some(b), 0),        // A kills B (feud consummated)
+            ep(7, 12, EpisodeKind::Death, d, None, 0),
+            ep(8, 13, EpisodeKind::Death, c, None, 0),
+        ];
+        let book = SiftBook::bundled();
+        let reg = Registry::bundled();
+        let reads = SiftReads {
+            now: 20,
+            grudge_convergence: [(b, 2u32), (d, 1)].into_iter().collect(),
+            opinion: [(a, [(b, -0.9f32)].into_iter().collect())].into_iter().collect(),
+            mood: HashMap::new(),
+            vengeance: [(a, 0.8f32)].into_iter().collect(),
+            taboo_active: true,
+            mood_ids: MoodIds::resolve(&reg),
+            by_id: ring.iter().map(|e| (e.id, *e)).collect(),
+        };
+
+        let mut retro = Sift::default();
+        retro.resift(&ring, &book, &reads);
+
+        let mut incr = Sift::default();
+        for e in &ring {
+            incr.ingest(e, &book);
+        }
+        incr.recompute(&book, &reads);
+
+        assert!(!retro.candidates.is_empty(), "the ring should produce candidates");
+        assert_eq!(
+            retro.candidates, incr.candidates,
+            "the incremental matcher must agree with the retrospective oracle, candidate for candidate",
+        );
     }
 }
