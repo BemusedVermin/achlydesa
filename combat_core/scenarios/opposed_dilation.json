@@ -1,0 +1,52 @@
+{
+  "name": "opposed-dilation",
+  "seed": 5,
+  "ai_factions": [],
+  "moves": [
+    {
+      "id": 2,
+      "name": "Payoff",
+      "frames": { "startup": 4, "active": 1, "recovery": 3 },
+      "priority_class": 2,
+      "effects": [{ "Damage": { "amount": 15 } }],
+      "requires_tag": "Exposed",
+      "has_armor": false,
+      "range": "AnyZone",
+      "tempo_cost": 0
+    },
+    {
+      "id": 1,
+      "name": "Expose",
+      "frames": { "startup": 2, "active": 1, "recovery": 2 },
+      "priority_class": 1,
+      "effects": [{ "OpenWindow": { "tag": "Exposed", "duration": 10, "magnitude": 0 } }],
+      "requires_tag": null,
+      "has_armor": false,
+      "range": "AnyZone",
+      "tempo_cost": 0
+    },
+    {
+      "id": 3,
+      "name": "Smash",
+      "frames": { "startup": 3, "active": 1, "recovery": 3 },
+      "priority_class": 1,
+      "effects": [{ "Damage": { "amount": 8 } }],
+      "requires_tag": null,
+      "has_armor": false,
+      "range": "AnyZone",
+      "tempo_cost": 0
+    }
+  ],
+  "actors": [
+    { "id": 1, "faction": 0, "hp": 8, "ready_tick": 0, "kit": [2] },
+    { "id": 3, "faction": 0, "hp": 8, "ready_tick": 0, "kit": [1] },
+    { "id": 2, "faction": 1, "hp": 30, "tempo": 20, "ready_tick": 100, "kit": [3] }
+  ],
+  "script": [
+    { "tick": 0, "actor": 1, "command": { "CommitAction": { "mv": 2, "target": 2 } } },
+    { "tick": 0, "actor": 3, "command": { "CommitAction": { "mv": 1, "target": 2 } } },
+    { "tick": 0, "actor": 2, "command": { "EditVerb": { "Slow": { "instance": 0, "ticks": 9 } } } },
+    { "tick": 13, "actor": 2, "command": { "EditVerb": { "Insert": { "actor": 2, "mv": 3, "target": 3 } } } },
+    { "tick": 20, "actor": 2, "command": { "CommitAction": { "mv": 3, "target": 1 } } }
+  ]
+}

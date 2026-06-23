@@ -1,0 +1,38 @@
+{
+  "name": "interrupt",
+  "seed": 2,
+  "ai_factions": [],
+  "moves": [
+    {
+      "id": 1,
+      "name": "QuickStrike",
+      "frames": { "startup": 2, "active": 1, "recovery": 2 },
+      "priority_class": 2,
+      "effects": [{ "Damage": { "amount": 5 } }],
+      "requires_tag": null,
+      "has_armor": false,
+      "range": "AnyZone",
+      "tempo_cost": 0
+    },
+    {
+      "id": 2,
+      "name": "HeavyBlow",
+      "frames": { "startup": 6, "active": 1, "recovery": 3 },
+      "priority_class": 1,
+      "effects": [{ "Damage": { "amount": 8 } }],
+      "requires_tag": null,
+      "has_armor": false,
+      "range": "AnyZone",
+      "tempo_cost": 0
+    }
+  ],
+  "actors": [
+    { "id": 1, "faction": 0, "hp": 20, "tempo": 10, "ready_tick": 100, "kit": [1] },
+    { "id": 2, "faction": 1, "hp": 9, "ready_tick": 0, "kit": [2] }
+  ],
+  "script": [
+    { "tick": 0, "actor": 2, "command": { "CommitAction": { "mv": 2, "target": 1 } } },
+    { "tick": 0, "actor": 1, "command": { "EditVerb": { "Insert": { "actor": 1, "mv": 1, "target": 2 } } } },
+    { "tick": 5, "actor": 1, "command": { "CommitAction": { "mv": 1, "target": 2 } } }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "name": "two-mook-trade",
+  "seed": 1,
+  "ai_factions": [0, 1],
+  "moves": [
+    {
+      "id": 1,
+      "name": "Strike",
+      "frames": { "startup": 3, "active": 1, "recovery": 2 },
+      "priority_class": 1,
+      "effects": [{ "Damage": { "amount": 4 } }],
+      "requires_tag": null,
+      "has_armor": false,
+      "range": "AnyZone",
+      "tempo_cost": 0
+    }
+  ],
+  "actors": [
+    { "id": 1, "faction": 0, "hp": 10, "kit": [1] },
+    { "id": 2, "faction": 1, "hp": 10, "kit": [1] }
+  ]
+}
