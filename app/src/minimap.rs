@@ -104,7 +104,7 @@ fn tile_rgb(sim: &Simulation, c: Coord, sea: f32) -> [u8; 3] {
     } else {
         let fert = gw.carrying_capacity(c).clamp(0.0, 1.0);
         palette::snow_blend(
-            palette::ground_rgb(terrain, gw.biome(c).formation(), fert),
+            palette::ground_rgb(terrain, gw.formation(c), fert),
             elev - sea,
         )
     };

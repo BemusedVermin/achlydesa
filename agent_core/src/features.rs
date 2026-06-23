@@ -491,7 +491,7 @@ pub fn place(
             .any(|l| substrate.elevation(topo.coord(l.to)) < sea);
         let fertility = (substrate.carrying_capacity(c) / biomass_max).clamp(0.0, 1.0);
         let veg = (substrate.plant_biomass(c) / biomass_max).clamp(0.0, 1.0);
-        let formation = substrate.biome(c).formation();
+        let formation = substrate.formation(c);
         let s = &mut sig[i];
         s[Signal::Elevation.idx()] = elev - sea;
         s[Signal::Slope.idx()] = slope;

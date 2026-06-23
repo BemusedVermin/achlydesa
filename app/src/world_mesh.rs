@@ -61,7 +61,7 @@ pub fn build_mesh(sim: &Simulation, coords: &[Coord], heights: &HashMap<(i32, i3
         } else {
             let fert = gw.carrying_capacity(c).clamp(0.0, 1.0);
             let lit = palette::snow_blend(
-                palette::ground_rgb(terrain, gw.biome(c).formation(), fert),
+                palette::ground_rgb(terrain, gw.formation(c), fert),
                 elev - sea,
             );
             (

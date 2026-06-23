@@ -13,7 +13,7 @@ fn biome_mix(world: &game_sim::World) -> Vec<(String, usize)> {
     let topo = world.topology();
     let mut m: HashMap<String, usize> = HashMap::new();
     for i in 0..topo.len() {
-        *m.entry(world.biome(topo.coord(i)).name().to_string())
+        *m.entry(world.biome_name(topo.coord(i)).to_string())
             .or_default() += 1;
     }
     let mut v: Vec<_> = m.into_iter().collect();

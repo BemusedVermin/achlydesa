@@ -478,7 +478,7 @@ fn detail_text(sim: &Simulation, c: Coord) -> String {
         c.row,
         terrain.name(),
         (elev - sea).max(0.0),
-        gw.biome(c).name(),
+        gw.biome_name(c),
         gw.carrying_capacity(c).clamp(0.0, 1.0),
         gw.surface_water(c),
     );

@@ -25,7 +25,8 @@ fn no_unannotated_coupling() {
 #[test]
 fn the_lint_still_sees_the_codebase() {
     // Use the *raw* findings (pre-allow): a parse regression that zeroed them must not pass
-    // vacuously. The Biome life-zone table (game_sim) is the canonical surviving offender.
+    // vacuously. The `Asset` file registry (config) is a stable, always-present self-match offender,
+    // so its presence proves the detectors still resolve a real, load-bearing file.
     let raw = coupling_lint::scan_workspace_raw();
     assert!(
         raw.len() >= 5,
@@ -33,15 +34,16 @@ fn the_lint_still_sees_the_codebase() {
         raw.len()
     );
     assert!(
-        raw.iter().any(|f| f.key.contains("Biome")),
-        "the Biome table should still be flagged (did game_sim/src/fields.rs stop parsing?)",
+        raw.iter().any(|f| f.key.ends_with("::Asset")),
+        "the config Asset registry should still be flagged (did config/src/assets.rs stop parsing?)",
     );
 }
 
 #[test]
 fn the_data_driven_domains_stay_data_driven() {
-    // Register and SpeechAct became data; a regression that re-hardcoded them would resurrect these
-    // findings (and they'd be unannotated, failing the gate above too). Lock the win in.
+    // Register, SpeechAct, and the Biome/Belt/HumidityProvince Holdridge tables became data; a
+    // regression that re-hardcoded any of them would resurrect these findings (and they'd be
+    // unannotated, failing the gate above too). Lock the wins in.
     let raw = coupling_lint::scan_workspace_raw();
     let resurrected: Vec<&str> = raw
         .iter()
@@ -50,6 +52,9 @@ fn the_data_driven_domains_stay_data_driven() {
                 || f.key.ends_with("::RegisterDef")
                 || f.key.ends_with("::SPINES")
                 || f.key.ends_with("::SpeechAct")
+                || f.key.ends_with("::Biome")
+                || f.key.ends_with("::Belt")
+                || f.key.ends_with("::HumidityProvince")
         })
         .map(|f| f.key.as_str())
         .collect();

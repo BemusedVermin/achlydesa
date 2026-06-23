@@ -7,3 +7,4 @@ edition = "2024"
 config = { path = "../config" }
 sim = {path = "../sim"}
 hexx = {workspace = true}
+serde = { version = "1", features = ["derive"] }

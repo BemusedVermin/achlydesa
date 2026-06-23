@@ -127,16 +127,7 @@ struct SpeciesDef {
 }
 
 fn formation_from_str(s: &str) -> Result<Formation, String> {
-    Ok(match s {
-        "water" => Formation::Water,
-        "desert" => Formation::Desert,
-        "tundra" => Formation::Tundra,
-        "grassland" => Formation::Grassland,
-        "shrubland" => Formation::Shrubland,
-        "forest" => Formation::Forest,
-        "rainforest" => Formation::Rainforest,
-        other => return Err(format!("unknown habitat formation '{other}'")),
-    })
+    Formation::from_name(s).ok_or_else(|| format!("unknown habitat formation '{s}'"))
 }
 
 /// The loaded creature roster — every [`Species`] the world can host. Static
@@ -231,7 +222,7 @@ pub(crate) fn forage(
             // well the tile's biome and climate suit it — plus the pull of company,
             // scaled by how gregarious the species is.
             let appeal = |i: usize, c: game_sim::Coord| {
-                let suit = sp.suitability(world.biome(c).formation(), world.biotemperature(c));
+                let suit = sp.suitability(world.formation(c), world.biotemperature(c));
                 world.plant_biomass(c) * suit
                     + config.herd_cohesion
                         * sp.gregarious
@@ -293,10 +284,11 @@ pub(crate) fn lifecycle(
         if energy.0 >= config.repro_threshold / sp.fecundity {
             let c = position.0;
             let biome = world.biome(c);
-            let suit = sp.suitability(biome.formation(), world.biotemperature(c));
+            let suit = sp.suitability(world.biomes().formation(biome), world.biotemperature(c));
             // Per-biome carrying capacity: the richer the biome, the denser a herd it
             // can carry before crowding stops further breeding.
-            let cap = ((config.herd_cap as f32) * (0.3 + 1.6 * biome.profile(params).productivity))
+            let cap = ((config.herd_cap as f32)
+                * (0.3 + 1.6 * world.biomes().profile(biome, params).productivity))
                 .round()
                 .max(1.0) as usize;
             let crowded = density.get(&topo.index_of(c)).copied().unwrap_or(0) >= cap;
@@ -371,7 +363,7 @@ pub(crate) fn hunt(
         }
         // Bigger predators burn more, and hunting outside one's range costs extra.
         let c = topo.coord(best);
-        let suit = sp.suitability(world.biome(c).formation(), world.biotemperature(c));
+        let suit = sp.suitability(world.formation(c), world.biotemperature(c));
         let upkeep = config.carn_metabolism * sp.size * (2.0 - suit);
         energy.0 += config.carn_energy_per_kill * killed as f32 - upkeep;
     }
@@ -440,8 +432,7 @@ fn spawn_diet(
                 .copied()
                 .filter(|&i| {
                     let c = topo.coord(i);
-                    sp.suitability(substrate.biome(c).formation(), substrate.biotemperature(c))
-                        >= 0.6
+                    sp.suitability(substrate.formation(c), substrate.biotemperature(c)) >= 0.6
                 })
                 .collect();
             (si, pool)

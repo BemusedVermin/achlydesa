@@ -68,7 +68,7 @@ fn decorate_tile(commands: &mut Commands, lib: &PropLibrary, gw: &GameWorld, c: 
     }
     let centre = tile_world(c.col, c.row);
     let top = tile_top(gw, c);
-    let formation = gw.biome(c).formation();
+    let formation = gw.formation(c);
     let fert = gw.carrying_capacity(c).clamp(0.0, 1.0);
     let mut rng = Rng::new(tile_seed(c.col, c.row, 0xDEC0_FFEE));
 

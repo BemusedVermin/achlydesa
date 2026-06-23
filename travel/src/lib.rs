@@ -72,7 +72,7 @@ fn formation_cost(f: Formation) -> f32 {
 
 /// Days to **enter** tile `c` (terrain + standing water + road bonus), before the slope term.
 pub fn tile_cost(world: &World, model: &CostModel, c: Coord, on_road: bool) -> f32 {
-    let mut cost = formation_cost(world.biome(c).formation());
+    let mut cost = formation_cost(world.formation(c));
     let water = world.surface_water(c);
     if water > 0.05 {
         cost += model.water_cost * water.min(1.0);

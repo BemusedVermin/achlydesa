@@ -38,7 +38,7 @@ fn main() {
     // species index -> (total, formation histogram)
     let mut by_species: HashMap<usize, (usize, HashMap<Formation, usize>)> = HashMap::new();
     for (_id, si, c) in &census {
-        let f = gw.biome(*c).formation();
+        let f = gw.formation(*c);
         let e = by_species.entry(*si).or_insert((0, HashMap::new()));
         e.0 += 1;
         *e.1.entry(f).or_default() += 1;

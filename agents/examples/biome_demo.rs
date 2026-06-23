@@ -34,7 +34,7 @@ fn main() {
         let c = topo.coord(i);
         let b = gw.biome(c);
         *by_biome.entry(b).or_default() += 1;
-        *by_formation.entry(b.formation()).or_default() += 1;
+        *by_formation.entry(gw.biomes().formation(b)).or_default() += 1;
         if gw.elevation(c) >= sea {
             land += 1;
             biomass += gw.plant_biomass(c);
@@ -75,7 +75,7 @@ fn main() {
     for (b, n) in &bs {
         println!(
             "  {:>28}  {n:>5}  {:>5.1}%",
-            b.name(),
+            gw.biomes().name(*b),
             100.0 * *n as f32 / total as f32
         );
     }
