@@ -4523,14 +4523,28 @@ mod tests {
         let acts: std::collections::HashSet<String> =
             sim.dialogue_log().iter().map(|u| u.act.clone()).collect();
         assert!(acts.len() >= 4, "the talk should be varied, saw {acts:?}");
+        // The act tags below are now plain data (intents.ron), so a rename there could quietly
+        // turn these `matches!` arms into dead code. Pin them to the loaded vocabulary: if
+        // intents.ron drops or renames one, this fails loudly instead of silently passing.
+        let grievance_acts = ["accuse", "threaten"];
+        let warmth_acts = ["greet", "confide", "console", "praise"];
+        let intents = dialogue::IntentBook::bundled();
+        let vocab: std::collections::HashSet<&str> =
+            intents.0.iter().map(|i| i.act.as_str()).collect();
+        for act in grievance_acts.iter().chain(warmth_acts.iter()) {
+            assert!(
+                vocab.contains(act),
+                "intents.ron no longer defines act '{act}' this test asserts over"
+            );
+        }
         let grievance = sim
             .dialogue_log()
             .iter()
-            .any(|u| matches!(u.act.as_str(), "accuse" | "threaten"));
+            .any(|u| grievance_acts.contains(&u.act.as_str()));
         let warmth = sim
             .dialogue_log()
             .iter()
-            .any(|u| matches!(u.act.as_str(), "greet" | "confide" | "console" | "praise"));
+            .any(|u| warmth_acts.contains(&u.act.as_str()));
         assert!(
             grievance && warmth,
             "grievance and warmth should both emerge (grievance {grievance}, warmth {warmth})"

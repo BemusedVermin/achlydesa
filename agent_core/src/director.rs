@@ -705,9 +705,18 @@ fn pick_spine(
             .iter()
             .copied()
             .find(|&r| reg.register_def(r).trunk)
-            .unwrap_or_else(|| reg.spines().first().copied().unwrap_or(0));
+            .unwrap_or_else(|| {
+                reg.spines()
+                    .first()
+                    .copied()
+                    .expect("registers.ron has no spine registers")
+            });
     }
-    let mut best = reg.spines().first().copied().unwrap_or(0);
+    let mut best = reg
+        .spines()
+        .first()
+        .copied()
+        .expect("registers.ron has no spine registers");
     let mut best_score = f32::MIN;
     for &r in reg.spines() {
         if taken.contains(&r) {

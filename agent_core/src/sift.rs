@@ -173,13 +173,16 @@ impl SiftBook {
 
     /// Parse a sift document and resolve each pattern's register name against `reg` (a typo in a
     /// register name is a load error, not a silent phantom).
-    pub fn from_ron(ron: &str, reg: &Registry) -> Result<Self, String> {
-        let defs: Vec<SiftPatternDef> = config::parse(ron).map_err(|e| e.to_string())?;
+    pub fn from_ron(ron: &str, reg: &Registry) -> Result<Self, SiftError> {
+        let defs: Vec<SiftPatternDef> = config::parse(ron)?;
         let mut pats = Vec::with_capacity(defs.len());
         for d in defs {
-            let register = reg
-                .register_id(&d.register)
-                .ok_or_else(|| format!("sift '{}': unknown register '{}'", d.id, d.register))?;
+            let register =
+                reg.register_id(&d.register)
+                    .ok_or_else(|| SiftError::UnknownRegister {
+                        pattern: d.id.clone(),
+                        register: d.register.clone(),
+                    })?;
             pats.push(SiftPattern {
                 id: d.id,
                 tension: d.tension,
@@ -195,21 +198,75 @@ impl SiftBook {
     }
 
     /// Fail fast on a structurally unsound pattern (empty window, or thresholds out of the
-    /// `1 ≤ emerging_at ≤ active_at ≤ window.len()` ordering) — so a typo is caught at load.
-    pub fn validate(&self) -> Result<(), String> {
+    /// `1 <= emerging_at <= active_at <= window.len()` ordering) — so a typo is caught at load.
+    pub fn validate(&self) -> Result<(), SiftError> {
         for p in &self.0 {
             if p.window.is_empty() {
-                return Err(format!("sift '{}': empty window", p.id));
+                return Err(SiftError::EmptyWindow {
+                    pattern: p.id.clone(),
+                });
             }
             let n = p.window.len();
             if !(1..=n).contains(&p.emerging_at) || !(p.emerging_at..=n).contains(&p.active_at) {
-                return Err(format!(
-                    "sift '{}': need 1 <= emerging_at ({}) <= active_at ({}) <= window len ({n})",
-                    p.id, p.emerging_at, p.active_at,
-                ));
+                return Err(SiftError::BadThresholds {
+                    pattern: p.id.clone(),
+                    emerging_at: p.emerging_at,
+                    active_at: p.active_at,
+                    window_len: n,
+                });
             }
         }
         Ok(())
+    }
+}
+
+/// Why loading sift patterns failed — parse error, an unknown register, or a structurally
+/// unsound pattern.
+#[derive(Debug)]
+pub enum SiftError {
+    Config(config::ConfigError),
+    /// A pattern names a register the registry doesn't define.
+    UnknownRegister {
+        pattern: String,
+        register: String,
+    },
+    /// A pattern's match window is empty — it could never match.
+    EmptyWindow {
+        pattern: String,
+    },
+    /// A pattern's thresholds break the `1 <= emerging_at <= active_at <= window_len` ordering.
+    BadThresholds {
+        pattern: String,
+        emerging_at: usize,
+        active_at: usize,
+        window_len: usize,
+    },
+}
+
+impl std::fmt::Display for SiftError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SiftError::Config(e) => write!(f, "loading sift patterns: {e}"),
+            SiftError::UnknownRegister { pattern, register } => {
+                write!(f, "sift '{pattern}': unknown register '{register}'")
+            }
+            SiftError::EmptyWindow { pattern } => write!(f, "sift '{pattern}': empty window"),
+            SiftError::BadThresholds {
+                pattern,
+                emerging_at,
+                active_at,
+                window_len,
+            } => write!(
+                f,
+                "sift '{pattern}': need 1 <= emerging_at ({emerging_at}) <= active_at ({active_at}) <= window len ({window_len})",
+            ),
+        }
+    }
+}
+impl std::error::Error for SiftError {}
+impl From<config::ConfigError> for SiftError {
+    fn from(e: config::ConfigError) -> Self {
+        SiftError::Config(e)
     }
 }
 
