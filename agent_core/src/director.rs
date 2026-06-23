@@ -1910,20 +1910,17 @@ mod tests {
         /// (war, decree) to have a bloc to work.
         fn seat_faction(&mut self, seat: Coord, leader: Entity) {
             use crate::factions::{Faction, Government};
-            self.world
-                .resource_mut::<Factions>()
-                .0
-                .push(Faction {
-                    seat,
-                    government: Government::Monarchy,
-                    leaders: SmallVec::from_slice(&[leader]),
-                    members: vec![leader],
-                    laws: SmallVec::new(),
-                    at_war: SmallVec::new(),
-                    force: 1.0,
-                    cunning: 0.0,
-                    wealth: 0,
-                });
+            self.world.resource_mut::<Factions>().0.push(Faction {
+                seat,
+                government: Government::Monarchy,
+                leaders: SmallVec::from_slice(&[leader]),
+                members: vec![leader],
+                laws: SmallVec::new(),
+                at_war: SmallVec::new(),
+                force: 1.0,
+                cunning: 0.0,
+                wealth: 0,
+            });
         }
 
         /// Seed a running thread directly, at a chosen point in its groom→climax→fall arc — the
@@ -1951,7 +1948,8 @@ mod tests {
 
         /// Wake the dialogue sink, so the director's `Voice` lever has a mouth to speak through.
         fn enable_dialogue(&mut self) {
-            self.world.insert_resource(crate::dialogue::Dialogue::seeded(0));
+            self.world
+                .insert_resource(crate::dialogue::Dialogue::seeded(0));
         }
 
         fn director(&self) -> &Director {
@@ -2075,7 +2073,13 @@ mod tests {
             ..knobs()
         });
         let reg = quiet.reg.clone();
-        let mut toothless = beat("a_toothless_beat", &reg, "wonder", Phase::Setup, vec![Role::Protagonist]);
+        let mut toothless = beat(
+            "a_toothless_beat",
+            &reg,
+            "wonder",
+            Phase::Setup,
+            vec![Role::Protagonist],
+        );
         toothless.stakes = 0.0; // no impact — below the floor
         quiet.beats(vec![toothless]);
         quiet.soul();
@@ -2089,7 +2093,13 @@ mod tests {
             impact_floor: 1.0,
             ..knobs()
         });
-        loud.beats(vec![beat("real_drama", &reg, "betrayal", Phase::Setup, vec![Role::Protagonist])]);
+        loud.beats(vec![beat(
+            "real_drama",
+            &reg,
+            "betrayal",
+            Phase::Setup,
+            vec![Role::Protagonist],
+        )]);
         loud.soul();
         loud.tick();
         assert_eq!(
@@ -2127,7 +2137,13 @@ mod tests {
             ..knobs()
         });
         let reg = s.reg.clone();
-        s.beats(vec![beat("featured", &reg, "wonder", Phase::Setup, vec![Role::Protagonist])]);
+        s.beats(vec![beat(
+            "featured",
+            &reg,
+            "wonder",
+            Phase::Setup,
+            vec![Role::Protagonist],
+        )]);
         let proto = s.soul();
         for _ in 0..6 {
             s.tick();
@@ -2149,7 +2165,13 @@ mod tests {
             ..knobs()
         });
         let reg = s.reg.clone();
-        let mut mixed = beat("a_bittersweet_turn", &reg, "betrayal", Phase::Setup, vec![Role::Protagonist]);
+        let mut mixed = beat(
+            "a_bittersweet_turn",
+            &reg,
+            "betrayal",
+            Phase::Setup,
+            vec![Role::Protagonist],
+        );
         mixed.effects = vec![
             Effect::Stir {
                 who: Role::Protagonist,
@@ -2186,7 +2208,13 @@ mod tests {
             ..knobs()
         });
         let reg = s.reg.clone();
-        let mut fall = beat("the_aftermath", &reg, "betrayal", Phase::Fall, vec![Role::Protagonist]);
+        let mut fall = beat(
+            "the_aftermath",
+            &reg,
+            "betrayal",
+            Phase::Fall,
+            vec![Role::Protagonist],
+        );
         fall.tension = -1.0; // a fall is relief-keyed
         s.beats(vec![fall]);
         let proto = s.soul();
@@ -2198,7 +2226,11 @@ mod tests {
         assert!(
             s.director().threads.iter().any(|t| t.spine == vengeance),
             "a fallen betrayal thread should seed a vengeance thread (threads: {:?})",
-            s.director().threads.iter().map(|t| t.spine).collect::<Vec<_>>(),
+            s.director()
+                .threads
+                .iter()
+                .map(|t| t.spine)
+                .collect::<Vec<_>>(),
         );
     }
 
@@ -2214,7 +2246,13 @@ mod tests {
         let reg = s.reg.clone();
         // A phase-agnostic, high-tension beat: it fits any phase (so it always casts) and banks
         // enough heat each telling to ripen the thread quickly.
-        let mut driver = beat("a_turn", &reg, "betrayal", Phase::Setup, vec![Role::Protagonist]);
+        let mut driver = beat(
+            "a_turn",
+            &reg,
+            "betrayal",
+            Phase::Setup,
+            vec![Role::Protagonist],
+        );
         driver.phases = Vec::new(); // any phase
         driver.tension = 2.0;
         s.beats(vec![driver]);
@@ -2248,8 +2286,14 @@ mod tests {
         }
         let d = s.director();
         assert!(d.log.is_empty(), "a sleeping director tells no story");
-        assert!(d.cadence.is_empty(), "a sleeping director leaves no cadence");
-        assert_eq!(d.gratuitous_total, 0.0, "a sleeping director authors no suffering");
+        assert!(
+            d.cadence.is_empty(),
+            "a sleeping director leaves no cadence"
+        );
+        assert_eq!(
+            d.gratuitous_total, 0.0,
+            "a sleeping director authors no suffering"
+        );
         assert_eq!(d.staged_total, 0.0, "a sleeping director stages nothing");
     }
 
@@ -2342,10 +2386,7 @@ mod tests {
         s.beats(vec![renounce]);
         s.tick();
         assert!(
-            s.world
-                .resource::<crate::dialogue::Dialogue>()
-                .forced_len()
-                > 0,
+            s.world.resource::<crate::dialogue::Dialogue>().forced_len() > 0,
             "the director should have put words in the betrayer's mouth",
         );
     }

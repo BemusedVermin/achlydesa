@@ -812,7 +812,9 @@ mod tests {
         }
 
         fn grudge_count(&mut self) -> usize {
-            let mut q = self.world.query_filtered::<(), (With<Npc>, With<Grievance>)>();
+            let mut q = self
+                .world
+                .query_filtered::<(), (With<Npc>, With<Grievance>)>();
             q.iter(&self.world).count()
         }
 

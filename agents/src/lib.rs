@@ -3895,7 +3895,10 @@ mod tests {
 
         let told = sim.director_beats_fired();
         let distinct = sim.director_distinct_beats();
-        assert!(told >= 6, "a season should tell several beats (told {told})");
+        assert!(
+            told >= 6,
+            "a season should tell several beats (told {told})"
+        );
         assert!(
             distinct >= 4,
             "the story should be varied, not one beat on repeat (distinct {distinct}/{told})"
