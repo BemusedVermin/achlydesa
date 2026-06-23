@@ -102,6 +102,7 @@ dependencies = [
  "agent_core",
  "bevy_ecs",
  "bevy_tasks",
+ "combat_core",
  "config",
  "explore",
  "game_sim",

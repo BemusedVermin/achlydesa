@@ -42,6 +42,13 @@ pub use survival::{SurvivalConfig, Vitals};
 // The exploration layer (roads, gear, weighted/cost-paced travel) — `explore` over the pure `travel`.
 pub use explore::{ExploreConfig, Gear, Roads};
 
+// The combat layer (headless contested-timeline fights). Its engine is the standalone, Bevy-free
+// `combat_core` crate; the `combat` module is the bridge (encounter extraction + outcome
+// write-back). Re-export both so `app` and the demos reach them through `agents`.
+pub mod combat;
+pub use combat::{CombatConfig, Combatant, Encounter, Health, Resolution};
+pub use combat_core;
+
 /// Seed for the RPG layer's dedicated RNG stream, kept so the avatar can be rolled from it in
 /// [`Simulation::spawn_player`] (after the NPCs were rolled at construction). Present as a
 /// resource only when the RPG layer is enabled.
@@ -343,6 +350,14 @@ pub struct Setup {
     /// stride. `1` = no coarsening (distant NPCs still run every tick). Ignored when `sim_radius` is
     /// `None`. Default `8`.
     pub sim_far_stride: u32,
+    /// Wake the **combat layer** (`docs/combat-integration.md`): let the avatar and party fight
+    /// adjacent hostiles through the headless `combat_core` engine — downed enemies die, and HP
+    /// carries between fights on a [`combat::Health`] component. Off by default → byte-identical;
+    /// even when on, worldgen is untouched until the player actually starts a fight (no NPC is
+    /// stamped at generation — `Health` is created on demand at an encounter's start).
+    pub combat: bool,
+    /// Combat tunables (HP derivation, party/elite Tempo, and the engine's knob surface).
+    pub combat_cfg: combat::CombatConfig,
 }
 
 impl Default for Setup {
@@ -394,6 +409,8 @@ impl Default for Setup {
             explore_cfg: ExploreConfig::default(),
             sim_radius: None,
             sim_far_stride: 8,
+            combat: false,
+            combat_cfg: combat::CombatConfig::default(),
         }
     }
 }
@@ -604,6 +621,18 @@ impl Simulation {
             world.insert_resource(explore::Roads(roads));
             world.insert_resource(setup.explore_cfg);
             world.insert_resource(TravelCost(cost));
+        }
+
+        // Wake the combat layer, if asked: insert the tunables and a dedicated seeded stream so
+        // fights are reproducible. No NPC components are stamped here — `Health` is created on
+        // demand at an encounter's start — so a combat-off world is byte-identical, and even with
+        // it on, worldgen is unperturbed until the player starts a fight. See `combat.rs`.
+        if setup.combat {
+            world.insert_resource(setup.combat_cfg);
+            world.insert_resource(combat::CombatState {
+                seed: setup.seed ^ 0xC0AB_A700_0FF1_CE00,
+                encounters: 0,
+            });
         }
 
         // Wake the narrative director, if asked. Its `enabled` is the OR of the
@@ -1626,6 +1655,14 @@ impl Simulation {
         if self.world.get_resource::<ExploreConfig>().is_some() {
             self.world.entity_mut(avatar).insert(Gear::default());
         }
+        // Combat on: the avatar carries full combat Health from the outset (NPCs get theirs on
+        // demand when first drawn into a fight), so its bar is populated before the first blow.
+        if let Some(&cfg) = self.world.get_resource::<combat::CombatConfig>() {
+            let max = combat::avatar_max_hp(&self.world, avatar, &cfg);
+            self.world
+                .entity_mut(avatar)
+                .insert(combat::Health { hp: max, max });
+        }
         // A satchel and a blank set of callings, so the avatar can join the **crafts economy**: it
         // learns a trade by apprenticing at a guild (a `Teach` affordance) then gathers goods at a
         // `Yield` site — the same effects an NPC gets, applied by `player_use_affordance`. Inert to
@@ -1740,6 +1777,96 @@ impl Simulation {
     /// Stop the avatar where it stands.
     pub fn player_halt(&mut self) {
         self.world.resource_mut::<player::PlayerState>().halt();
+    }
+
+    // ── Combat (docs/combat-integration.md) ──────────────────────────────────────────────────
+    // The bridge between the world and the headless `combat_core` engine. Combat is player-paced,
+    // so the caller (the app) owns and drives the live [`combat::Encounter`]; these methods only
+    // detect hostiles, *build* an encounter from world state, and later *apply* its result.
+
+    /// Whether the combat layer is awake (`Setup::combat`).
+    pub fn combat_enabled(&self) -> bool {
+        self.world.get_resource::<combat::CombatConfig>().is_some()
+    }
+
+    /// The recruited party that fights alongside the avatar (the avatar itself is not included).
+    fn combat_roster(&self) -> Vec<bevy_ecs::entity::Entity> {
+        self.world
+            .get_resource::<Party>()
+            .map(|p| p.members.clone())
+            .unwrap_or_default()
+    }
+
+    /// Bodies the avatar could attack right now — adjacent NPCs and beasts, with their tiles.
+    /// Empty if combat is off or there is no avatar. Drives the *Attack* verb.
+    pub fn combat_targets(&mut self) -> Vec<(bevy_ecs::entity::Entity, Coord)> {
+        let Some(avatar) = self.player_avatar().filter(|_| self.combat_enabled()) else {
+            return Vec::new();
+        };
+        let roster = self.combat_roster();
+        let width = self.substrate().topology().width();
+        combat::adjacent_with_pos(&mut self.world, avatar, &roster, width)
+    }
+
+    /// Hostiles poised to ambush the avatar where it stands (predators, grudge-bearers). When this
+    /// is non-empty the caller should drop into combat. Empty if combat is off or no avatar.
+    pub fn combat_ambush(&mut self) -> Vec<bevy_ecs::entity::Entity> {
+        let Some(avatar) = self.player_avatar().filter(|_| self.combat_enabled()) else {
+            return Vec::new();
+        };
+        let roster = self.combat_roster();
+        let width = self.substrate().topology().width();
+        combat::ambushers(&mut self.world, avatar, &roster, width)
+    }
+
+    /// Begin a fight against `enemies`: the avatar + party (Player faction) versus those bodies
+    /// (Enemy faction). Returns the live [`combat::Encounter`] for the caller to drive — it owns
+    /// the `combat_core::Sim` — or `None` if combat is off, there is no avatar, or no enemy is
+    /// present. Advances the layer's encounter counter so each fight is independently seeded.
+    pub fn begin_combat(
+        &mut self,
+        enemies: Vec<bevy_ecs::entity::Entity>,
+    ) -> Option<combat::Encounter> {
+        if !self.combat_enabled() {
+            return None;
+        }
+        let avatar = self.player_avatar()?;
+        let enemies: Vec<bevy_ecs::entity::Entity> = enemies
+            .into_iter()
+            .filter(|&e| self.world.get::<agent_core::Position>(e).is_some())
+            .collect();
+        if enemies.is_empty() {
+            return None;
+        }
+        let cfg = *self.world.resource::<combat::CombatConfig>();
+        let seed = {
+            let mut st = self.world.resource_mut::<combat::CombatState>();
+            let s = st.seed ^ st.encounters.wrapping_mul(0x9E37_79B9_7F4A_7C15);
+            st.encounters += 1;
+            s
+        };
+        let roster = self.combat_roster();
+        Some(combat::build_encounter(
+            &mut self.world,
+            &cfg,
+            seed,
+            avatar,
+            &roster,
+            &enemies,
+        ))
+    }
+
+    /// Apply a finished fight to the world: persist survivors' HP, despawn the fallen, and report
+    /// the result (including whether the avatar fell). `None` if there is no avatar.
+    pub fn finish_combat(&mut self, enc: &combat::Encounter) -> Option<combat::Resolution> {
+        self.player_avatar()?;
+        Some(combat::apply_outcome(&mut self.world, enc))
+    }
+
+    /// The avatar's current combat health, if the layer is on and an avatar exists.
+    pub fn avatar_health(&self) -> Option<combat::Health> {
+        let avatar = self.player_avatar()?;
+        self.world.get::<combat::Health>(avatar).copied()
     }
 
     /// **Wait** — let one tick pass where the avatar stands. The avatar takes no journey;
@@ -2325,6 +2452,59 @@ mod tests {
         let start = sim.tick();
         sim.run(20);
         assert_eq!(sim.tick(), start + 20);
+    }
+
+    #[test]
+    fn combat_bridge_runs_a_fight_and_writes_back() {
+        use ::combat_core::{Controller, StepResult, StubAi};
+        use bevy_ecs::prelude::*;
+
+        let mut sim = Simulation::new(Setup {
+            npcs: 2,
+            seed: 7,
+            combat: true,
+            ..Default::default()
+        });
+        let _avatar = sim.spawn_player(None);
+        // The avatar carries full combat Health from the outset when the layer is on.
+        let h0 = sim.avatar_health().expect("avatar has Health");
+        assert_eq!(h0.hp, h0.max);
+        assert!(h0.max > 0);
+
+        // Any NPC will serve as the lone enemy.
+        let enemy = {
+            let mut q = sim.world.query_filtered::<Entity, With<Npc>>();
+            q.iter(&sim.world).next().expect("an NPC exists")
+        };
+        assert!(sim.npc_present(enemy));
+
+        let mut enc = sim.begin_combat(vec![enemy]).expect("a fight begins");
+        // Drive both sides with the deterministic stub AI so the fight resolves to a conclusion.
+        let mut ai = StubAi::new(enc.sim.library().clone());
+        let mut guard = 0;
+        while let StepResult::Decision { decision, view } = enc.sim.run_until_decision_or_end() {
+            let cmd = ai.decide(&decision, &view);
+            enc.sim.submit(cmd);
+            guard += 1;
+            assert!(guard < 100_000, "fight failed to terminate");
+        }
+
+        let res = sim.finish_combat(&enc).expect("a resolution");
+        // The Player faction resolves first on ties, so the lone avatar wins the 1v1.
+        assert!(res.victory, "player should win the 1v1");
+        assert!(res.downed.contains(&enemy), "the enemy fell");
+        assert!(!sim.npc_present(enemy), "a downed enemy leaves the world");
+        assert!(!res.avatar_down, "the avatar survived");
+    }
+
+    #[test]
+    fn combat_off_inserts_no_resources() {
+        let sim = Simulation::new(Setup {
+            npcs: 2,
+            seed: 7,
+            ..Default::default()
+        });
+        assert!(!sim.combat_enabled(), "combat layer is off by default");
     }
 
     #[test]

@@ -7,6 +7,7 @@ edition = "2024"
 agent_core = { path = "../agent_core" }
 bevy_ecs = { version = "0.18.1", features = ["multi_threaded"] }
 bevy_tasks = "0.18"
+combat_core = { path = "../combat_core" }
 config = { path = "../config" }
 explore = { path = "../explore" }
 game_sim = { path = "../game_sim" }
