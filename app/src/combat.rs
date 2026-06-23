@@ -478,7 +478,7 @@ pub(crate) fn spawn_combat_ui(commands: &mut Commands, fonts: &ThemeFonts) {
                 row_gap: Val::Px(theme::SP_SM),
                 ..default()
             },
-            BackgroundColor(Color::srgba(0.02, 0.025, 0.04, 0.82)),
+            BackgroundColor(Color::srgba(0.02, 0.025, 0.04, 0.58)),
             GlobalZIndex(80),
             Visibility::Hidden,
         ))
@@ -659,10 +659,10 @@ fn spawn_field(parent: &mut ChildSpawnerCommands, fonts: &ThemeFonts) {
                     width: Val::Percent(100.0),
                     flex_grow: 1.0,
                     justify_content: JustifyContent::Center,
-                    align_items: AlignItems::Center,
+                    align_items: AlignItems::FlexStart,
                     ..default()
                 },
-                BackgroundColor(Color::srgba(0.04, 0.05, 0.07, 0.5)),
+                BackgroundColor(Color::srgba(0.04, 0.05, 0.07, 0.0)),
             ))
             .with_children(|field| {
                 field.spawn(theme::micro(fonts, "— the field —"));
@@ -1125,5 +1125,132 @@ pub(crate) fn update_position_map(
             tokens.push(format!("{tag}{initial}"));
         }
         text.0 = tokens.join(" ");
+    }
+}
+
+// ── 3D fight figures (rendered in the reserved field) ────────────────────────────────────────
+
+/// Meshes/materials for the combat figures, built once at startup.
+#[derive(Resource)]
+pub(crate) struct CombatFigAssets {
+    mesh: Handle<Mesh>,
+    player_mat: Handle<StandardMaterial>,
+    enemy_mat: Handle<StandardMaterial>,
+    down_mat: Handle<StandardMaterial>,
+}
+
+impl CombatFigAssets {
+    pub(crate) fn new(meshes: &mut Assets<Mesh>, materials: &mut Assets<StandardMaterial>) -> Self {
+        let lit = |c: Color| StandardMaterial {
+            base_color: c,
+            emissive: c.to_linear() * 0.6, // glow a little so they read through the overlay
+            ..default()
+        };
+        Self {
+            mesh: meshes.add(Capsule3d::new(0.7, 2.6)),
+            player_mat: materials.add(lit(Color::srgb(0.55, 0.70, 0.95))),
+            enemy_mat: materials.add(lit(Color::srgb(0.88, 0.36, 0.33))),
+            down_mat: materials.add(lit(Color::srgb(0.34, 0.36, 0.40))),
+        }
+    }
+}
+
+/// One figure on the field, tied to its engine actor.
+#[derive(Component)]
+pub(crate) struct CombatFig {
+    actor: cc::ActorId,
+}
+
+/// Spawn/position/colour a 3D figure per combatant in two facing rows centred on the avatar (the
+/// camera's focus, so they fill the reserved field). The overworld avatar figure is hidden while
+/// fighting; the figures are torn down when the fight ends.
+pub(crate) fn sync_combat_figures(
+    game: NonSend<Game>,
+    assets: Res<CombatFigAssets>,
+    mut commands: Commands,
+    mut figs: Query<(
+        Entity,
+        &CombatFig,
+        &mut Transform,
+        &mut MeshMaterial3d<StandardMaterial>,
+    )>,
+    mut avatar_fig: Query<&mut Visibility, With<crate::AvatarFig>>,
+) {
+    // The overworld avatar stands in for the player out of combat; hide it during a fight (a
+    // dedicated figure represents the avatar in the formation).
+    let in_combat = game.combat.is_some();
+    for mut v in &mut avatar_fig {
+        *v = if in_combat {
+            Visibility::Hidden
+        } else {
+            Visibility::Inherited
+        };
+    }
+
+    let Some(ui) = game.combat.as_ref() else {
+        for (e, _, _, _) in figs.iter() {
+            commands.entity(e).despawn();
+        }
+        return;
+    };
+    let base = game.avatar_render;
+
+    // Stable side + index for the two facing rows.
+    let mut layout: std::collections::HashMap<u32, (bool, i32)> = std::collections::HashMap::new();
+    let (mut pi, mut ei) = (0i32, 0i32);
+    for c in &ui.enc.combatants {
+        if c.is_player_side {
+            layout.insert(c.actor.0, (true, pi));
+            pi += 1;
+        } else {
+            layout.insert(c.actor.0, (false, ei));
+            ei += 1;
+        }
+    }
+    let (n_players, n_enemies) = (pi.max(1), ei.max(1));
+
+    // Spawn a figure for any combatant that lacks one (positioned next frame).
+    let present: std::collections::HashSet<u32> =
+        figs.iter().map(|(_, f, _, _)| f.actor.0).collect();
+    for c in &ui.enc.combatants {
+        if !present.contains(&c.actor.0) {
+            commands.spawn((
+                CombatFig { actor: c.actor },
+                Mesh3d(assets.mesh.clone()),
+                MeshMaterial3d(assets.player_mat.clone()),
+                Transform::from_translation(base),
+            ));
+        }
+    }
+
+    // Place + colour the existing figures.
+    for (_, fig, mut tf, mut mat) in &mut figs {
+        let Some(&(player, idx)) = layout.get(&fig.actor.0) else {
+            continue;
+        };
+        let count = if player { n_players } else { n_enemies };
+        let x = (idx as f32 - (count as f32 - 1.0) / 2.0) * 2.4;
+        let z = if player { 4.0 } else { -2.4 };
+        let actor = ui.enc.sim.actor(fig.actor);
+        let down = actor.is_some_and(|a| matches!(a.state, cc::ActorState::Down));
+        let acting = actor.is_some_and(|a| matches!(a.state, cc::ActorState::Committed(_)));
+        let mut pos = base + Vec3::new(x, 1.2, z);
+        if down {
+            pos.y -= 0.7;
+            tf.rotation = Quat::from_rotation_x(std::f32::consts::FRAC_PI_2);
+        } else {
+            tf.rotation = Quat::IDENTITY;
+            if acting {
+                pos.y += 0.35; // a small lift while mid-action
+            }
+        }
+        tf.translation = pos;
+        mat.0 = if down {
+            assets.down_mat.clone()
+        } else if player {
+            assets.player_mat.clone()
+        } else {
+            assets.enemy_mat.clone()
+        };
     }
 }
