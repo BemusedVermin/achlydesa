@@ -76,9 +76,7 @@ pub fn build_chatml(u: &Utterance, prev: Option<&str>) -> String {
     };
     notes.push_str(&format!(
         "You move to {} {}{}.",
-        u.act.key(),
-        u.listener_name,
-        about
+        u.act, u.listener_name, about
     ));
 
     format!(
