@@ -117,10 +117,12 @@ pub struct BiomeProfile {
 /// (`World::update_biome`); the structural look is recovered with
 /// [`Biomes::formation`](crate::biomes::Biomes::formation).
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub struct Biome(pub u16);
+pub struct Biome(pub(crate) u16);
 
 impl Biome {
     /// Open water — id `0`, the first row of `biomes.ron`. Used to fill the grid
     /// before the first classification; every tile is reclassified each tick.
+    /// The id is crate-private (legitimate construction is this constant or the classifier), so
+    /// downstream code can't mint an out-of-range `Biome` and panic the registry lookups.
     pub const WATER: Biome = Biome(0);
 }

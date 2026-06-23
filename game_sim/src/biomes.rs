@@ -17,6 +17,21 @@ use std::collections::HashMap;
 /// the [`Biomes::from_cell`] classifier.
 pub type BeltId = usize;
 
+/// The fixed Holdridge belts, coldest → warmest. `world::belt_of` maps biotemperature onto a
+/// *positional* `BeltId` via the ordered `Params` boundaries, so `biomes.ron` MUST author its belts
+/// in exactly this order — a reorder would silently misclassify the whole world. Enforced at load
+/// (the belt *names* are also the fixed classification axis the `Params` `biotemp_*` boundaries
+/// encode, not free content). Element type `&str` keeps it clear of the `const_all` lint.
+const CANONICAL_BELTS: [&str; 7] = [
+    "polar",
+    "subpolar",
+    "boreal",
+    "cool temperate",
+    "warm temperate",
+    "subtropical",
+    "tropical",
+];
+
 #[derive(Deserialize)]
 struct BiomesDoc {
     belts: Vec<BeltDef>,
@@ -96,11 +111,24 @@ impl Biomes {
         let belt_names: Vec<String> = doc.belts.iter().map(|b| b.name.clone()).collect();
         let belt_warmth: Vec<f32> = doc.belts.iter().map(|b| b.warmth).collect();
 
+        // The belts must be the canonical Holdridge axis, in order — `belt_of` indexes the classifier
+        // positionally, so a reorder (or a wrong/missing belt) would silently misclassify the world.
+        if !belt_names.iter().map(String::as_str).eq(CANONICAL_BELTS) {
+            return Err(format!(
+                "biomes: belts must be authored coldest→warmest as {CANONICAL_BELTS:?} (the fixed \
+                 Holdridge axis `belt_of` maps biotemperature onto), got {belt_names:?}"
+            ));
+        }
+
+        // Track which formations were *explicitly authored*: an omitted formation's consts would
+        // silently stay the (0.0, 0.0) zero-init — zero decay, so litter never decomposes.
         let mut formation_consts = [(0.0f32, 0.0f32); Formation::ALL.len()];
+        let mut provided = [false; Formation::ALL.len()];
         for f in &doc.formations {
             let formation = Formation::from_name(&f.name)
                 .ok_or_else(|| format!("biomes: unknown formation '{}'", f.name))?;
             formation_consts[formation.idx()] = (f.flammability, f.decay);
+            provided[formation.idx()] = true;
         }
 
         let mut zones = Vec::with_capacity(doc.biomes.len());
@@ -109,6 +137,13 @@ impl Biomes {
             let formation = Formation::from_name(&b.formation).ok_or_else(|| {
                 format!("biome '{}': unknown formation '{}'", b.name, b.formation)
             })?;
+            if !provided[formation.idx()] {
+                return Err(format!(
+                    "biome '{}': formation '{}' has no entry in `formations`, so its ecology \
+                     constants (flammability/decay) would silently default to zero",
+                    b.name, b.formation
+                ));
+            }
             let belt = match &b.belt {
                 None => None,
                 Some(n) => Some(
@@ -263,11 +298,19 @@ impl Default for Biomes {
 mod tests {
     use super::*;
 
+    /// The 7 canonical belts, in order — every valid biomes doc must author exactly these.
+    const BELTS: &str = r#"[
+        (name: "polar", warmth: 0.55), (name: "subpolar", warmth: 0.6),
+        (name: "boreal", warmth: 0.75), (name: "cool temperate", warmth: 0.9),
+        (name: "warm temperate", warmth: 1.0), (name: "subtropical", warmth: 1.1),
+        (name: "tropical", warmth: 1.2),
+    ]"#;
+
     #[test]
     fn bundled_biomes_resolve() {
         let b = Biomes::bundled();
         assert_eq!(b.count(), 39);
-        assert_eq!(b.water(), Biome(0));
+        assert_eq!(b.water(), Biome::WATER);
         assert_eq!(b.name(b.water()), "open water");
         assert_eq!(b.belt_count(), 7);
         // A known cell of the classifier (cool temperate, semiarid index 2 → steppe).
@@ -280,8 +323,9 @@ mod tests {
     #[test]
     fn a_new_life_zone_needs_no_code() {
         // A life zone authored purely in RON resolves into the registry — the whole point.
-        let ron = r#"(
-            belts: [(name: "tropical", warmth: 1.2)],
+        let ron = format!(
+            r#"(
+            belts: {BELTS},
             provinces: ["humid"],
             formations: [(name: "water", flammability: 0.0, decay: 1.0),
                          (name: "forest", flammability: 0.8, decay: 1.0)],
@@ -292,20 +336,65 @@ mod tests {
             classifier: [(belt: "tropical", row: [
                 "cloud forest","cloud forest","cloud forest","cloud forest",
                 "cloud forest","cloud forest","cloud forest","cloud forest"])],
-        )"#;
-        let b = Biomes::from_ron(ron).expect("a novel life zone resolves");
+        )"#
+        );
+        let b = Biomes::from_ron(&ron).expect("a novel life zone resolves");
         let cloud = b.biome_id("cloud forest").expect("the new zone exists");
         assert_eq!(b.formation(cloud), Formation::Forest);
-        assert_eq!(b.from_cell(0, 4), cloud);
+        assert_eq!(b.from_cell(6, 4), cloud); // tropical is belt id 6 (the warmest)
     }
 
     #[test]
     fn an_unknown_formation_is_rejected() {
-        let ron = r#"(
-            belts: [], provinces: [], formations: [],
+        let ron = format!(
+            r#"(
+            belts: {BELTS}, provinces: [], formations: [],
             biomes: [(name: "open water", formation: "lava", belt: None)],
             classifier: [],
+        )"#
+        );
+        assert!(Biomes::from_ron(&ron).is_err());
+    }
+
+    #[test]
+    fn belts_out_of_order_are_rejected() {
+        // The canonical belts, but polar and tropical swapped — `belt_of` would index the wrong row,
+        // silently misclassifying the world. It must be a load error, not silent corruption.
+        let ron = r#"(
+            belts: [
+                (name: "tropical", warmth: 1.2), (name: "subpolar", warmth: 0.6),
+                (name: "boreal", warmth: 0.75), (name: "cool temperate", warmth: 0.9),
+                (name: "warm temperate", warmth: 1.0), (name: "subtropical", warmth: 1.1),
+                (name: "polar", warmth: 0.55),
+            ],
+            provinces: [], formations: [(name: "water", flammability: 0.0, decay: 1.0)],
+            biomes: [(name: "open water", formation: "water", belt: None)],
+            classifier: [],
         )"#;
-        assert!(Biomes::from_ron(ron).is_err());
+        assert!(
+            Biomes::from_ron(ron).is_err(),
+            "a belt reorder must be a load error"
+        );
+    }
+
+    #[test]
+    fn a_biome_using_an_unprovided_formation_is_rejected() {
+        // `forest` is a valid formation name but is omitted from `formations`, so its ecology
+        // constants would silently default to (0,0) — zero decay. That must be a load error.
+        let ron = format!(
+            r#"(
+            belts: {BELTS}, provinces: ["humid"],
+            formations: [(name: "water", flammability: 0.0, decay: 1.0)],
+            biomes: [
+                (name: "open water", formation: "water", belt: None),
+                (name: "cloud forest", formation: "forest", belt: Some("tropical")),
+            ],
+            classifier: [],
+        )"#
+        );
+        assert!(
+            Biomes::from_ron(&ron).is_err(),
+            "an unprovided formation must be a load error"
+        );
     }
 }
