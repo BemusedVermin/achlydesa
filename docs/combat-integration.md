@@ -94,6 +94,23 @@ After review the combat presentation was rebuilt to the intended design:
 
 - **Dilating elite AI** (`combat_core::EliteAi`): enemies spend Tempo to interrupt/slow the
   player's line — the per-actor opposed economy is two-sided. The app drives enemies with it.
+
+### Fighting-game ATB feel (reworked)
+
+The flow was reworked to a thinking-player's fighting game:
+
+- **ATB:** time flows in real time while moves play out (you're committed, frame-by-frame); it
+  pauses **only on your own turns** — a readiness choice or a bullet-time *dilation* (spend Tempo to
+  Slow/Interrupt a foe's committed move). Foe decisions resolve inline; no banners, no per-tick stop.
+- **Always-on tray + cost preview:** the move tray is always shown (greyed off-turn, never blinks);
+  selecting a move ghosts its startup/active/recovery onto the timeline (its cost) and the preview
+  forecasts the WWN to-hit against the target.
+- **Interrupts stun** (`combat_core::Config::interrupt_stagger`): a parry staggers the wind-up.
+- **RPG-driven moves:** the bridge compiles each fighter's moves *per fighter*, folding the governing
+  attribute modifier + skill rank into a WWN to-hit `accuracy` (`Config::wwn_checks`: accuracy +
+  to_hit_base − target.evasion; a wide margin crits), scaled damage (`dmg_per_mod`) and reach
+  (`reach_per_mod`). STR powers Shove/Strike, DEX powers Lunge/Loose and evasion. The check is
+  deterministic (no dice), so a matchup reliably hits or misses by stats.
 - **RON-authored content.** The move catalogue + per-archetype kits live in `assets/data/combat.ron`
   (sourced through `config`, parsed by the bridge into `MoveDef`s via the builder). Kits are picked
   by archetype: adventurer (avatar/party), soldier (NPCs), predator (carnivores), prey (herbivores).
