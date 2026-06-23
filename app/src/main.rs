@@ -292,7 +292,7 @@ struct Marker;
 /// The persistent avatar figure — moved/glided every frame (not rebuilt with the tick markers),
 /// so the walk reads smoothly instead of stepping a hex at a time.
 #[derive(Component)]
-struct AvatarFig;
+pub(crate) struct AvatarFig;
 #[derive(Component)]
 struct CamRig {
     /// How far back the camera sits from the focus. With an orthographic projection this no longer
@@ -476,6 +476,7 @@ fn main() {
             combat::combat_clicks,
             combat::update_combat_ui,
             combat::update_position_map,
+            combat::sync_combat_figures,
             hide_hud_in_combat,
         )
             .chain(),
@@ -736,6 +737,8 @@ fn setup(
     hud::spawn(&mut commands, &theme_fonts, grassy);
     convo_ui::spawn(&mut commands, &theme_fonts);
     combat::spawn_combat_ui(&mut commands, &theme_fonts);
+    let fig_assets = combat::CombatFigAssets::new(&mut meshes, &mut materials);
+    commands.insert_resource(fig_assets);
     let parchment = asset_server.load("ui/parchment.jpg");
     spawn_pause_menu(&mut commands, &theme_fonts, parchment);
     commands.insert_resource(theme_fonts);
