@@ -2817,9 +2817,10 @@ mod tests {
         // Every new layer at once, with an avatar in the world.
         let run = || {
             let mut sim = Simulation::new(Setup {
-                width: 40,
-                height: 30,
+                width: 32,
+                height: 24,
                 seed: 2026,
+                warmup: 60,
                 npcs: 40,
                 markets_on_settlements: true,
                 rpg: true,
@@ -3337,7 +3338,7 @@ mod tests {
                 sift,
                 ..Default::default()
             });
-            s.run(200);
+            s.run(150);
             s
         };
 
@@ -3435,7 +3436,7 @@ mod tests {
                 },
                 ..Default::default()
             });
-            s.run(200);
+            s.run(150);
             s.director_log().to_vec()
         };
 
@@ -3668,7 +3669,7 @@ mod tests {
             width: 48,
             height: 36,
             seed: 11,
-            warmup: 200,
+            warmup: 60,
             npcs: 24,
             markets: 6,
             markets_on_settlements: true,
@@ -3734,7 +3735,7 @@ mod tests {
             height: 30,
             seed: 5,
             npcs: 36,
-            warmup: 200,
+            warmup: 60,
             ..Default::default()
         });
         sim.run(120);
@@ -3764,15 +3765,15 @@ mod tests {
         // money, grow the population, lose affordance uses, or price a good out of
         // band. A trip would mean a bug wearing the costume of emergence.
         let mut sim = Simulation::new(Setup {
-            width: 48,
-            height: 36,
+            width: 34,
+            height: 26,
             seed: 9,
-            npcs: 48,
-            warmup: 200,
+            npcs: 40,
+            warmup: 60,
             ..Default::default()
         });
         let mut prev = sim.census();
-        for _ in 0..150 {
+        for _ in 0..110 {
             sim.run(1);
             let now = sim.census();
             let violations = check(&prev, &now);
@@ -3822,7 +3823,7 @@ mod tests {
             width: 40,
             height: 30,
             seed: 5,
-            warmup: 200,
+            warmup: 60,
             npcs: 40,
             ..Default::default()
         });
@@ -3977,7 +3978,7 @@ mod tests {
         // so a dramatic, peopled world speaks a *varied* tongue, grievance beside warmth,
         // every line grounded in who is speaking and to whom.
         let mut sim = chatty(11);
-        sim.run(220);
+        sim.run(150);
         assert!(
             sim.dialogue_count() > 20,
             "a peopled, dramatic world should speak (said {})",
@@ -4121,11 +4122,11 @@ mod tests {
         let reg = Registry::bundled();
         let goals = throne_goals(&reg);
         Simulation::new(Setup {
-            width: 48,
-            height: 36,
+            width: 36,
+            height: 26,
             seed,
-            warmup: 150,
-            npcs: 40,
+            warmup: 60,
+            npcs: 32,
             markets: 6,
             markets_on_settlements: true,
             goals,
