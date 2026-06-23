@@ -633,20 +633,31 @@ fn successors(s: &PlanState, ctx: &PlanCtx) -> Vec<(Step, PlanState, f32)> {
         }
     };
 
-    // Consume — eat each edible good in hand, then graze.
+    // Consume — eat each edible good actually in hand, then graze where the tile bears
+    // something. Both gates mirror exactly what `apply` rejects (an empty larder, a barren
+    // tile), so skipping the operator here is byte-identical to generating it and having
+    // `apply` return `None` — but it avoids the `PlanState` clone `apply` pays up front for
+    // every successor, which is the dominant per-tick allocation (see `docs/scaling.md`).
     for g in 0..ctx.reg.good_count() {
-        if ctx.reg.good(g).nutrition > 0.0 {
+        if ctx.reg.good(g).nutrition > 0.0 && s.stock[g] > 0 {
             push(Step::Eat(g));
         }
     }
-    push(Step::Graze);
+    if (ctx.resources)(s.pos)[ResourceKind::Vegetation.idx()] > 0.0 {
+        push(Step::Graze);
+    }
 
     // Recover.
     push(Step::Rest);
 
-    // Produce — one operator per authored recipe.
+    // Produce — one operator per recipe this agent can *practise* (its born callings, plus
+    // anything learned earlier in the plan). A recipe outside its callings is rejected by
+    // `apply` after a clone; gating here on the same `practises` check skips that clone for
+    // the recipes that make up the bulk of a registry, leaving the search tree identical.
     for i in 0..ctx.reg.recipes().len() {
-        push(Step::Make(i));
+        if practises(ctx, s, ctx.reg.recipes()[i].skill) {
+            push(Step::Make(i));
+        }
     }
 
     // Trade — every good at every reachable market.
