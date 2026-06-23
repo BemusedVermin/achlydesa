@@ -2429,11 +2429,171 @@ impl Simulation {
             .sum();
         held + self.total_market_stock()
     }
+
+    /// A stable, read-only **fingerprint** of the run's salient state — every NPC body
+    /// (position, purse, larder, needs, skills, personality, current goal), every market
+    /// (purse + stock), the whole dialogue transcript, and the director's beat count. It is
+    /// *order-independent* (entities are folded sorted by id, so ECS iteration order can't
+    /// perturb it) and *toolchain-independent* (a fixed integer fold, not `DefaultHasher`),
+    /// so a value captured today can be pinned in a test to prove a later refactor is
+    /// byte-identical. Draws no RNG and changes no state — the `&mut` is only for building
+    /// ECS query state, as every accessor here is. This is the guard the scaling work
+    /// (`docs/scaling.md`, Track 1) leans on: a pure optimization must leave it unchanged.
+    pub fn fingerprint(&mut self) -> u64 {
+        // boost-style hash_combine: deterministic and independent of the standard hasher,
+        // so a pinned literal survives a toolchain bump.
+        #[inline]
+        fn mix(h: &mut u64, v: u64) {
+            *h ^= v
+                .wrapping_add(0x9E37_79B9_7F4A_7C15)
+                .wrapping_add(*h << 6)
+                .wrapping_add(*h >> 2);
+        }
+        // Quantize a continuous meter to milli-units so float noise below the sim's own
+        // resolution never flips the fingerprint.
+        let q = |f: f32| -> u64 { (f as f64 * 1000.0).round() as i64 as u64 };
+        let mut h: u64 = 0;
+
+        // NPC bodies, folded sorted by entity id.
+        let mut bodies: Vec<(u64, u64)> = Vec::new();
+        {
+            let mut qn = self.world.query_filtered::<(
+                Entity,
+                &agent_core::Position,
+                &Inventory,
+                &people::Needs,
+                &people::Skills,
+                &Personality,
+                &people::Plan,
+            ), With<Npc>>();
+            for (e, pos, inv, needs, skills, pers, plan) in qn.iter(&self.world) {
+                let mut b: u64 = 0;
+                mix(&mut b, pos.0.col as u64);
+                mix(&mut b, pos.0.row as u64);
+                mix(&mut b, inv.money as u64);
+                mix(&mut b, inv.stock.iter().map(|&s| s as u64).sum());
+                mix(&mut b, q(needs.sustenance));
+                mix(&mut b, q(needs.rest));
+                for &s in &skills.0 {
+                    mix(&mut b, q(s));
+                }
+                for &p in &pers.0 {
+                    mix(&mut b, q(p));
+                }
+                mix(&mut b, plan.goal.map_or(u64::MAX, |g| g as u64));
+                bodies.push((e.to_bits(), b));
+            }
+        }
+        bodies.sort_unstable();
+        for (id, b) in bodies {
+            mix(&mut h, id);
+            mix(&mut h, b);
+        }
+
+        // Markets, folded sorted by entity id.
+        let mut mk: Vec<(u64, u64)> = Vec::new();
+        {
+            let mut qm = self
+                .world
+                .query_filtered::<(Entity, &Market), Without<Npc>>();
+            for (e, m) in qm.iter(&self.world) {
+                let mut b: u64 = 0;
+                mix(&mut b, m.money as u64);
+                mix(&mut b, m.stock.iter().map(|&s| s as u64).sum());
+                mk.push((e.to_bits(), b));
+            }
+        }
+        mk.sort_unstable();
+        for (id, b) in mk {
+            mix(&mut h, id);
+            mix(&mut h, b);
+        }
+
+        // The optional layers: the dialogue transcript (surface bytes + speaker) and the
+        // count of beats the director has told. Empty/absent when those layers are off, so a
+        // bare economy run still has a well-defined fingerprint.
+        let dlg = self.world.resource::<Dialogue>();
+        mix(&mut h, dlg.log.len() as u64);
+        for u in &dlg.log {
+            mix(&mut h, u.speaker.to_bits());
+            for byte in u.surface.bytes() {
+                mix(&mut h, u64::from(byte));
+            }
+        }
+        if let Some(d) = self.world.get_resource::<Director>() {
+            mix(&mut h, d.log.len() as u64);
+        }
+        h
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // --- Scaling (Track 1) byte-identical baselines ---
+
+    /// The three reference scenarios the byte-identical guard pins — a bare economy, the
+    /// dialogue layer (exercises `converse`, the tile-bucket target), and the director +
+    /// feuds (exercises grievance planning + the director). One builder so the configs stay
+    /// in lockstep with the pinned-value test.
+    fn baseline_sim(kind: &str) -> Simulation {
+        let mut s = Setup {
+            width: 32,
+            height: 24,
+            seed: 7,
+            warmup: 60,
+            npcs: 80,
+            markets: 4,
+            ..Default::default()
+        };
+        match kind {
+            "economy" => {}
+            "dialogue" => s.dialogue = true,
+            "director" => {
+                s.dialogue = true;
+                s.director = true;
+                s.feuds = 8;
+                s.director_cfg = DirectorConfig {
+                    beat_interval: 7,
+                    ..Default::default()
+                };
+            }
+            other => panic!("unknown baseline kind {other}"),
+        }
+        let mut sim = Simulation::new(s);
+        sim.run(150);
+        sim
+    }
+
+    /// The pinned state-fingerprints of the three reference runs, captured on `master`
+    /// before any Track-1 optimization. Every "pure win" in `docs/scaling.md` (the
+    /// `converse` tile-bucket, the GOAP successor prune, a default plan budget) must leave
+    /// these unchanged — that is what makes it byte-identical rather than merely fast. A
+    /// deliberate behaviour change (a *new* value) updates these with a note saying why.
+    const BASELINE_ECONOMY: u64 = 0xECAB_B567_5C45_44CD;
+    const BASELINE_DIALOGUE: u64 = 0x0172_140E_90BD_22EC;
+    const BASELINE_DIRECTOR: u64 = 0xA3FE_7F37_8BB9_033C;
+
+    #[test]
+    fn track1_runs_are_byte_identical_to_master() {
+        for (kind, want) in [
+            ("economy", BASELINE_ECONOMY),
+            ("dialogue", BASELINE_DIALOGUE),
+            ("director", BASELINE_DIRECTOR),
+        ] {
+            let mut a = baseline_sim(kind);
+            let got = a.fingerprint();
+            assert_eq!(
+                got, want,
+                "{kind}: fingerprint 0x{got:016X} != pinned 0x{want:016X} — a Track-1 \
+                 change perturbed the run; if intended, re-capture the baseline",
+            );
+            // Same seed, same build → the same run twice (the determinism invariant).
+            let mut b = baseline_sim(kind);
+            assert_eq!(got, b.fingerprint(), "{kind}: run is not reproducible");
+        }
+    }
 
     // --- Fauna ---
 
