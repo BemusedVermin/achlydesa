@@ -27,27 +27,38 @@ const M_HEAVY: u32 = 2;
 const M_FEINT: u32 = 3;
 const M_RIPOSTE: u32 = 4;
 const M_SHOVE: u32 = 5;
+/// A thrown/ranged jab — works from any zone, so an out-of-zone actor can always act (no stall).
+const M_LOOSE: u32 = 6;
 /// Repositioning moves are `REPOSITION_BASE + zone`.
 const REPOSITION_BASE: u32 = 10;
 
-/// Number of abstract zones in the v1 positioning model. Zones do not gate moves in v1 (every
-/// move is `AnyZone`); the position map is a live display + a seam for future lane gating.
+/// Number of abstract zones in the positioning model (Left / Center / Right).
 pub const ZONE_COUNT: u8 = 3;
+/// Everyone starts engaged in the centre zone.
+pub const CENTER_ZONE: u8 = 1;
 
-/// The v1 move library. Construction goes through `MoveDef::builder`, the seam a future WWN→frame
-/// bridge will target.
-pub fn library() -> cc::MoveLibrary {
-    use cc::{Effect, Fixed, MoveDef, MoveId, WindowTag};
+/// The move library. With `gating` on, the heavy melee moves require the target share the
+/// attacker's zone (close in to land them); the ranged jab and shove always reach. Construction
+/// goes through `MoveDef::builder`, the seam a future WWN→frame bridge will target.
+pub fn library(gating: bool) -> cc::MoveLibrary {
+    use cc::{Effect, Fixed, MoveDef, MoveId, WindowTag, ZoneReq};
+    let melee = if gating {
+        ZoneReq::SameZone
+    } else {
+        ZoneReq::AnyZone
+    };
     let mut defs = vec![
         MoveDef::builder(MoveId(M_STRIKE), "Strike")
             .frames(3, 1, 2)
             .priority(2)
+            .range(melee)
             .damage(4)
             .build(),
         MoveDef::builder(MoveId(M_HEAVY), "Heavy Blow")
             .frames(6, 1, 3)
             .priority(1)
             .armored()
+            .range(melee)
             .damage(9)
             .build(),
         MoveDef::builder(MoveId(M_FEINT), "Feint")
@@ -63,6 +74,7 @@ pub fn library() -> cc::MoveLibrary {
             .frames(4, 1, 3)
             .priority(2)
             .requires(WindowTag::Exposed)
+            .range(melee)
             .damage(7)
             .build(),
         MoveDef::builder(MoveId(M_SHOVE), "Shove")
@@ -70,6 +82,11 @@ pub fn library() -> cc::MoveLibrary {
             .priority(2)
             .effect(Effect::LineKnockback { ticks: 4 })
             .damage(2)
+            .build(),
+        MoveDef::builder(MoveId(M_LOOSE), "Loose")
+            .frames(2, 1, 2)
+            .priority(2)
+            .damage(3)
             .build(),
     ];
     for zone in 0..ZONE_COUNT {
@@ -84,9 +101,10 @@ pub fn library() -> cc::MoveLibrary {
     cc::MoveLibrary::from_defs(defs)
 }
 
-/// The five action-tray moves every combatant carries in v1.
+/// The five action-tray moves every combatant carries in v1: a melee Strike, a ranged Loose, a
+/// knockback Shove, and the Feint→Riposte setup/payoff pair.
 pub fn kit() -> Vec<cc::MoveId> {
-    [M_STRIKE, M_HEAVY, M_FEINT, M_RIPOSTE, M_SHOVE]
+    [M_STRIKE, M_LOOSE, M_SHOVE, M_FEINT, M_RIPOSTE]
         .into_iter()
         .map(cc::MoveId)
         .collect()
@@ -112,6 +130,9 @@ pub struct CombatConfig {
     pub party_tempo: i32,
     /// Tempo an *elite* enemy spawns with (a named NPC); mooks/beasts spawn with 0.
     pub elite_tempo: i32,
+    /// Gate the heavy melee moves to the attacker's zone (close in to land them). Off makes every
+    /// move reach any zone — the position map then only displays, never gates.
+    pub zone_gating: bool,
 }
 
 impl Default for CombatConfig {
@@ -122,6 +143,7 @@ impl Default for CombatConfig {
             hp_per_con: 6,
             party_tempo: 8,
             elite_tempo: 6,
+            zone_gating: true,
         }
     }
 }
@@ -289,7 +311,7 @@ pub(crate) fn build_encounter(
     roster: &[Entity],
     enemies: &[Entity],
 ) -> Encounter {
-    let mut sim = cc::Sim::new(cfg.engine, library(), seed);
+    let mut sim = cc::Sim::new(cfg.engine, library(cfg.zone_gating), seed);
     let mut combatants = Vec::new();
     let mut next = 0u32;
 
@@ -307,7 +329,7 @@ pub(crate) fn build_encounter(
                 next_ready_tick: cc::Tick(0),
                 state: cc::ActorState::Idle,
                 foresight_horizon: 0,
-                zone: 0,
+                zone: CENTER_ZONE,
             },
             kit(),
         );
