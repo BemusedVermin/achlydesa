@@ -58,10 +58,55 @@ struct MoveSpec {
     withdraw: u32,
     #[serde(default)]
     tempo_cost: i32,
+    /// The governing WWN attribute ("STR"/"DEX"/"CON"/"INT"/"WIS"/"CHA"); its modifier feeds the
+    /// to-hit accuracy and scales damage/reach. `None` = a flat move (no attribute).
+    #[serde(default)]
+    attr: Option<String>,
+    /// The governing WWN skill (e.g. "Punch", "Stab", "Shoot"); its rank adds to accuracy.
+    #[serde(default)]
+    skill: Option<String>,
+    /// Extra damage per point of the governing attribute's modifier (a heavy STR move scales hard).
+    #[serde(default)]
+    dmg_per_mod: i32,
+    /// Extra reach (units) per point of the governing attribute's modifier (acrobatic/ranged moves).
+    #[serde(default)]
+    reach_per_mod: i32,
 }
 
 fn default_reach() -> u32 {
     2
+}
+
+fn attr_index(name: &str) -> Option<usize> {
+    Some(match name {
+        "STR" => rpg::STR,
+        "DEX" => rpg::DEX,
+        "CON" => rpg::CON,
+        "INT" => rpg::INT,
+        "WIS" => rpg::WIS,
+        "CHA" => rpg::CHA,
+        _ => return None,
+    })
+}
+
+fn attr_mod(world: &World, e: Entity, attr: usize) -> i32 {
+    world
+        .get::<rpg::Abilities>(e)
+        .map(|a| a.modifier(attr))
+        .unwrap_or(0)
+}
+
+fn skill_rank(world: &World, e: Entity, skill: &str) -> i32 {
+    let Some(data) = world.get_resource::<rpg::RpgData>() else {
+        return 0;
+    };
+    let Some(id) = data.skill_id(skill) else {
+        return 0;
+    };
+    world
+        .get::<rpg::Proficiencies>(e)
+        .map(|p| p.rank(id) as i32)
+        .unwrap_or(0)
 }
 
 impl MoveSpec {
@@ -126,30 +171,52 @@ impl CombatContent {
             .expect("bundled combat.ron parses")
     }
 
-    /// Compile the catalogue into a move library.
-    fn library(&self) -> cc::MoveLibrary {
-        cc::MoveLibrary::from_defs(self.moves.iter().map(|m| m.compile()))
+    /// The base spec for move `id`.
+    fn move_spec(&self, id: u32) -> Option<&MoveSpec> {
+        self.moves.iter().find(|m| m.id == id)
     }
 
-    /// The move definition for `id`, if present (for the UI's move previews).
-    pub fn move_def(&self, id: cc::MoveId) -> Option<cc::MoveDef> {
-        self.moves
-            .iter()
-            .find(|m| m.id == id.0)
-            .map(|m| m.compile())
-    }
-
-    /// The kit for `archetype` (falling back to the action-tray kit for an unknown one).
-    fn kit_of(&self, archetype: &str) -> Vec<cc::MoveId> {
+    /// The base move-id kit for `archetype` (falling back to the action-tray kit for an unknown one).
+    fn kit_of(&self, archetype: &str) -> &[u32] {
         self.archetypes
             .iter()
             .find(|a| a.name == archetype)
-            .map(|a| &a.kit)
-            .unwrap_or(&self.tray)
-            .iter()
-            .map(|&id| cc::MoveId(id))
-            .collect()
+            .map(|a| a.kit.as_slice())
+            .unwrap_or(self.tray.as_slice())
     }
+}
+
+/// Compile a move *for a specific fighter*: lift the base spec, then fold in the governing
+/// attribute modifier + skill rank — accuracy (the to-hit), scaled damage, and scaled reach — and
+/// give it a per-fighter unique id so every combatant carries its own tuned copy.
+fn scaled_move(spec: &MoveSpec, world: &World, e: Entity, unique_id: u32) -> cc::MoveDef {
+    let am = spec
+        .attr
+        .as_deref()
+        .and_then(attr_index)
+        .map(|i| attr_mod(world, e, i))
+        .unwrap_or(0);
+    let sk = spec
+        .skill
+        .as_deref()
+        .map(|s| skill_rank(world, e, s))
+        .unwrap_or(0);
+    let mut m = spec.compile();
+    m.id = cc::MoveId(unique_id);
+    m.accuracy = am + sk;
+    m.reach = cc::Fixed::from_int((spec.reach as i32 + am * spec.reach_per_mod).max(1));
+    for effect in m.effects.iter_mut() {
+        if let cc::Effect::Damage { amount } = effect {
+            *amount = (*amount + am * spec.dmg_per_mod).max(0);
+        }
+    }
+    m
+}
+
+/// A fighter's evasion: a neutral attacker (accuracy 0) still connects on a neutral target
+/// (margin 1), but a keen Dexterity makes you progressively harder to hit.
+fn evasion_of(world: &World, e: Entity) -> i32 {
+    6 + attr_mod(world, e, rpg::DEX) * 2
 }
 
 /// Which kit a body fights with: the avatar and party are adventurers, predators bull in, prey
@@ -194,7 +261,12 @@ pub struct CombatConfig {
 impl Default for CombatConfig {
     fn default() -> Self {
         Self {
-            engine: cc::Config::default(),
+            // The game folds in the RPG: hits roll the WWN to-hit check, and a parry stuns.
+            engine: cc::Config {
+                wwn_checks: true,
+                interrupt_stagger: 4,
+                ..cc::Config::default()
+            },
             base_hp: 20,
             hp_per_con: 6,
             party_tempo: 8,
@@ -254,6 +326,8 @@ pub struct Combatant {
     pub is_player_side: bool,
     /// True for the avatar itself (player_actors[0]).
     pub is_avatar: bool,
+    /// This fighter's (scaled) move ids — so the UI can show its tray even when it isn't acting.
+    pub moves: Vec<cc::MoveId>,
 }
 
 /// A live fight: the engine `Sim` (driven by the caller) plus the mapping back to world entities.
@@ -392,54 +466,90 @@ pub(crate) fn build_encounter(
     roster: &[Entity],
     enemies: &[Entity],
 ) -> Encounter {
-    let mut sim = cc::Sim::new(cfg.engine, content.library(), seed);
-    let mut combatants = Vec::new();
-    let mut next = 0u32;
-
-    // The party lines up on the left edge, the enemies on the right, each side spread vertically
-    // and centred — a continuous field the moves then close across.
+    // One slot per combatant, in id order: the party on the left edge, enemies on the right, each
+    // side spread vertically and centred — a continuous field the moves close across.
+    struct Slot {
+        e: Entity,
+        faction: u32,
+        is_avatar: bool,
+        tempo: i32,
+        pos: cc::Pos,
+    }
+    let mut slots: Vec<Slot> = Vec::new();
     let players: Vec<(Entity, bool)> = std::iter::once((avatar, true))
         .chain(roster.iter().map(|&e| (e, false)))
         .collect();
     let np = players.len() as i32;
     for (i, &(e, is_avatar)) in players.iter().enumerate() {
-        let pos = cc::Pos::from_ints(-cfg.field_half_width, lane_y(i as i32, np, cfg.lane_gap));
-        enroll(
-            &mut sim,
-            &mut combatants,
-            world,
-            cfg,
-            content,
-            &mut next,
+        slots.push(Slot {
             e,
-            0,
-            cfg.party_tempo,
+            faction: 0,
             is_avatar,
-            pos,
-        );
+            tempo: cfg.party_tempo,
+            pos: cc::Pos::from_ints(-cfg.field_half_width, lane_y(i as i32, np, cfg.lane_gap)),
+        });
     }
     let ne = enemies.len() as i32;
     for (j, &en) in enemies.iter().enumerate() {
-        // Named NPCs fight as elites (they hold Tempo); beasts and the nameless are mooks.
-        let tempo = if is_npc(world, en) {
-            cfg.elite_tempo
-        } else {
-            0
-        };
-        let pos = cc::Pos::from_ints(cfg.field_half_width, lane_y(j as i32, ne, cfg.lane_gap));
-        enroll(
-            &mut sim,
-            &mut combatants,
-            world,
-            cfg,
-            content,
-            &mut next,
-            en,
-            1,
-            tempo,
-            false,
-            pos,
+        slots.push(Slot {
+            e: en,
+            faction: 1,
+            is_avatar: false,
+            // Named NPCs fight as elites (they hold Tempo); beasts and the nameless are mooks.
+            tempo: if is_npc(world, en) {
+                cfg.elite_tempo
+            } else {
+                0
+            },
+            pos: cc::Pos::from_ints(cfg.field_half_width, lane_y(j as i32, ne, cfg.lane_gap)),
+        });
+    }
+
+    // Build each fighter's kit as per-fighter *scaled* moves (folding in their RPG stats), with
+    // unique move ids, and collect them all into one library.
+    let mut defs: Vec<cc::MoveDef> = Vec::new();
+    let mut kits: Vec<Vec<cc::MoveId>> = Vec::new();
+    for (idx, slot) in slots.iter().enumerate() {
+        let base_kit = content.kit_of(archetype_of(world, slot.e, slot.faction == 0));
+        let mut kit = Vec::new();
+        for &base_id in base_kit {
+            if let Some(spec) = content.move_spec(base_id) {
+                let uid = (idx as u32 + 1) * 100 + base_id;
+                defs.push(scaled_move(spec, world, slot.e, uid));
+                kit.push(cc::MoveId(uid));
+            }
+        }
+        kits.push(kit);
+    }
+
+    let mut sim = cc::Sim::new(cfg.engine, cc::MoveLibrary::from_defs(defs), seed);
+    let mut combatants = Vec::new();
+    for (idx, slot) in slots.into_iter().enumerate() {
+        let max = max_hp(world, slot.e, cfg);
+        let hp = current_hp(world, slot.e, max);
+        let id = cc::ActorId(idx as u32);
+        sim.add_actor(
+            cc::Actor {
+                id,
+                faction: cc::FactionId(slot.faction),
+                vitals: cc::Vitals { hp, max_hp: max },
+                tempo: slot.tempo,
+                next_ready_tick: cc::Tick(0),
+                state: cc::ActorState::Idle,
+                foresight_horizon: 0,
+                pos: slot.pos,
+                evasion: evasion_of(world, slot.e),
+            },
+            kits[idx].clone(),
         );
+        combatants.push(Combatant {
+            actor: id,
+            entity: slot.e,
+            name: name_of(world, slot.e),
+            is_player_side: slot.faction == 0,
+            is_avatar: slot.is_avatar,
+            moves: kits[idx].clone(),
+        });
     }
 
     Encounter { sim, combatants }
@@ -448,48 +558,6 @@ pub(crate) fn build_encounter(
 /// The centred vertical offset for combatant `i` of `count` on one side.
 fn lane_y(i: i32, count: i32, gap: i32) -> i32 {
     i * gap - (count - 1) * gap / 2
-}
-
-/// Register one combatant in the sim and the encounter roster.
-#[allow(clippy::too_many_arguments)]
-fn enroll(
-    sim: &mut cc::Sim,
-    combatants: &mut Vec<Combatant>,
-    world: &World,
-    cfg: &CombatConfig,
-    content: &CombatContent,
-    next: &mut u32,
-    e: Entity,
-    faction: u32,
-    tempo: i32,
-    is_avatar: bool,
-    pos: cc::Pos,
-) {
-    let max = max_hp(world, e, cfg);
-    let hp = current_hp(world, e, max);
-    let id = cc::ActorId(*next);
-    *next += 1;
-    let kit = content.kit_of(archetype_of(world, e, faction == 0));
-    sim.add_actor(
-        cc::Actor {
-            id,
-            faction: cc::FactionId(faction),
-            vitals: cc::Vitals { hp, max_hp: max },
-            tempo,
-            next_ready_tick: cc::Tick(0),
-            state: cc::ActorState::Idle,
-            foresight_horizon: 0,
-            pos,
-        },
-        kit,
-    );
-    combatants.push(Combatant {
-        actor: id,
-        entity: e,
-        name: name_of(world, e),
-        is_player_side: faction == 0,
-        is_avatar,
-    });
 }
 
 /// Apply a finished fight to the world: persist survivors' HP, despawn fallen enemies, and report

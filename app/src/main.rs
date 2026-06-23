@@ -1403,7 +1403,7 @@ fn hide_hud_in_combat(game: NonSend<Game>, mut trays: Query<&mut Visibility, Wit
 /// Dev hook: with `ACHLYDESA_FIGHT` set, auto-act for the player each frame so a fight plays out
 /// headlessly (for screenshots of the animated battle). No effect in normal play.
 fn dev_combat_autoplay(mut game: NonSendMut<Game>) {
-    if std::env::var("ACHLYDESA_FIGHT").is_err() {
+    if std::env::var("ACHLYDESA_FIGHT_AUTO").is_err() {
         return;
     }
     if let Some(ui) = game.combat.as_mut() {

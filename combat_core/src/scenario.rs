@@ -30,6 +30,8 @@ pub struct ActorSpec {
     #[serde(default)]
     pub y: i32,
     #[serde(default)]
+    pub evasion: i32,
+    #[serde(default)]
     pub foresight_horizon: u32,
     /// The tick at which this actor first becomes ready to act.
     #[serde(default)]
@@ -77,6 +79,7 @@ impl Scenario {
                 state: ActorState::Idle,
                 foresight_horizon: a.foresight_horizon,
                 pos: Pos::from_ints(a.x, a.y),
+                evasion: a.evasion,
             };
             let kit = a.kit.iter().map(|&m| MoveId(m)).collect();
             sim.add_actor(actor, kit);

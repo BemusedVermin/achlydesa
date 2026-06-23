@@ -38,6 +38,7 @@ fn actor(id: u32, faction: u32, hp: i32) -> Actor {
         state: ActorState::Idle,
         foresight_horizon: 0,
         pos: Pos::ORIGIN,
+        evasion: 0,
     }
 }
 

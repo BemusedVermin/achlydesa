@@ -30,6 +30,7 @@ fn rig() -> (Sim, MoveLibrary, Config) {
             state: ActorState::Idle,
             foresight_horizon: 0,
             pos: Pos::ORIGIN,
+            evasion: 0,
         },
         vec![MoveId(1)],
     );
@@ -44,6 +45,7 @@ fn rig() -> (Sim, MoveLibrary, Config) {
             state: ActorState::Idle,
             foresight_horizon: 0,
             pos: Pos::ORIGIN,
+            evasion: 0,
         },
         vec![MoveId(2)],
     );

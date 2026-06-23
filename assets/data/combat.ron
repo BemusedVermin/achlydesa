@@ -1,29 +1,31 @@
 // Combat content — the move catalogue and per-archetype kits, compiled into `combat_core`
-// MoveDefs by the `agents::combat` bridge. Authoring here keeps timing/effects/kits tunable
-// without recompiling.
+// MoveDefs *per fighter* by the `agents::combat` bridge (so each combatant's copy is tuned by
+// their WWN stats). Authoring here keeps timing/effects/kits/governance tunable without recompiling.
 //
 // The field is continuous 2D; a move targets a *person* and travels the 1D line to them. `reach`
-// is how close (in world units) the target must be for the move's landing effects to connect —
-// beyond it the move WHIFFS. `approach`/`withdraw` slide the actor along that line toward/away
-// from the target (movement resolves before the reach check, so a Lunge can close *and* strike).
+// is how close (world units) the target must be for the landing effects to connect — beyond it the
+// move WHIFFS. `approach`/`withdraw` slide along the line (movement resolves before the reach check,
+// so a Lunge can close AND strike).
+//
+// RPG governance: `attr` (STR/DEX/CON/INT/WIS/CHA) + `skill` feed the to-hit accuracy that is
+// checked against the target's evasion; `dmg_per_mod` scales damage by the attribute modifier, and
+// `reach_per_mod` scales reach. So STR makes Shove/Strike hit harder, DEX makes Lunge/Loose land
+// from further and connect more often, etc.
 (
-    // The adventurer's action tray, in display order: a gap-closing Lunge, a quick Strike, a
-    // ranged Loose, a Shove, the Feint->Riposte pair, and the Advance/Retreat movement verbs.
+    // The adventurer's action tray, in display order.
     tray: [2, 1, 3, 6, 4, 5, 7, 8],
 
     moves: [
-        (id: 1, name: "Strike",  startup: 3, active: 1, recovery: 2, priority: 2, reach: 2, damage: 4),
-        (id: 2, name: "Lunge",   startup: 3, active: 1, recovery: 2, priority: 2, reach: 3, approach: 5, damage: 5),
-        (id: 3, name: "Loose",   startup: 2, active: 1, recovery: 2, priority: 2, reach: 16, damage: 3),
-        (id: 4, name: "Feint",   startup: 3, active: 1, recovery: 2, priority: 1, reach: 3, expose: 8),
-        (id: 5, name: "Riposte", startup: 4, active: 1, recovery: 3, priority: 2, reach: 3, requires_exposed: true, damage: 7),
-        (id: 6, name: "Shove",   startup: 2, active: 1, recovery: 3, priority: 2, reach: 3, knockback: 4, damage: 2),
+        (id: 1, name: "Strike",  startup: 3, active: 1, recovery: 2, priority: 2, reach: 2, damage: 4, attr: Some("STR"), skill: Some("Stab"),  dmg_per_mod: 1),
+        (id: 2, name: "Lunge",   startup: 3, active: 1, recovery: 2, priority: 2, reach: 3, approach: 5, damage: 5, attr: Some("DEX"), skill: Some("Stab"), dmg_per_mod: 2, reach_per_mod: 1),
+        (id: 3, name: "Loose",   startup: 2, active: 1, recovery: 2, priority: 2, reach: 16, damage: 3, attr: Some("DEX"), skill: Some("Shoot"), dmg_per_mod: 1, reach_per_mod: 1),
+        (id: 4, name: "Feint",   startup: 3, active: 1, recovery: 2, priority: 1, reach: 3, expose: 8, attr: Some("DEX"), skill: Some("Sneak")),
+        (id: 5, name: "Riposte", startup: 4, active: 1, recovery: 3, priority: 2, reach: 3, requires_exposed: true, damage: 7, attr: Some("DEX"), skill: Some("Stab"), dmg_per_mod: 1),
+        (id: 6, name: "Shove",   startup: 2, active: 1, recovery: 3, priority: 2, reach: 3, knockback: 4, damage: 2, attr: Some("STR"), skill: Some("Punch"), dmg_per_mod: 1),
         (id: 7, name: "Advance", startup: 2, active: 1, recovery: 1, priority: 1, reach: 1, approach: 5),
         (id: 8, name: "Retreat", startup: 2, active: 1, recovery: 1, priority: 1, reach: 1, withdraw: 5),
     ],
 
-    // Which moves each kind of combatant fights with. Adventurers (avatar/party) are versatile;
-    // soldiers bull in; predators rush; skittish prey kite at range.
     archetypes: [
         (name: "adventurer", kit: [2, 1, 3, 6, 4, 5, 7, 8]),
         (name: "soldier",    kit: [2, 1, 6, 7]),

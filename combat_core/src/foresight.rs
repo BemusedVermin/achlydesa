@@ -28,6 +28,8 @@ pub struct ActorView {
     pub max_hp: i32,
     /// Where the actor stands on the field.
     pub pos: Pos,
+    /// Defensive rating (for the UI's to-hit preview).
+    pub evasion: i32,
     /// `None` when fogged (enemy Tempo with `hide_enemy_tempo`).
     pub tempo: Option<i32>,
     pub state: ActorStateView,
@@ -156,6 +158,7 @@ pub fn project(sim: &Sim, observer: ActorId) -> ForesightView {
             hp: a.vitals.hp,
             max_hp: a.vitals.max_hp,
             pos: a.pos,
+            evasion: a.evasion,
             tempo: if a.faction == own_faction || !hide_enemy_tempo {
                 Some(a.tempo)
             } else {

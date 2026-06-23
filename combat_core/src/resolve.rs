@@ -108,14 +108,20 @@ fn resolve_contact(sim: &mut Sim, id: InstanceId, tick: Tick) {
     let target = inst.target;
 
     // Snapshot the move's static data, releasing the library borrow before any mutation.
-    let (effects, requires, reach) = {
+    let (effects, requires, reach, accuracy) = {
         let Some(def) = sim.library().get(inst.mv) else {
             return;
         };
-        (def.effects.clone(), def.requires_tag, def.reach)
+        (
+            def.effects.clone(),
+            def.requires_tag,
+            def.reach,
+            def.accuracy,
+        )
     };
     let has_landing = effects.iter().any(|e| e.lands_on_target());
     let has_movement = effects.iter().any(|e| !e.lands_on_target());
+    let has_damage = effects.iter().any(|e| matches!(e, Effect::Damage { .. }));
 
     // Every effect (landing or movement) needs a valid target — to land on, or to aim the line at.
     let valid_target = target.is_some_and(|t| sim.actor(t).is_some_and(|a| a.targetable()));
@@ -170,7 +176,27 @@ fn resolve_contact(sim: &mut Sim, id: InstanceId, tick: Tick) {
         return;
     }
 
-    // Interrupt payoff: a contact landed on a target mid-startup (unarmored) cancels its wind-up.
+    // 2c. To-hit gate (the WWN check) — only for damaging moves, only when enabled. A failed check
+    // is a clean miss (the target evaded); a wide margin is a *strong* hit that crits.
+    let mut crit_mult = crate::tick::Fixed::ONE;
+    if sim.config().wwn_checks && has_damage {
+        let cfg = *sim.config();
+        let evasion = sim.actor(t).map(|a| a.evasion).unwrap_or(0);
+        let margin = accuracy + cfg.to_hit_base - evasion;
+        if margin < 0 {
+            sim.emit(Event::ActionFizzled {
+                instance: id,
+                reason: FizzleReason::Missed,
+            });
+            return;
+        }
+        if margin >= cfg.strong_margin {
+            crit_mult = cfg.strong_mult;
+        }
+    }
+
+    // Interrupt payoff: a contact landed on a target mid-startup (unarmored) cancels its wind-up
+    // *and stuns* the target.
     if let Some(victim) = sim.timeline().live_of(t).map(|i| i.id) {
         let in_startup = sim
             .timeline()
@@ -186,13 +212,21 @@ fn resolve_contact(sim: &mut Sim, id: InstanceId, tick: Tick) {
             sim.cancel_instance(victim, attacker);
             let bounty = sim.config().tempo_on_interrupt;
             award_faction_tempo(sim, attacker, bounty);
+            let stun = sim.config().interrupt_stagger;
+            if stun > 0 {
+                let until = tick + stun as u64;
+                if let Some(a) = sim.actors.get_mut(&t) {
+                    a.state = ActorState::Staggered { until };
+                }
+                sim.emit(Event::ActorStaggered { actor: t, until });
+            }
         }
     }
 
-    // 3. Landing effects in listed order.
+    // 3. Landing effects in listed order (damage scaled by any crit).
     for e in &effects {
         if e.lands_on_target() {
-            apply_effect(sim, id, attacker, t, *e, tick);
+            apply_effect(sim, id, attacker, t, *e, crit_mult, tick);
         }
     }
 
@@ -238,19 +272,20 @@ fn apply_effect(
     attacker: ActorId,
     t: ActorId,
     effect: Effect,
+    crit_mult: crate::tick::Fixed,
     tick: Tick,
 ) {
     match effect {
         Effect::Damage { amount } => {
             let exposed = sim.windows().active(t, WindowTag::Exposed, tick).is_some();
-            let dmg = if exposed {
+            let mut dmg = amount;
+            if exposed {
                 let mult = sim.config().exposed_damage_mult;
                 let bounty = sim.config().tempo_on_window_hit;
                 award_faction_tempo(sim, attacker, bounty);
-                mult.scale_int(amount)
-            } else {
-                amount
-            };
+                dmg = mult.scale_int(dmg);
+            }
+            dmg = crit_mult.scale_int(dmg);
             if let Some(a) = sim.actors.get_mut(&t) {
                 a.vitals.hp -= dmg;
             }

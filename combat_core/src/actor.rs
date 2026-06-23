@@ -47,6 +47,9 @@ pub struct Actor {
     pub foresight_horizon: u32,
     /// Where the actor stands on the continuous 2D field.
     pub pos: Pos,
+    /// Defensive rating an attacker's accuracy is checked against (only when `Config::wwn_checks`).
+    /// The bridge derives it from the WWN attributes; `0` in the headless scenarios.
+    pub evasion: i32,
 }
 
 impl Actor {
