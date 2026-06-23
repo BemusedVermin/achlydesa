@@ -79,11 +79,19 @@ outcomes written back through a deterministic `agents` API.
   any zone (so no one ever stalls). Everyone starts engaged in the centre. The bottom-right position
   map shows who stands where (`@`=avatar, `+`=ally, `x`=foe); ◄/► or clicking a zone repositions the
   active actor (a readiness action). `CombatConfig::zone_gating` flips it off.
+- **RON-authored content.** The move catalogue + per-archetype kits live in `assets/data/combat.ron`
+  (sourced through `config`, parsed by the bridge into `MoveDef`s via the builder). Kits are picked
+  by archetype: adventurer (avatar/party), soldier (NPCs), predator (carnivores), prey (herbivores).
+- **Out-of-combat HP regen.** A `regen_health` schedule system (added only when the layer is on)
+  mends `Health` one point per `CombatConfig::regen_period` overworld ticks — and combat freezes the
+  world, so it only heals between fights.
+- **3D fight figures.** Combatants render as capsule figures in two facing rows centred on the
+  avatar (player blue, enemy red, the fallen toppled grey, a lift while mid-action) — the fight in
+  the reserved field, beneath the timeline ribbon. The overworld avatar is hidden while fighting.
 
 ### Deferred (follow-ups)
 - A real **game-over** when the avatar falls (today it shows a banner and returns to the overworld;
   the avatar is left at 0 HP rather than removed). *(Left to the user's call.)*
-- **RON-authored move kits / archetypes** (kits are code-authored in `combat.rs` for v1).
-- **Out-of-combat HP regen** (HP persists but only heals via a future rest mechanic).
-- **3D fight rendering** in the reserved field area.
+- The WWN→frame-data bridge (move stats compiled from the RPG layer rather than a fixed catalogue),
+  animated figures, and a smarter AI that also uses the Feint→Riposte combo and repositions.
 ```
