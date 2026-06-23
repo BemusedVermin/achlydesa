@@ -10,7 +10,8 @@
 use crate::config::Config;
 use crate::foresight::{ActorStateView, ForesightView, VisibleInstance};
 use crate::ids::{ActorId, FactionId, MoveId};
-use crate::moves::{Effect, MoveLibrary, ZoneReq};
+use crate::moves::{Effect, MoveLibrary};
+use crate::space::Pos;
 use crate::tick::Tick;
 use crate::verbs::EditVerb;
 use serde::{Deserialize, Serialize};
@@ -100,29 +101,31 @@ impl Controller for ScriptedController {
     }
 }
 
-/// A readiness action: the highest-priority affordable damage move against the lowest-id reachable
-/// enemy, else `Hold`. Shared by both stub controllers; deterministic (lowest move/actor id breaks
-/// ties).
+/// A readiness action on the continuous field: commit the highest-priority affordable damage move
+/// against the nearest enemy *within its reach*; if nothing is in reach, close on the nearest enemy
+/// with an Approach move; else `Hold`. Deterministic (nearest, then lowest move/actor id, ties).
 fn readiness_command(lib: &MoveLibrary, decision: &Decision, view: &ForesightView) -> Command {
-    let my_zone = view
+    let my_pos = view
         .actors
         .iter()
         .find(|a| a.id == decision.actor)
-        .map(|a| a.zone)
-        .unwrap_or(0);
-    let enemy = |req: ZoneReq| -> Option<ActorId> {
-        view.actors
-            .iter()
-            .filter(|a| a.faction != view.own_faction && !matches!(a.state, ActorStateView::Down))
-            .filter(|a| req == ZoneReq::AnyZone || a.zone == my_zone)
-            .map(|a| a.id)
-            .min()
-    };
+        .map(|a| a.pos)
+        .unwrap_or(Pos::ORIGIN);
+    let enemies: Vec<(ActorId, Pos)> = view
+        .actors
+        .iter()
+        .filter(|a| a.faction != view.own_faction && !matches!(a.state, ActorStateView::Down))
+        .map(|a| (a.id, a.pos))
+        .collect();
+    if enemies.is_empty() {
+        return Command::Hold;
+    }
 
+    // Best damage move with a target in reach.
     let mut best: Option<(u8, MoveId, ActorId)> = None;
     for &mv in &view.own_moves {
         let Some(def) = lib.get(mv) else { continue };
-        if def.tempo_cost > view.own_tempo {
+        if def.tempo_cost > view.own_tempo || def.requires_tag.is_some() {
             continue;
         }
         if !def
@@ -132,28 +135,49 @@ fn readiness_command(lib: &MoveLibrary, decision: &Decision, view: &ForesightVie
         {
             continue;
         }
-        // A move gated by a window the AI can't guarantee is skipped (keep it simple).
-        if def.requires_tag.is_some() {
-            continue;
-        }
-        let Some(target) = enemy(def.range) else {
-            continue;
-        };
-        let pick = match best {
-            None => true,
-            Some((p, m, _)) => def.priority_class > p || (def.priority_class == p && mv.0 < m.0),
-        };
-        if pick {
-            best = Some((def.priority_class, mv, target));
+        let target = enemies
+            .iter()
+            .filter(|(_, p)| my_pos.within(*p, def.reach))
+            .min_by_key(|(id, p)| (my_pos.dist_sq(*p), id.0))
+            .map(|(id, _)| *id);
+        if let Some(t) = target {
+            let pick = best.is_none_or(|(p, m, _)| {
+                def.priority_class > p || (def.priority_class == p && mv.0 < m.0)
+            });
+            if pick {
+                best = Some((def.priority_class, mv, t));
+            }
         }
     }
-    match best {
-        Some((_, mv, target)) => Command::CommitAction {
+    if let Some((_, mv, target)) = best {
+        return Command::CommitAction {
             mv,
             target: Some(target),
-        },
-        None => Command::Hold,
+        };
     }
+
+    // Nothing in reach — close on the nearest enemy with an Approach move.
+    let nearest = enemies
+        .iter()
+        .min_by_key(|(id, p)| (my_pos.dist_sq(*p), id.0))
+        .map(|(id, _)| *id);
+    for &mv in &view.own_moves {
+        let Some(def) = lib.get(mv) else { continue };
+        if def.tempo_cost > view.own_tempo {
+            continue;
+        }
+        if def
+            .effects
+            .iter()
+            .any(|e| matches!(e, Effect::Approach { .. }))
+        {
+            return Command::CommitAction {
+                mv,
+                target: nearest,
+            };
+        }
+    }
+    Command::Hold
 }
 
 /// A dilation (edit) action for a Tempo-holder: interrupt the soonest unarmored wind-up if it can

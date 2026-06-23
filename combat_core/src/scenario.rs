@@ -4,13 +4,14 @@
 //! a [`ScriptedController`] for scripted factions and a [`StubAi`] for any AI factions, returning
 //! the event trace. Same scenario in, same trace out (the golden-vector contract).
 
-use crate::actor::{Actor, ActorState, Vitals, ZoneId};
+use crate::actor::{Actor, ActorState, Vitals};
 use crate::config::Config;
 use crate::controller::{Command, Controller, ScriptedController, StubAi};
 use crate::events::Event;
 use crate::ids::{ActorId, FactionId, MoveId};
 use crate::moves::{MoveDef, MoveLibrary};
 use crate::sim::{Sim, StepResult};
+use crate::space::Pos;
 use crate::tick::Tick;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
@@ -23,8 +24,11 @@ pub struct ActorSpec {
     pub hp: i32,
     #[serde(default)]
     pub tempo: i32,
+    /// Starting position on the field (integer world units).
     #[serde(default)]
-    pub zone: ZoneId,
+    pub x: i32,
+    #[serde(default)]
+    pub y: i32,
     #[serde(default)]
     pub foresight_horizon: u32,
     /// The tick at which this actor first becomes ready to act.
@@ -72,7 +76,7 @@ impl Scenario {
                 next_ready_tick: Tick(a.ready_tick),
                 state: ActorState::Idle,
                 foresight_horizon: a.foresight_horizon,
-                zone: a.zone,
+                pos: Pos::from_ints(a.x, a.y),
             };
             let kit = a.kit.iter().map(|&m| MoveId(m)).collect();
             sim.add_actor(actor, kit);

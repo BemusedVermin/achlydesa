@@ -6,6 +6,7 @@
 //! stable across runs and machines.
 
 use crate::ids::{ActorId, FactionId, InstanceId, MoveId, WindowId};
+use crate::space::Pos;
 use crate::tick::Tick;
 use crate::windows::WindowTag;
 use serde::{Deserialize, Serialize};
@@ -13,10 +14,12 @@ use serde::{Deserialize, Serialize};
 /// Why a contact produced no effects.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum FizzleReason {
-    /// The target was gone, down, or out of zone/range.
+    /// The target was gone or down.
     NoValidTarget,
     /// The move required a window tag the target wasn't carrying.
     MissingTag,
+    /// The target was beyond the move's reach at the active frame — a whiff.
+    OutOfReach,
 }
 
 /// How the fight ended.
@@ -99,6 +102,12 @@ pub enum Event {
     ActorStaggered {
         actor: ActorId,
         until: Tick,
+    },
+    /// An actor slid to a new position on the field (an Approach/Withdraw effect resolved).
+    Moved {
+        actor: ActorId,
+        to: Pos,
+        tick: Tick,
     },
     TempoChanged {
         actor: ActorId,

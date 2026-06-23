@@ -79,6 +79,16 @@ were generated with these behaviours:
 - **Interrupt Tempo** is awarded only for *contact* interrupts (reading a wind-up), not for the
   `Interrupt` edit verb.
 
+## Spatial model (`space.rs`)
+
+Combat is on a **continuous 2D field**: every actor has a `Pos` (a pair of 16.16 `Fixed`). A move
+targets a *person* and connects only if the target is within the move's `reach` at the active frame
+— else its landing effects **whiff** (`FizzleReason::OutOfReach`). `Approach`/`Withdraw` effects
+slide the actor along the 1D line to its target (movement resolves *before* the reach gate, so a
+lunge can close and then strike). All distance math is integer: compare squared distances for the
+reach test; a Newton integer `isqrt` is the only normalization (for the one-step movement vector).
+No floats, fully deterministic — a port must reproduce `space.rs` exactly.
+
 ## Validating a port
 
 1. Build with no Bevy dependency, no floats in the core, `cargo clippy` clean.

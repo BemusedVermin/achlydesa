@@ -51,7 +51,9 @@ impl core::ops::Sub<u64> for Tick {
 /// A 16.16 signed fixed-point number (backing `i32`): the high 16 bits are the integer part,
 /// the low 16 the fraction. Used for the handful of continuous magnitudes in the core (e.g.
 /// the exposed-damage multiplier). Determinism over prettiness — never a float.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize)]
+#[derive(
+    Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Default, Serialize, Deserialize,
+)]
 pub struct Fixed(pub i32);
 
 impl Fixed {

@@ -37,7 +37,7 @@ fn actor(id: u32, faction: u32, hp: i32) -> Actor {
         next_ready_tick: Tick(0),
         state: ActorState::Idle,
         foresight_horizon: 0,
-        zone: 0,
+        pos: Pos::ORIGIN,
     }
 }
 

@@ -32,6 +32,7 @@ use std::collections::HashMap;
 use app::theme::{self, ThemeFonts};
 
 mod combat;
+mod combat_field;
 mod convo_ui;
 mod fauna_art;
 mod feature_art;
@@ -471,12 +472,15 @@ fn main() {
         Update,
         (
             attack_input,
-            combat::combat_step,
+            combat::combat_tick,
+            dev_combat_autoplay,
             combat::combat_input,
             combat::combat_clicks,
-            combat::update_combat_ui,
-            combat::update_position_map,
-            combat::sync_combat_figures,
+            combat::combat_render_field,
+            combat::update_combat_chrome,
+            combat::update_combat_roster,
+            combat::update_combat_tray,
+            combat::update_combat_timeline,
             hide_hud_in_combat,
         )
             .chain(),
@@ -630,6 +634,7 @@ fn setup(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut toon_mats: ResMut<Assets<ToonMaterial>>,
     mut fonts: ResMut<Assets<Font>>,
+    mut images: ResMut<Assets<Image>>,
     asset_server: Res<AssetServer>,
     game: NonSend<Game>,
 ) {
@@ -736,9 +741,7 @@ fn setup(
     let grassy = asset_server.load("ui/grassy_rock.jpg");
     hud::spawn(&mut commands, &theme_fonts, grassy);
     convo_ui::spawn(&mut commands, &theme_fonts);
-    combat::spawn_combat_ui(&mut commands, &theme_fonts);
-    let fig_assets = combat::CombatFigAssets::new(&mut meshes, &mut materials);
-    commands.insert_resource(fig_assets);
+    combat::spawn_combat_ui(&mut commands, &theme_fonts, &mut images);
     let parchment = asset_server.load("ui/parchment.jpg");
     spawn_pause_menu(&mut commands, &theme_fonts, parchment);
     commands.insert_resource(theme_fonts);
@@ -1397,6 +1400,17 @@ fn hide_hud_in_combat(game: NonSend<Game>, mut trays: Query<&mut Visibility, Wit
     }
 }
 
+/// Dev hook: with `ACHLYDESA_FIGHT` set, auto-act for the player each frame so a fight plays out
+/// headlessly (for screenshots of the animated battle). No effect in normal play.
+fn dev_combat_autoplay(mut game: NonSendMut<Game>) {
+    if std::env::var("ACHLYDESA_FIGHT").is_err() {
+        return;
+    }
+    if let Some(ui) = game.combat.as_mut() {
+        combat::dev_auto_player(ui);
+    }
+}
+
 /// Dev hook: with `ACHLYDESA_FIGHT` set, drop the avatar straight into a fight once at startup so
 /// the combat HUD can be screenshotted headlessly. Uses souls already in the world as foes.
 fn dev_fight(mut game: NonSendMut<Game>, mut done: Local<bool>) {
@@ -1417,10 +1431,6 @@ fn dev_fight(mut game: NonSendMut<Game>, mut done: Local<bool>) {
     }
     if !foes.is_empty() {
         combat::start(g, foes);
-        // Auto-play a few turns so the screenshot shows a populated timeline ribbon.
-        if let Some(ui) = g.combat.as_mut() {
-            combat::dev_autoplay(ui, 4);
-        }
     }
 }
 

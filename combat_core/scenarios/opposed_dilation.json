@@ -11,7 +11,7 @@
       "effects": [{ "Damage": { "amount": 15 } }],
       "requires_tag": "Exposed",
       "has_armor": false,
-      "range": "AnyZone",
+      "reach": 65536000,
       "tempo_cost": 0
     },
     {
@@ -22,7 +22,7 @@
       "effects": [{ "OpenWindow": { "tag": "Exposed", "duration": 10, "magnitude": 0 } }],
       "requires_tag": null,
       "has_armor": false,
-      "range": "AnyZone",
+      "reach": 65536000,
       "tempo_cost": 0
     },
     {
@@ -33,7 +33,7 @@
       "effects": [{ "Damage": { "amount": 8 } }],
       "requires_tag": null,
       "has_armor": false,
-      "range": "AnyZone",
+      "reach": 65536000,
       "tempo_cost": 0
     }
   ],

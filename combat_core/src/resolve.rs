@@ -2,11 +2,11 @@
 //! the spec lays out (§7). Every place two things could happen "at once" is broken by the strict
 //! total order in `PORTING.md` §4: priority class (desc), faction order, actor id, instance id.
 
-use crate::actor::{ActorState, ZoneId};
+use crate::actor::ActorState;
 use crate::config::TempoModel;
 use crate::events::{Event, FizzleReason};
 use crate::ids::{ActorId, FactionId, InstanceId};
-use crate::moves::{Effect, ZoneReq};
+use crate::moves::Effect;
 use crate::sim::Sim;
 use crate::tick::Tick;
 use crate::timeline::{InstanceStatus, Phase};
@@ -84,14 +84,6 @@ fn contact_key(sim: &Sim, id: InstanceId) -> (core::cmp::Reverse<u8>, u32, u32, 
     (core::cmp::Reverse(pr), fac, inst.actor.0, id.0)
 }
 
-#[inline]
-fn zone_ok(range: ZoneReq, attacker: ZoneId, target: ZoneId) -> bool {
-    match range {
-        ZoneReq::SameZone => attacker == target,
-        ZoneReq::AnyZone => true,
-    }
-}
-
 /// Award `amount` Tempo to the side that just earned it (spec §9). Per-actor in the opposed model;
 /// player-only in the shared-pool model.
 fn award_faction_tempo(sim: &mut Sim, actor: ActorId, amount: i32) {
@@ -106,32 +98,28 @@ fn award_faction_tempo(sim: &mut Sim, actor: ActorId, amount: i32) {
     }
 }
 
-/// Resolve one instance's contact: validity, the interrupt payoff, then its effects in order.
+/// Resolve one instance's contact (spec §7, with the continuous spatial model): apply any movement
+/// first (slide along the line to the target), then — if the move has landing effects — gate them
+/// on the target carrying the required tag and being **within reach** (else it whiffs), do the
+/// interrupt payoff, and apply the landing effects in order.
 fn resolve_contact(sim: &mut Sim, id: InstanceId, tick: Tick) {
     let inst = *sim.timeline().get(id).expect("live instance");
     let attacker = inst.actor;
     let target = inst.target;
 
     // Snapshot the move's static data, releasing the library borrow before any mutation.
-    let (effects, requires, range) = {
+    let (effects, requires, reach) = {
         let Some(def) = sim.library().get(inst.mv) else {
             return;
         };
-        (def.effects.clone(), def.requires_tag, def.range)
+        (def.effects.clone(), def.requires_tag, def.reach)
     };
-    let needs_target = effects
-        .iter()
-        .any(|e| !matches!(e, Effect::Reposition { .. }));
+    let has_landing = effects.iter().any(|e| e.lands_on_target());
+    let has_movement = effects.iter().any(|e| !e.lands_on_target());
 
-    let attacker_zone = sim.actor(attacker).map(|a| a.zone).unwrap_or(0);
-    let valid_target = match target {
-        Some(t) => sim
-            .actor(t)
-            .is_some_and(|a| a.targetable() && zone_ok(range, attacker_zone, a.zone)),
-        None => false,
-    };
-
-    if needs_target && !valid_target {
+    // Every effect (landing or movement) needs a valid target — to land on, or to aim the line at.
+    let valid_target = target.is_some_and(|t| sim.actor(t).is_some_and(|a| a.targetable()));
+    if (has_landing || has_movement) && !valid_target {
         sim.emit(Event::ActionFizzled {
             instance: id,
             reason: FizzleReason::NoValidTarget,
@@ -139,21 +127,51 @@ fn resolve_contact(sim: &mut Sim, id: InstanceId, tick: Tick) {
         return;
     }
 
-    if let Some(req) = requires {
-        let carries = target.is_some_and(|t| sim.windows().active(t, req, tick).is_some());
-        if !carries {
-            sim.emit(Event::ActionFizzled {
-                instance: id,
-                reason: FizzleReason::MissingTag,
-            });
-            return;
+    // 1. Movement first, so a move can close the gap and *then* strike.
+    for e in &effects {
+        match *e {
+            Effect::Approach { distance } => {
+                slide(sim, attacker, target, distance, true, tick);
+            }
+            Effect::Withdraw { distance } => {
+                slide(sim, attacker, target, distance, false, tick);
+            }
+            _ => {}
         }
     }
 
-    // Interrupt payoff: a contact landed on a target mid-startup (unarmored) cancels its wind-up.
-    if let Some(t) = target.filter(|_| valid_target)
-        && let Some(victim) = sim.timeline().live_of(t).map(|i| i.id)
+    if !has_landing {
+        return;
+    }
+    let t = target.expect("validated above");
+
+    // 2a. Required-tag gate.
+    if let Some(req) = requires
+        && sim.windows().active(t, req, tick).is_none()
     {
+        sim.emit(Event::ActionFizzled {
+            instance: id,
+            reason: FizzleReason::MissingTag,
+        });
+        return;
+    }
+
+    // 2b. Reach gate — the whiff. Measured *after* movement, so a lunge that closed the gap lands.
+    let in_reach = {
+        let ap = sim.actor(attacker).map(|a| a.pos);
+        let tp = sim.actor(t).map(|a| a.pos);
+        matches!((ap, tp), (Some(ap), Some(tp)) if ap.within(tp, reach))
+    };
+    if !in_reach {
+        sim.emit(Event::ActionFizzled {
+            instance: id,
+            reason: FizzleReason::OutOfReach,
+        });
+        return;
+    }
+
+    // Interrupt payoff: a contact landed on a target mid-startup (unarmored) cancels its wind-up.
+    if let Some(victim) = sim.timeline().live_of(t).map(|i| i.id) {
         let in_startup = sim
             .timeline()
             .get(victim)
@@ -171,30 +189,59 @@ fn resolve_contact(sim: &mut Sim, id: InstanceId, tick: Tick) {
         }
     }
 
-    // Effects in listed order.
+    // 3. Landing effects in listed order.
     for e in &effects {
-        apply_effect(sim, id, attacker, target, *e, tick);
+        if e.lands_on_target() {
+            apply_effect(sim, id, attacker, t, *e, tick);
+        }
     }
 
     // Downed check after all effects.
-    if let Some(t) = target
-        && sim.actor(t).is_some_and(|a| a.alive() && a.vitals.hp <= 0)
-    {
+    if sim.actor(t).is_some_and(|a| a.alive() && a.vitals.hp <= 0) {
         sim.down_actor(t, tick);
     }
+}
+
+/// Slide `actor` along the 1D line to/from `target` by `distance`, emitting `Moved`.
+fn slide(
+    sim: &mut Sim,
+    actor: ActorId,
+    target: Option<ActorId>,
+    distance: crate::tick::Fixed,
+    toward: bool,
+    tick: Tick,
+) {
+    let Some(t) = target else { return };
+    let (Some(from), Some(to_anchor)) =
+        (sim.actor(actor).map(|a| a.pos), sim.actor(t).map(|a| a.pos))
+    else {
+        return;
+    };
+    let dest = if toward {
+        from.step_toward(to_anchor, distance)
+    } else {
+        from.step_away(to_anchor, distance)
+    };
+    if let Some(a) = sim.actors.get_mut(&actor) {
+        a.pos = dest;
+    }
+    sim.emit(Event::Moved {
+        actor,
+        to: dest,
+        tick,
+    });
 }
 
 fn apply_effect(
     sim: &mut Sim,
     instance: InstanceId,
     attacker: ActorId,
-    target: Option<ActorId>,
+    t: ActorId,
     effect: Effect,
     tick: Tick,
 ) {
     match effect {
         Effect::Damage { amount } => {
-            let Some(t) = target else { return };
             let exposed = sim.windows().active(t, WindowTag::Exposed, tick).is_some();
             let dmg = if exposed {
                 let mult = sim.config().exposed_damage_mult;
@@ -215,7 +262,6 @@ fn apply_effect(
             });
         }
         Effect::LineKnockback { ticks } => {
-            let Some(t) = target else { return };
             if let Some(victim) = sim.timeline().live_of(t).map(|i| i.id) {
                 let new_start = sim
                     .timeline()
@@ -246,7 +292,6 @@ fn apply_effect(
             duration,
             magnitude,
         } => {
-            let Some(t) = target else { return };
             let end = tick + duration as u64;
             let wid = sim.windows.open(t, tag, tick, end, magnitude);
             sim.emit(Event::WindowOpened {
@@ -257,7 +302,6 @@ fn apply_effect(
             });
         }
         Effect::Stagger { ticks } => {
-            let Some(t) = target else { return };
             // A staggered actor cannot continue an in-flight action.
             if let Some(victim) = sim.timeline().live_of(t).map(|i| i.id)
                 && let Some(i) = sim.timeline.get_mut(victim)
@@ -270,11 +314,8 @@ fn apply_effect(
             }
             sim.emit(Event::ActorStaggered { actor: t, until });
         }
-        Effect::Reposition { zone } => {
-            if let Some(a) = sim.actors.get_mut(&attacker) {
-                a.zone = zone;
-            }
-        }
+        // Movement effects are handled in `resolve_contact` (before the reach gate), not here.
+        Effect::Approach { .. } | Effect::Withdraw { .. } => {}
     }
 }
 

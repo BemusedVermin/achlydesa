@@ -1876,6 +1876,11 @@ impl Simulation {
         self.world.get::<combat::Health>(avatar).copied()
     }
 
+    /// The combat content (move catalogue + kits), if the layer is on — for the UI's move previews.
+    pub fn combat_content(&self) -> Option<combat::CombatContent> {
+        self.world.get_resource::<combat::CombatContent>().cloned()
+    }
+
     /// **Wait** — let one tick pass where the avatar stands. The avatar takes no journey;
     /// its only "action" is to be present while the world lives a single moment around it.
     /// Advances the simulation exactly one tick — the same cost as stepping one hex — so the
