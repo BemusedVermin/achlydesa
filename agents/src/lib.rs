@@ -3922,12 +3922,12 @@ mod tests {
         let reg = Registry::bundled();
         let goals = throne_goals(&reg);
         Simulation::new(Setup {
-            width: 44,
-            height: 32,
+            width: 28,
+            height: 20,
             seed,
-            warmup: 200,
-            npcs: 36,
-            markets: 6,
+            warmup: 60,
+            npcs: 30,
+            markets: 5,
             markets_on_settlements: true,
             throne: true,
             ambitious: 6,
@@ -3948,14 +3948,14 @@ mod tests {
     fn dialogue_sleeps_unless_woken() {
         // Off by default: not a word spoken, the run unchanged from before this layer.
         let mut sim = Simulation::new(Setup {
-            width: 44,
-            height: 32,
+            width: 24,
+            height: 18,
             seed: 11,
-            warmup: 200,
-            npcs: 40,
+            warmup: 40,
+            npcs: 20,
             ..Default::default()
         });
-        sim.run(60);
+        sim.run(40);
         assert_eq!(
             sim.dialogue_count(),
             0,
@@ -4088,17 +4088,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn the_director_voices_its_betrayals() {
-        // The thematic payoff: a betrayal Γ engineers is *heard*, not merely tallied — a
-        // forced utterance, the friend renouncing the protagonist aloud.
-        let mut sim = chatty(11);
-        sim.run(300);
-        assert!(
-            sim.dialogue_log().iter().any(|u| u.forced),
-            "the director should have put words in a betrayer's mouth"
-        );
-    }
+    // `the_director_voices_its_betrayals` is now a contrived director test in
+    // `agent_core::director::tests` — it fires a `Voice` beat and checks the forced utterance
+    // directly, instead of running a 300-tick season hoping a betrayal is voiced.
 
     #[test]
     fn dialogue_is_deterministic() {

@@ -1949,6 +1949,11 @@ mod tests {
             });
         }
 
+        /// Wake the dialogue sink, so the director's `Voice` lever has a mouth to speak through.
+        fn enable_dialogue(&mut self) {
+            self.world.insert_resource(crate::dialogue::Dialogue::seeded(0));
+        }
+
         fn director(&self) -> &Director {
             self.world.resource::<Director>()
         }
@@ -2305,6 +2310,43 @@ mod tests {
         assert!(
             s.world.get::<Needs>(foe).unwrap().sustenance < 100.0,
             "the director's disaster should have scoured a body in the blast (the world layer)",
+        );
+    }
+
+    #[test]
+    fn the_director_voices_its_betrayals() {
+        // The thematic payoff: a betrayal `Γ` engineers is *heard*, not merely tallied — its `Voice`
+        // lever forces a line into a soul's mouth (the friend renouncing the protagonist aloud).
+        // Here we fire a Voice beat directly and confirm a forced utterance was queued for the
+        // dialogue layer; the old test ran a 300-tick peopled, talking season to catch one.
+        let mut s = Stage::new(DirectorConfig {
+            max_threads: 1,
+            ..knobs()
+        });
+        s.enable_dialogue();
+        let reg = s.reg.clone();
+        let _proto = s.soul();
+        let ally = s.soul();
+        s.set_opinion(ally, _proto, 1.0); // a warm soul, cast as the Ally the beat voices
+        let mut renounce = beat(
+            "the_friend_renounces",
+            &reg,
+            "betrayal",
+            Phase::Climax,
+            vec![Role::Protagonist, Role::Ally],
+        );
+        renounce.effects = vec![Effect::Voice {
+            who: Role::Ally,
+            intent: "an_accusation".into(),
+        }];
+        s.beats(vec![renounce]);
+        s.tick();
+        assert!(
+            s.world
+                .resource::<crate::dialogue::Dialogue>()
+                .forced_len()
+                > 0,
+            "the director should have put words in the betrayer's mouth",
         );
     }
 }
