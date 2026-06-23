@@ -2129,7 +2129,7 @@ mod tests {
     #[test]
     fn featuring_a_soul_grooms_its_prominence() {
         // *The game makes you love them on purpose* (decision #15): being featured in beats
-        // groomms a soul's prominence far past the bare presence trickle, so a later reversal
+        // grooms a soul's prominence far past the bare presence trickle, so a later reversal
         // pays. A handful of fires lifts the protagonist well past the seed floor.
         let mut s = Stage::new(DirectorConfig {
             beat_interval: 0, // due every tick — fire a beat each step

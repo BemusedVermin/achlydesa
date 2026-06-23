@@ -909,6 +909,18 @@ mod tests {
         let mut r = Realm::new(FactionConfig::default());
         let a = r.seat_court(0, "guild");
         let b = r.seat_court(1, "guild"); // one hex over — within reach, equal force, no war
+        // Multi-membership only fires if the two seats are within faction reach of each other.
+        // Pin that topological assumption so a future storage-order or `reach` change fails loudly
+        // here (a setup error) rather than silently inverting the test.
+        {
+            let topo = r.world.resource::<Substrate>().0.topology();
+            assert!(
+                hex_dist(topo, a, b) <= FactionConfig::default().reach,
+                "the two seats must be within reach for a soul to share them (dist {}, reach {})",
+                hex_dist(topo, a, b),
+                FactionConfig::default().reach,
+            );
+        }
         for _ in 0..3 {
             r.member(a, 0.3, 100);
         }
