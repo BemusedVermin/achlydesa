@@ -16,6 +16,7 @@
 
 use agents::{Coord, FindState, Goals, Registry, Setup, Simulation};
 use bevy::asset::AssetPlugin;
+use bevy::camera::ScalingMode;
 use bevy::input::ButtonState;
 use bevy::input::keyboard::{Key, KeyboardInput};
 use bevy::input::mouse::{AccumulatedMouseMotion, AccumulatedMouseScroll};
@@ -40,10 +41,12 @@ mod minimap;
 mod palette;
 mod props;
 mod scatter;
+mod toon;
 mod ui;
 mod world_mesh;
 
 use layout::{tile_top, tile_world};
+use toon::{ToonMaterial, toon};
 
 // =====================================================================================
 // The dialogue voice (optional SLM). All candle-touching code is confined to the `voice`
@@ -269,11 +272,11 @@ struct Line {
 
 #[derive(Resource)]
 struct RenderAssets {
-    map_mat: Handle<StandardMaterial>,
+    map_mat: Handle<ToonMaterial>,
     avatar_mesh: Handle<Mesh>,
-    avatar_mat: Handle<StandardMaterial>,
+    avatar_mat: Handle<ToonMaterial>,
     npc_mesh: Handle<Mesh>,
-    npc_mat: Handle<StandardMaterial>,
+    npc_mat: Handle<ToonMaterial>,
 }
 
 #[derive(Component)]
@@ -286,9 +289,14 @@ struct Marker;
 struct AvatarFig;
 #[derive(Component)]
 struct CamRig {
+    /// How far back the camera sits from the focus. With an orthographic projection this no longer
+    /// changes apparent size (parallel rays) — it only keeps the scene between the near/far planes
+    /// and sets how far into the distance fog the view reads; `zoom` is what the scroll wheel drives.
     dist: f32,
     yaw: f32,
     pitch: f32,
+    /// The orthographic framing: world units shown vertically. Smaller = zoomed in.
+    zoom: f32,
 }
 #[derive(Component, Clone, Copy)]
 enum HudKind {
@@ -363,6 +371,9 @@ fn main() {
                 ..default()
             }),
     )
+    // The cel pass over the world: a material plugin for the toon-extended StandardMaterial the
+    // terrain/props/fauna/figures all share (selection rings stay plain StandardMaterial).
+    .add_plugins(MaterialPlugin::<ToonMaterial>::default())
     .insert_resource(ClearColor(Color::srgb(
         palette::SKY_RGB[0],
         palette::SKY_RGB[1],
@@ -585,24 +596,28 @@ fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut toon_mats: ResMut<Assets<ToonMaterial>>,
     mut fonts: ResMut<Assets<Font>>,
     asset_server: Res<AssetServer>,
     game: NonSend<Game>,
 ) {
-    let map_mat = materials.add(StandardMaterial {
+    // The world wears the cel material (terrain, props, fauna, and the figures all share it); the
+    // mesh still carries the colour, the toon pass just bands the lighting. Plain `materials`
+    // (StandardMaterial) lives on for the UI selection rings in `ui::setup_ui`.
+    let map_mat = toon_mats.add(toon(StandardMaterial {
         base_color: Color::WHITE,
         perceptual_roughness: 0.96,
         ..default()
-    });
-    let avatar_mat = materials.add(StandardMaterial {
+    }));
+    let avatar_mat = toon_mats.add(toon(StandardMaterial {
         base_color: Color::srgb(1.0, 0.82, 0.25),
         emissive: LinearRgba::rgb(0.7, 0.5, 0.12),
         ..default()
-    });
-    let npc_mat = materials.add(StandardMaterial {
+    }));
+    let npc_mat = toon_mats.add(toon(StandardMaterial {
         base_color: Color::srgb(0.78, 0.80, 0.88),
         ..default()
-    });
+    }));
     // The procedural prop library (trees, scrub, rock) shares the map's matte vertex-colour
     // material; the meshes carry their own colour.
     let prop_lib = props::build_library(&mut meshes, map_mat.clone());
@@ -633,10 +648,23 @@ fn setup(
         dist: 42.0,
         yaw: 0.0,
         pitch: 0.92,
+        zoom: 34.0,
     };
+    // Orthographic: the flat, diorama "2.5D" read — parallel projection drops the perspective
+    // convergence the orbit camera had. `zoom` is the world height the viewport spans; the scroll
+    // wheel drives it (see `camera_control`). `FixedVertical` keeps that height constant as the
+    // window resizes, so the framing is stable.
+    let projection = Projection::Orthographic(OrthographicProjection {
+        scaling_mode: ScalingMode::FixedVertical {
+            viewport_height: 1.0,
+        },
+        scale: rig.zoom,
+        ..OrthographicProjection::default_3d()
+    });
     let fog = palette::FOG_RGB;
     commands.spawn((
         Camera3d::default(),
+        projection,
         cam_transform(Vec3::new(aw.x, 0.0, aw.y), &rig),
         rig,
         // A cool ambient and a pale distance haze — the dream half-drowned in fog.
@@ -2059,13 +2087,13 @@ fn camera_control(
     scroll: Res<AccumulatedMouseScroll>,
     time: Res<Time>,
     game: NonSend<Game>,
-    mut q: Query<(&mut CamRig, &mut Transform)>,
+    mut q: Query<(&mut CamRig, &mut Transform, &mut Projection)>,
 ) {
     // While typing in a conversation or paused, the letter keys belong elsewhere, not the camera.
     if game.convo.is_some() || game.paused {
         return;
     }
-    let Ok((mut rig, mut tf)) = q.single_mut() else {
+    let Ok((mut rig, mut tf, mut proj)) = q.single_mut() else {
         return;
     };
     let dt = time.delta_secs();
@@ -2082,7 +2110,12 @@ fn camera_control(
         rig.pitch = (rig.pitch - 0.9 * dt).max(0.2);
     }
     if scroll.delta.y != 0.0 {
-        rig.dist = (rig.dist * (1.0 - scroll.delta.y * 0.12)).clamp(8.0, 140.0);
+        // Under orthographic projection, moving the camera in/out wouldn't change apparent size, so
+        // zoom is the projection's vertical extent: scroll up shrinks it (zooms in).
+        rig.zoom = (rig.zoom * (1.0 - scroll.delta.y * 0.12)).clamp(6.0, 110.0);
+        if let Projection::Orthographic(ortho) = &mut *proj {
+            ortho.scale = rig.zoom;
+        }
     }
     let f = game.avatar_render;
     *tf = cam_transform(Vec3::new(f.x, 0.0, f.z), &rig);
