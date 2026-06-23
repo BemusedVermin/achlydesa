@@ -283,6 +283,13 @@ impl Dialogue {
         self.forced.push((speaker, listener, intent));
     }
 
+    /// How many forced utterances are queued (drained each tick by `converse`) — for tests that
+    /// check the director's `Voice` lever without running the conversation system.
+    #[cfg(test)]
+    pub(crate) fn forced_len(&self) -> usize {
+        self.forced.len()
+    }
+
     /// Compose the grammar surface for an utterance (disjoint field borrow of grammar+rng).
     fn render(
         &mut self,
