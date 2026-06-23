@@ -108,6 +108,7 @@ dependencies = [
  "game_sim",
  "party",
  "rpg",
+ "serde",
  "sim",
  "survival",
  "travel",

@@ -46,7 +46,7 @@ pub use explore::{ExploreConfig, Gear, Roads};
 // `combat_core` crate; the `combat` module is the bridge (encounter extraction + outcome
 // write-back). Re-export both so `app` and the demos reach them through `agents`.
 pub mod combat;
-pub use combat::{CombatConfig, Combatant, Encounter, Health, Resolution};
+pub use combat::{CombatConfig, CombatContent, Combatant, Encounter, Health, Resolution};
 pub use combat_core;
 
 /// Seed for the RPG layer's dedicated RNG stream, kept so the avatar can be rolled from it in
@@ -629,6 +629,7 @@ impl Simulation {
         // it on, worldgen is unperturbed until the player starts a fight. See `combat.rs`.
         if setup.combat {
             world.insert_resource(setup.combat_cfg);
+            world.insert_resource(combat::CombatContent::bundled());
             world.insert_resource(combat::CombatState {
                 seed: setup.seed ^ 0xC0AB_A700_0FF1_CE00,
                 encounters: 0,
@@ -1839,6 +1840,7 @@ impl Simulation {
             return None;
         }
         let cfg = *self.world.resource::<combat::CombatConfig>();
+        let content = self.world.resource::<combat::CombatContent>().clone();
         let seed = {
             let mut st = self.world.resource_mut::<combat::CombatState>();
             let s = st.seed ^ st.encounters.wrapping_mul(0x9E37_79B9_7F4A_7C15);
@@ -1849,6 +1851,7 @@ impl Simulation {
         Some(combat::build_encounter(
             &mut self.world,
             &cfg,
+            &content,
             seed,
             avatar,
             &roster,
