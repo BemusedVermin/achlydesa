@@ -191,6 +191,9 @@ pub struct CombatConfig {
     /// Gate the heavy melee moves to the attacker's zone (close in to land them). Off makes every
     /// move reach any zone — the position map then only displays, never gates.
     pub zone_gating: bool,
+    /// Ticks of overworld time per 1 HP mended out of combat (0 disables regen). Combat freezes the
+    /// world, so this only heals between fights.
+    pub regen_period: u64,
 }
 
 impl Default for CombatConfig {
@@ -202,6 +205,29 @@ impl Default for CombatConfig {
             party_tempo: 8,
             elite_tempo: 6,
             zone_gating: true,
+            regen_period: 25,
+        }
+    }
+}
+
+/// Out-of-combat healing: bodies that have fought slowly mend. Added to the schedule only when the
+/// combat layer is on (so a combat-off world never sees it), and — because combat freezes the world
+/// — it ticks only between fights. The counter is system-local, so it perturbs nothing else.
+pub fn regen_health(
+    cfg: Res<CombatConfig>,
+    mut counter: Local<u64>,
+    mut bodies: Query<&mut Health>,
+) {
+    if cfg.regen_period == 0 {
+        return;
+    }
+    *counter += 1;
+    if *counter % cfg.regen_period != 0 {
+        return;
+    }
+    for mut h in &mut bodies {
+        if h.hp < h.max {
+            h.hp += 1;
         }
     }
 }
