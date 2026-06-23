@@ -71,11 +71,19 @@ outcomes written back through a deterministic `agents` API.
   via the **G** Attack verb and predator/grudge ambush after a step; StubAi enemies; write-back and
   return on the result banner. Verified by headless screenshot (`ACHLYDESA_FIGHT` + `ACHLYDESA_SHOT`).
 
+### Extensions (done)
+- **Dilating elite AI** (`combat_core::EliteAi`): enemies spend Tempo to interrupt/slow the
+  player's line — the per-actor opposed economy is now two-sided. The app drives enemies with it.
+- **Zone gating + the position map.** Three zones (Left/Center/Right); the heavy melee moves
+  (Strike/Heavy/Riposte) require the target's zone, while a ranged **Loose** and the **Shove** reach
+  any zone (so no one ever stalls). Everyone starts engaged in the centre. The bottom-right position
+  map shows who stands where (`@`=avatar, `+`=ally, `x`=foe); ◄/► or clicking a zone repositions the
+  active actor (a readiness action). `CombatConfig::zone_gating` flips it off.
+
 ### Deferred (follow-ups)
 - A real **game-over** when the avatar falls (today it shows a banner and returns to the overworld;
-  the avatar is left at 0 HP rather than removed).
-- **Zone gating + the position map's direction controls** (zones exist but don't gate in v1).
+  the avatar is left at 0 HP rather than removed). *(Left to the user's call.)*
 - **RON-authored move kits / archetypes** (kits are code-authored in `combat.rs` for v1).
 - **Out-of-combat HP regen** (HP persists but only heals via a future rest mechanic).
-- **3D fight rendering** in the reserved field area, and AI that actually dilates (elites).
+- **3D fight rendering** in the reserved field area.
 ```

@@ -475,6 +475,7 @@ fn main() {
             combat::combat_input,
             combat::combat_clicks,
             combat::update_combat_ui,
+            combat::update_position_map,
             hide_hud_in_combat,
         )
             .chain(),

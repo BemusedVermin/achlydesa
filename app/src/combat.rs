@@ -218,6 +218,30 @@ fn is_alive(view: &cc::ForesightView, actor: cc::ActorId) -> bool {
 
 // ── Player commands ──────────────────────────────────────────────────────────────────────────
 
+/// Reposition the active actor to `zone` — a readiness action (it occupies tick-time like any
+/// move). Ignored on a dilation turn.
+fn reposition(ui: &mut CombatUi, zone: u8) {
+    let Some(decision) = ui.pending else { return };
+    if decision.kind != cc::DecisionKind::Readiness {
+        return;
+    }
+    let mv = agents::combat::reposition_move(zone);
+    ui.enc
+        .sim
+        .submit(cc::Command::CommitAction { mv, target: None });
+    ui.pending = None;
+    ui.view = None;
+}
+
+/// The active actor's current zone, from the pending view.
+fn active_zone(ui: &CombatUi) -> Option<u8> {
+    let view = ui.view.as_ref()?;
+    view.actors
+        .iter()
+        .find(|a| a.id == view.observer)
+        .map(|a| a.zone)
+}
+
 /// Submit the player's choice for slot `i` of the action tray, given the pending decision's kind.
 fn play_slot(ui: &mut CombatUi, i: usize) {
     let Some(decision) = ui.pending else {
@@ -310,6 +334,17 @@ pub(crate) fn combat_input(keys: Res<ButtonInput<KeyCode>>, mut game: NonSendMut
     if keys.just_pressed(KeyCode::Tab) {
         cycle_target(ui);
     }
+    // Left/Right reposition the active actor one zone over (a readiness action).
+    if let Some(z) = active_zone(ui) {
+        if keys.just_pressed(KeyCode::ArrowLeft) {
+            reposition(ui, z.saturating_sub(1));
+            return;
+        }
+        if keys.just_pressed(KeyCode::ArrowRight) {
+            reposition(ui, (z + 1).min(agents::combat::ZONE_COUNT - 1));
+            return;
+        }
+    }
     const SLOT_KEYS: [KeyCode; MOVE_BTNS] = [
         KeyCode::Digit1,
         KeyCode::Digit2,
@@ -347,6 +382,7 @@ pub(crate) fn combat_clicks(
     mut game: NonSendMut<Game>,
     moves: Query<(&CombatMoveBtn, &Interaction), Changed<Interaction>>,
     rows: Query<(&CombatRosterRow, &Interaction), Changed<Interaction>>,
+    zones: Query<(&CombatZoneBtn, &Interaction), Changed<Interaction>>,
 ) {
     if game.combat.is_none() {
         return;
@@ -360,6 +396,14 @@ pub(crate) fn combat_clicks(
     }
     let g = &mut *game;
     let Some(ui) = g.combat.as_mut() else { return };
+
+    // Clicking a position-map zone repositions the active actor there (readiness only).
+    for (zone, interaction) in &zones {
+        if *interaction == Interaction::Pressed {
+            reposition(ui, zone.0 as u8);
+            return;
+        }
+    }
 
     for (row, interaction) in &rows {
         if *interaction == Interaction::Pressed
@@ -409,6 +453,10 @@ pub(crate) struct CombatCell {
 pub(crate) struct CombatMoveBtn(usize);
 #[derive(Component)]
 pub(crate) struct CombatMoveLabel(usize);
+#[derive(Component)]
+pub(crate) struct CombatZoneBtn(usize);
+#[derive(Component)]
+pub(crate) struct CombatZoneOccupants(usize);
 
 // ── Spawn the overlay (once, hidden) ─────────────────────────────────────────────────────────
 
@@ -458,22 +506,83 @@ pub(crate) fn spawn_combat_ui(commands: &mut Commands, fonts: &ThemeFonts) {
                 spawn_tray(mid, fonts);
             });
 
-            // Bottom: the combat log + the prompt of what to press.
-            root.spawn((
-                Node {
-                    width: Val::Percent(100.0),
-                    height: Val::Px(96.0),
-                    padding: UiRect::all(Val::Px(theme::SP_SM)),
-                    flex_direction: FlexDirection::Column,
-                    row_gap: Val::Px(2.0),
-                    ..default()
-                },
-                theme::panel_chrome(),
-            ))
-            .with_children(|b| {
-                b.spawn((theme::body(fonts, ""), CombatLog));
-                b.spawn((theme::micro(fonts, ""), CombatPrompt));
+            // Bottom: the combat log + prompt (left) beside the position map (right).
+            root.spawn(Node {
+                width: Val::Percent(100.0),
+                height: Val::Px(112.0),
+                column_gap: Val::Px(theme::SP_MD),
+                ..default()
+            })
+            .with_children(|bottom| {
+                bottom
+                    .spawn((
+                        Node {
+                            flex_grow: 1.0,
+                            padding: UiRect::all(Val::Px(theme::SP_SM)),
+                            flex_direction: FlexDirection::Column,
+                            row_gap: Val::Px(2.0),
+                            ..default()
+                        },
+                        theme::panel_chrome(),
+                    ))
+                    .with_children(|b| {
+                        b.spawn((theme::body(fonts, ""), CombatLog));
+                        b.spawn((theme::micro(fonts, ""), CombatPrompt));
+                    });
+                spawn_position_map(bottom, fonts);
             });
+        });
+}
+
+/// The position map (the mockup's "Positioning Map with Directions"): a Left/Center/Right strip of
+/// clickable zones showing who stands where. Clicking a zone repositions the active actor there.
+fn spawn_position_map(parent: &mut ChildSpawnerCommands, fonts: &ThemeFonts) {
+    const ZONE_NAMES: [&str; 3] = ["Left", "Center", "Right"];
+    parent
+        .spawn((
+            Node {
+                width: Val::Px(360.0),
+                padding: UiRect::all(Val::Px(theme::SP_SM)),
+                flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(theme::SP_XS),
+                ..default()
+            },
+            theme::panel_chrome(),
+        ))
+        .with_children(|panel| {
+            panel.spawn(theme::label(fonts, "Position  ◄ ►"));
+            panel
+                .spawn(Node {
+                    width: Val::Percent(100.0),
+                    flex_grow: 1.0,
+                    column_gap: Val::Px(theme::SP_XS),
+                    ..default()
+                })
+                .with_children(|row| {
+                    for z in 0..3usize {
+                        row.spawn((
+                            CombatZoneBtn(z),
+                            Button,
+                            Node {
+                                flex_grow: 1.0,
+                                height: Val::Percent(100.0),
+                                flex_direction: FlexDirection::Column,
+                                align_items: AlignItems::Center,
+                                padding: UiRect::all(Val::Px(4.0)),
+                                row_gap: Val::Px(3.0),
+                                border: UiRect::all(Val::Px(1.0)),
+                                border_radius: BorderRadius::all(Val::Px(theme::RADIUS_SM)),
+                                ..default()
+                            },
+                            BackgroundColor(theme::INK_SUNKEN),
+                            BorderColor::all(theme::BORDER),
+                        ))
+                        .with_children(|cell| {
+                            cell.spawn(theme::micro(fonts, ZONE_NAMES[z]));
+                            cell.spawn((theme::micro(fonts, ""), CombatZoneOccupants(z)));
+                        });
+                    }
+                });
         });
 }
 
@@ -767,7 +876,7 @@ pub(crate) fn update_combat_ui(
         t.0 = if ui.ending.is_some() {
             "Enter — return to the world".into()
         } else {
-            "1-6 act · Tab change target · click a foe to mark it".into()
+            "1-5 act · ◄ ► or click a zone to move · Tab target · click a foe to mark it".into()
         };
     }
     if let Ok(mut t) = log.single_mut() {
@@ -973,5 +1082,46 @@ fn phase_at(ui: &CombatUi, actor: cc::ActorId, t: u64) -> Option<CellPhase> {
         Some(CellPhase::Recovery)
     } else {
         None
+    }
+}
+
+/// Fill the position map: the occupants of each zone, with the active actor's zone lit. `@` is the
+/// avatar, `+` an ally, `x` a foe.
+pub(crate) fn update_position_map(
+    game: NonSend<Game>,
+    mut zones: Query<(&CombatZoneBtn, &mut BackgroundColor)>,
+    mut occ: Query<(&CombatZoneOccupants, &mut Text)>,
+) {
+    let Some(ui) = game.combat.as_ref() else {
+        return;
+    };
+    let here = active_zone(ui);
+    for (btn, mut bg) in &mut zones {
+        bg.0 = if Some(btn.0 as u8) == here {
+            theme::INK_RAISED
+        } else {
+            theme::INK_SUNKEN
+        };
+    }
+    for (cell, mut text) in &mut occ {
+        let mut tokens = Vec::new();
+        for c in &ui.enc.combatants {
+            let Some(a) = ui.enc.sim.actor(c.actor) else {
+                continue;
+            };
+            if matches!(a.state, cc::ActorState::Down) || a.zone as usize != cell.0 {
+                continue;
+            }
+            let tag = if c.is_avatar {
+                "@"
+            } else if c.is_player_side {
+                "+"
+            } else {
+                "x"
+            };
+            let initial: String = c.name.chars().take(1).collect();
+            tokens.push(format!("{tag}{initial}"));
+        }
+        text.0 = tokens.join(" ");
     }
 }
