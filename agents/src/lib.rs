@@ -741,6 +741,10 @@ impl Simulation {
                 survival::survival_metabolism.before(agent_core::people::people_metabolism),
             );
         }
+        // Out-of-combat HP regen — only when the combat layer is on, so an off world is unchanged.
+        if setup.combat {
+            schedule.add_systems(combat::regen_health);
+        }
 
         Self { world, schedule }
     }
@@ -2508,6 +2512,30 @@ mod tests {
             ..Default::default()
         });
         assert!(!sim.combat_enabled(), "combat layer is off by default");
+    }
+
+    #[test]
+    fn combat_health_regens_out_of_combat() {
+        let mut sim = Simulation::new(Setup {
+            npcs: 1,
+            seed: 3,
+            combat: true,
+            combat_cfg: combat::CombatConfig {
+                regen_period: 1,
+                ..Default::default()
+            },
+            ..Default::default()
+        });
+        let avatar = sim.spawn_player(None);
+        // Wound the avatar, then let overworld time pass — it should mend.
+        sim.world
+            .entity_mut(avatar)
+            .insert(combat::Health { hp: 1, max: 20 });
+        for _ in 0..5 {
+            sim.step();
+        }
+        let h = sim.avatar_health().expect("avatar has Health");
+        assert!(h.hp > 1 && h.hp <= h.max, "avatar mended, got {}", h.hp);
     }
 
     #[test]
