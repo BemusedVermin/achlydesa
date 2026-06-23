@@ -20,6 +20,8 @@ pub enum FizzleReason {
     MissingTag,
     /// The target was beyond the move's reach at the active frame — a whiff.
     OutOfReach,
+    /// The to-hit check failed — the target evaded.
+    Missed,
 }
 
 /// How the fight ended.

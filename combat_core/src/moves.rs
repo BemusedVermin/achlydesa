@@ -87,6 +87,10 @@ pub struct MoveDef {
     /// this at the active frame (movement effects within the same move resolve first, so a move can
     /// close the gap and then strike).
     pub reach: Fixed,
+    /// To-hit rating checked against the target's `evasion` (only when `Config::wwn_checks`). The
+    /// bridge sets it from the governing attribute + skill; `0` in the headless scenarios.
+    #[serde(default)]
+    pub accuracy: i32,
     /// Tempo deducted when committed (normally 0 for a reactive readiness action).
     pub tempo_cost: i32,
 }
@@ -104,6 +108,7 @@ impl MoveDef {
                 requires_tag: None,
                 has_armor: false,
                 reach: Fixed::from_int(1),
+                accuracy: 0,
                 tempo_cost: 0,
             },
         }
@@ -147,6 +152,10 @@ impl MoveBuilder {
     }
     pub fn reach(mut self, reach: Fixed) -> Self {
         self.def.reach = reach;
+        self
+    }
+    pub fn accuracy(mut self, accuracy: i32) -> Self {
+        self.def.accuracy = accuracy;
         self
     }
     pub fn tempo_cost(mut self, cost: i32) -> Self {

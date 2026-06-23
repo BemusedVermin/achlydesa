@@ -365,7 +365,20 @@ impl Sim {
             return Err(VerbError::InsufficientTempo);
         }
         self.change_tempo(actor, -cost);
+        let victim = inst.actor;
         self.cancel_instance(instance, actor);
+        // A parry stuns the interrupted fighter (when the layer enables it).
+        let stun = self.config.interrupt_stagger;
+        if stun > 0 {
+            let until = self.current_tick + stun as u64;
+            if let Some(a) = self.actors.get_mut(&victim) {
+                a.state = ActorState::Staggered { until };
+            }
+            self.emit(Event::ActorStaggered {
+                actor: victim,
+                until,
+            });
+        }
         Ok(())
     }
 
@@ -637,6 +650,7 @@ mod tests {
                     state: ActorState::Idle,
                     foresight_horizon: 0,
                     pos: crate::space::Pos::ORIGIN,
+                    evasion: 0,
                 },
                 vec![MoveId(1)],
             );

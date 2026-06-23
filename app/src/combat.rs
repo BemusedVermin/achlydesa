@@ -8,9 +8,9 @@
 //! then **watches the next few seconds play out** — tokens slide, blows land, the timeline
 //! playhead sweeps — pausing again the moment *any* actor (player or enemy) must decide.
 
+use agents::Encounter;
 use agents::combat_core as cc;
 use agents::combat_core::Controller;
-use agents::{CombatContent, Encounter};
 use app::theme::{self, ThemeFonts};
 use bevy::prelude::*;
 use bevy::ui::GlobalZIndex;
@@ -20,7 +20,7 @@ use std::collections::{HashMap, VecDeque};
 use crate::Game;
 use crate::combat_field::{self, FieldView, Token};
 
-const TRAY_SLOTS: usize = 8;
+const TRAY_SLOTS: usize = 9;
 const ROSTER_ROWS: usize = 8;
 const LANES: usize = 8;
 const CELLS: usize = 32;
@@ -44,7 +44,6 @@ const C_FOE: [u8; 3] = [222, 96, 90];
 pub(crate) struct CombatUi {
     enc: Encounter,
     ai: cc::EliteAi,
-    content: CombatContent,
     /// The foe the player's next move/edit lands on.
     target: Option<cc::ActorId>,
     /// The tray slot currently previewed (selected).
@@ -65,13 +64,9 @@ pub(crate) struct CombatUi {
     flash: HashMap<u32, f32>,
 }
 
+/// We only ever pause for a *player* decision (ATB): enemies resolve inline.
 struct Paused {
     decision: cc::Decision,
-    is_player: bool,
-    /// The enemy AI's chosen command, shown before it is applied.
-    enemy_cmd: Option<cc::Command>,
-    /// Seconds this (enemy) decision has been shown — it auto-advances after a readable beat.
-    dwell: f32,
 }
 
 struct Ending {
@@ -80,7 +75,7 @@ struct Ending {
 }
 
 impl CombatUi {
-    pub fn new(enc: Encounter, content: CombatContent) -> Self {
+    pub fn new(enc: Encounter) -> Self {
         let ai = cc::EliteAi::new(enc.sim.library().clone(), *enc.sim.config());
         let target = enc
             .combatants
@@ -90,7 +85,6 @@ impl CombatUi {
         let mut ui = Self {
             enc,
             ai,
-            content,
             target,
             sel: 0,
             log: Vec::new(),
@@ -177,13 +171,27 @@ impl CombatUi {
         }
     }
 
-    fn at_decision(&self) -> bool {
+    /// The player must choose now (we only ever pause for player decisions).
+    fn awaiting_player(&self) -> bool {
         self.paused.is_some() && self.pending.is_empty()
     }
 
-    /// The player must choose now.
-    fn awaiting_player(&self) -> bool {
-        self.at_decision() && self.paused.as_ref().is_some_and(|p| p.is_player)
+    /// The fighter whose tray to show: the one being asked, else the avatar.
+    fn focus(&self) -> Option<cc::ActorId> {
+        self.paused
+            .as_ref()
+            .map(|p| p.decision.actor)
+            .or_else(|| self.enc.combatants.first().map(|c| c.actor))
+    }
+
+    /// The move definitions for a fighter's tray (the scaled, per-fighter copies).
+    fn moves_of(&self, actor: cc::ActorId) -> Vec<cc::MoveId> {
+        self.enc
+            .combatants
+            .iter()
+            .find(|c| c.actor == actor)
+            .map(|c| c.moves.clone())
+            .unwrap_or_default()
     }
 
     /// Ensure the selected target is a living foe.
@@ -215,15 +223,19 @@ fn world(p: cc::Pos) -> Vec2 {
     Vec2::new(p.x.0 as f32 / 65536.0, p.y.0 as f32 / 65536.0)
 }
 
+/// A move's (scaled, per-fighter) definition, from the encounter's library.
+fn move_def(ui: &CombatUi, mv: cc::MoveId) -> Option<cc::MoveDef> {
+    ui.enc.sim.library().get(mv).cloned()
+}
+
 /// Begin a fight from the overworld.
 pub(crate) fn start(game: &mut Game, enemies: Vec<bevy::ecs::entity::Entity>) {
     if game.combat.is_some() {
         return;
     }
-    let content = game.sim.combat_content();
-    if let (Some(enc), Some(content)) = (game.sim.begin_combat(enemies), content) {
+    if let Some(enc) = game.sim.begin_combat(enemies) {
         let n = enc.combatants.len();
-        game.combat = Some(CombatUi::new(enc, content));
+        game.combat = Some(CombatUi::new(enc));
         game.status = format!("Battle — {n} join the fray.");
     }
 }
@@ -238,27 +250,28 @@ pub(crate) fn combat_tick(time: Res<Time>, mut game: NonSendMut<Game>) {
     };
     ui.animate(dt);
 
-    // Step the engine to the next decision (or end) once the current burst is fully played and we
-    // are not already paused waiting on someone.
+    // ATB: keep stepping the engine while the current burst is fully played and we're not paused.
+    // A foe's decision is resolved *inline* (no banner); the clock only stops when it's the player's
+    // turn. We resolve at most one decision per frame so each enemy action gets a frame to animate.
     if ui.pending.is_empty() && ui.paused.is_none() && ui.ending.is_none() {
         match ui.enc.sim.run_until_decision_or_end() {
             cc::StepResult::Decision { decision, view } => {
-                for ev in ui.enc.sim.drain_events() {
-                    ui.pending.push_back(ev);
-                }
-                let is_player = decision.faction == cc::FactionId::PLAYER;
-                let enemy_cmd = (!is_player).then(|| ui.ai.decide(&decision, &view));
-                ui.view = Some(view);
-                if is_player {
+                if decision.faction == cc::FactionId::PLAYER {
+                    for ev in ui.enc.sim.drain_events() {
+                        ui.pending.push_back(ev);
+                    }
+                    ui.view = Some(view);
                     ui.ensure_target();
                     ui.sel = 0;
+                    ui.paused = Some(Paused { decision });
+                } else {
+                    // The foe acts; resolve it and let the burst play out.
+                    let cmd = ui.ai.decide(&decision, &view);
+                    ui.enc.sim.submit(cmd);
+                    for ev in ui.enc.sim.drain_events() {
+                        ui.pending.push_back(ev);
+                    }
                 }
-                ui.paused = Some(Paused {
-                    decision,
-                    is_player,
-                    enemy_cmd,
-                    dwell: 0.0,
-                });
             }
             cc::StepResult::Ended(outcome) => {
                 for ev in ui.enc.sim.drain_events() {
@@ -274,24 +287,7 @@ pub(crate) fn combat_tick(time: Res<Time>, mut game: NonSendMut<Game>) {
             }
         }
     }
-
-    // A foe's decision pauses so it can be read, then auto-advances after a beat (the player can
-    // press Enter/Space to skip). Player decisions wait for input.
-    if ui.at_decision()
-        && let Some(p) = ui.paused.as_mut()
-        && !p.is_player
-    {
-        p.dwell += dt;
-        if p.dwell > AUTO_DWELL
-            && let Some(cmd) = p.enemy_cmd
-        {
-            ui.submit(cmd);
-        }
-    }
 }
-
-/// How long a foe's chosen move is shown before it auto-advances.
-const AUTO_DWELL: f32 = 0.9;
 
 /// Dev/screenshot only: auto-act for the player (strike a foe in reach, else close in) so a fight
 /// plays out headlessly.
@@ -303,7 +299,7 @@ pub(crate) fn dev_auto_player(ui: &mut CombatUi) {
     let actor = ui.paused.as_ref().map(|p| p.decision.actor);
     let mut chosen = None;
     for (slot, &mv) in view.own_moves.iter().enumerate() {
-        let Some(def) = ui.content.move_def(mv) else {
+        let Some(def) = move_def(ui, mv) else {
             continue;
         };
         let damages = def
@@ -328,7 +324,7 @@ pub(crate) fn dev_auto_player(ui: &mut CombatUi) {
     }
     if chosen.is_none() {
         chosen = view.own_moves.iter().position(|&mv| {
-            ui.content.move_def(mv).is_some_and(|d| {
+            move_def(ui, mv).is_some_and(|d| {
                 d.effects
                     .iter()
                     .any(|e| matches!(e, cc::Effect::Approach { .. }))
@@ -363,42 +359,45 @@ fn describe(enc: &Encounter, ev: &cc::Event) -> Option<String> {
             reason: cc::FizzleReason::OutOfReach,
             ..
         } => "A blow falls short — whiff!".into(),
+        ActionFizzled {
+            reason: cc::FizzleReason::Missed,
+            ..
+        } => "Dodged!".into(),
         ActionFizzled { .. } => "A blow finds only air.".into(),
-        Interrupted { by, .. } => format!("{} cuts off the wind-up!", name_of(enc, *by)),
+        Interrupted { by, .. } => format!("{} parries — stun!", name_of(enc, *by)),
         LineShoved { target, ticks, .. } => {
             format!("{} is shoved {ticks} late.", name_of(enc, *target))
         }
         WindowOpened { actor, .. } => format!("{} is left exposed.", name_of(enc, *actor)),
-        ActorStaggered { actor, .. } => format!("{} reels.", name_of(enc, *actor)),
+        ActorStaggered { actor, .. } => format!("{} is stunned!", name_of(enc, *actor)),
         ActorDowned { actor, .. } => format!("{} falls.", name_of(enc, *actor)),
         _ => return None,
     })
 }
 
-/// The tray entries for the current decision (move ids for readiness; edit verbs for dilation).
+/// The tray entries — always the focus fighter's moves (so the tray never blinks out), or the edit
+/// verbs on a dilation turn.
 fn tray_labels(ui: &CombatUi) -> Vec<String> {
-    match ui.paused.as_ref().map(|p| p.decision.kind) {
-        Some(cc::DecisionKind::Dilation) => ["Slow", "Haste", "Interrupt", "Insert", "Pass"]
+    if matches!(
+        ui.paused.as_ref().map(|p| p.decision.kind),
+        Some(cc::DecisionKind::Dilation)
+    ) {
+        return ["Slow", "Haste", "Interrupt", "Insert", "Pass"]
             .iter()
             .map(|s| s.to_string())
-            .collect(),
-        Some(cc::DecisionKind::Readiness) => {
-            let mut v: Vec<String> = ui
-                .view
-                .as_ref()
-                .map(|view| {
-                    view.own_moves
-                        .iter()
-                        .map(|mv| ui.content.move_def(*mv).map(|d| d.name).unwrap_or_default())
-                        .collect()
-                })
-                .unwrap_or_default();
-            v.truncate(TRAY_SLOTS - 1);
-            v.push("Hold".into());
-            v
-        }
-        None => Vec::new(),
+            .collect();
     }
+    let Some(focus) = ui.focus() else {
+        return Vec::new();
+    };
+    let mut v: Vec<String> = ui
+        .moves_of(focus)
+        .iter()
+        .map(|mv| move_def(ui, *mv).map(|d| d.name).unwrap_or_default())
+        .collect();
+    v.truncate(TRAY_SLOTS - 1);
+    v.push("Hold".into());
+    v
 }
 
 /// A multi-line preview of exactly what tray slot `sel` will do before it is executed.
@@ -422,7 +421,7 @@ fn preview_text(ui: &CombatUi) -> String {
                 return "Hold — wait a beat.".into();
             }
             let mv = view.own_moves[ui.sel];
-            let Some(def) = ui.content.move_def(mv) else {
+            let Some(def) = move_def(ui, mv) else {
                 return String::new();
             };
             let mut lines = vec![def.name.clone()];
@@ -476,8 +475,43 @@ fn preview_text(ui: &CombatUi) -> String {
                     "would whiff ✗ — close in first".into()
                 });
             }
+            // The WWN to-hit forecast against the current target's Evasion.
+            let cfg = *ui.enc.sim.config();
+            if cfg.wwn_checks
+                && def
+                    .effects
+                    .iter()
+                    .any(|e| matches!(e, cc::Effect::Damage { .. }))
+                && let Some(t) = ui.target
+            {
+                let eva = view
+                    .actors
+                    .iter()
+                    .find(|a| a.id == t)
+                    .map(|a| a.evasion)
+                    .unwrap_or(0);
+                let margin = def.accuracy + cfg.to_hit_base - eva;
+                lines.push(if margin < 0 {
+                    "to-hit: likely DODGED".into()
+                } else if margin >= cfg.strong_margin {
+                    format!("to-hit: STRONG ×{} (+{margin})", fixed_str(cfg.strong_mult))
+                } else {
+                    format!("to-hit: connects (+{margin})")
+                });
+            }
             lines.join("\n")
         }
+    }
+}
+
+/// A `Fixed` as a short decimal (for the crit multiplier, e.g. 1.5).
+fn fixed_str(f: cc::Fixed) -> String {
+    let whole = f.0 >> 16;
+    let frac = ((f.0 & 0xffff) as f32 / 65536.0 * 10.0).round() as i32;
+    if frac == 0 {
+        format!("{whole}")
+    } else {
+        format!("{whole}.{frac}")
     }
 }
 
@@ -507,9 +541,6 @@ fn pos_after_move(
 /// Execute the previewed tray slot for the pending player decision.
 fn execute(ui: &mut CombatUi, slot: usize) {
     let Some(p) = ui.paused.as_ref() else { return };
-    if !p.is_player {
-        return;
-    }
     let Some(view) = ui.view.clone() else { return };
     let cmd = match p.decision.kind {
         cc::DecisionKind::Readiness => {
@@ -570,20 +601,10 @@ pub(crate) fn combat_input(keys: Res<ButtonInput<KeyCode>>, mut game: NonSendMut
         }
         return;
     }
-    if !ui.at_decision() {
-        return;
-    }
-    // Enemy decision: any advance applies it.
+    // Only the player's turns take input — the fight flows on its own otherwise.
     if !ui.awaiting_player() {
-        if (keys.just_pressed(KeyCode::Enter) || keys.just_pressed(KeyCode::Space))
-            && let Some(cmd) = ui.paused.as_ref().and_then(|p| p.enemy_cmd)
-        {
-            ui.submit(cmd);
-        }
         return;
     }
-
-    // Player decision.
     if keys.just_pressed(KeyCode::Tab) {
         cycle_target(ui);
     }
@@ -593,7 +614,7 @@ pub(crate) fn combat_input(keys: Res<ButtonInput<KeyCode>>, mut game: NonSendMut
     }
     // coupling-lint:allow const_all DIGITS: a keyboard binding table (digit keys → tray slots),
     // not content — what each slot does is the kit/edit-verb, which is data-driven.
-    const DIGITS: [KeyCode; 8] = [
+    const DIGITS: [KeyCode; 9] = [
         KeyCode::Digit1,
         KeyCode::Digit2,
         KeyCode::Digit3,
@@ -602,6 +623,7 @@ pub(crate) fn combat_input(keys: Res<ButtonInput<KeyCode>>, mut game: NonSendMut
         KeyCode::Digit6,
         KeyCode::Digit7,
         KeyCode::Digit8,
+        KeyCode::Digit9,
     ];
     for (i, k) in DIGITS.iter().enumerate() {
         if keys.just_pressed(*k) {
@@ -721,7 +743,7 @@ pub(crate) fn combat_render_field(
         && view.own_moves.get(ui.sel).is_some()
     {
         let mv = view.own_moves[ui.sel];
-        if let Some(def) = ui.content.move_def(mv) {
+        if let Some(def) = move_def(ui, mv) {
             let me = ui.vis.get(&p.decision.actor.0).copied();
             let reach = def.reach.0 as f32 / 65536.0;
             if let Some(me) = me {
@@ -1242,24 +1264,33 @@ pub(crate) fn update_combat_roster(
 }
 
 /// The move tray: which slots are shown, their labels, and the selected highlight.
+#[allow(clippy::type_complexity)]
 pub(crate) fn update_combat_tray(
     game: NonSend<Game>,
-    mut btns: Query<(&CombatMoveBtn, &mut Node, &mut BorderColor)>,
+    mut btns: Query<(
+        &CombatMoveBtn,
+        &mut Node,
+        &mut BorderColor,
+        &mut BackgroundColor,
+    )>,
     mut labels: Query<(&CombatMoveLabel, &mut Text)>,
 ) {
     let Some(ui) = game.combat.as_ref() else {
         return;
     };
+    // The tray always shows the focus fighter's moves; it is only *live* on the player's turn.
     let labels_v = tray_labels(ui);
-    let show = ui.awaiting_player();
-    for (btn, mut node, mut border) in &mut btns {
-        let has = show && btn.0 < labels_v.len();
+    let awaiting = ui.awaiting_player();
+    for (btn, mut node, mut border, mut bg) in &mut btns {
+        let has = btn.0 < labels_v.len();
         node.display = if has { Display::Flex } else { Display::None };
-        *border = BorderColor::all(if has && btn.0 == ui.sel {
-            theme::AWE
+        let selected = awaiting && btn.0 == ui.sel;
+        *border = BorderColor::all(if selected { theme::AWE } else { theme::BORDER });
+        bg.0 = if awaiting {
+            theme::INK_RAISED
         } else {
-            theme::BORDER
-        });
+            theme::INK_SUNKEN // greyed when it isn't your turn
+        };
     }
     for (slot, mut text) in &mut labels {
         text.0 = labels_v.get(slot.0).cloned().unwrap_or_default();
@@ -1313,38 +1344,17 @@ fn headline(ui: &CombatUi) -> (String, Option<String>) {
             Some(format!("{s}\n\nEnter \u{2014} return to the world")),
         );
     }
-    if !ui.at_decision() {
-        return ("\u{2026}".into(), None);
-    }
     if ui.awaiting_player() {
+        let actor = ui.paused.as_ref().map(|p| p.decision.actor);
+        let who = actor.map(|a| name_of(&ui.enc, a)).unwrap_or_default();
         let s = match ui.paused.as_ref().map(|p| p.decision.kind) {
-            Some(cc::DecisionKind::Dilation) => "Bend the line, or pass.",
-            _ => "Choose an action.",
+            Some(cc::DecisionKind::Dilation) => format!("{who}: bend the line, or pass."),
+            _ => format!("{who}: choose an action."),
         };
-        (s.into(), None)
+        (s, None)
     } else {
-        let p = ui.paused.as_ref().unwrap();
-        let who = name_of(&ui.enc, p.decision.actor);
-        let what = enemy_choice_text(ui, p);
-        (
-            "The foe acts".into(),
-            Some(format!("{who}: {what}\n\nEnter \u{2014} continue")),
-        )
-    }
-}
-
-fn enemy_choice_text(ui: &CombatUi, p: &Paused) -> String {
-    match p.enemy_cmd {
-        Some(cc::Command::CommitAction { mv, target }) => {
-            let name = ui.content.move_def(mv).map(|d| d.name).unwrap_or_default();
-            match target {
-                Some(t) => format!("{name} \u{2192} {}", name_of(&ui.enc, t)),
-                None => name,
-            }
-        }
-        Some(cc::Command::EditVerb(_)) => "bends the line".into(),
-        Some(cc::Command::Hold) | None => "holds".into(),
-        Some(_) => "waits".into(),
+        // The fight is flowing in real time (between your turns).
+        ("…the fight flows…".into(), None)
     }
 }
 
@@ -1390,6 +1400,7 @@ fn cell_color(ui: &CombatUi, cell: &CombatCell, now: u64, playhead: f32) -> Colo
     if (t as f32) <= playhead && (t as f32) > playhead - 1.0 {
         return theme::AWE; // the playhead column
     }
+    // A real committed action's phases.
     let phase = ui.view.as_ref().and_then(|v| {
         v.instances.iter().find(|i| i.actor == c.actor).map(|i| {
             if t >= i.start_tick.0 && t < i.active_start.0 {
@@ -1404,9 +1415,40 @@ fn cell_color(ui: &CombatUi, cell: &CombatCell, now: u64, playhead: f32) -> Colo
         })
     });
     match phase {
-        Some(0) => theme::DREAD.with_alpha(0.7),
-        Some(1) => theme::BLOOD,
-        Some(2) => theme::TEXT_FAINT.with_alpha(0.5),
-        _ => theme::INK_SUNKEN,
+        Some(0) => return theme::DREAD.with_alpha(0.7),
+        Some(1) => return theme::BLOOD,
+        Some(2) => return theme::TEXT_FAINT.with_alpha(0.5),
+        _ => {}
+    }
+    // Otherwise: a faint *ghost* of the move the player is previewing, in the acting lane, so they
+    // see its cost on the line before committing.
+    if let Some(p) = ghost_phase(ui, c.actor, cell.cell) {
+        return match p {
+            0 => theme::DREAD.with_alpha(0.28),
+            1 => theme::BLOOD.with_alpha(0.40),
+            _ => theme::TEXT_FAINT.with_alpha(0.22),
+        };
+    }
+    theme::INK_SUNKEN
+}
+
+/// The previewed move's phase at offset `k` ticks from now, in the acting fighter's lane only.
+fn ghost_phase(ui: &CombatUi, lane_actor: cc::ActorId, k: usize) -> Option<u8> {
+    let p = ui.paused.as_ref()?;
+    if p.decision.kind != cc::DecisionKind::Readiness || p.decision.actor != lane_actor {
+        return None;
+    }
+    let view = ui.view.as_ref()?;
+    let mv = *view.own_moves.get(ui.sel)?;
+    let f = move_def(ui, mv)?.frames;
+    let k = k as u32;
+    if k < f.startup {
+        Some(0)
+    } else if k < f.startup + f.active {
+        Some(1)
+    } else if k < f.startup + f.active + f.recovery {
+        Some(2)
+    } else {
+        None
     }
 }

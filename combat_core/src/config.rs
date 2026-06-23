@@ -61,6 +61,17 @@ pub struct Config {
     pub starting_tempo: i32,
     /// Safety bound — the sim refuses to run past this many ticks (guards against a stall).
     pub max_ticks: u64,
+    /// Gate damaging hits on a deterministic to-hit check (`accuracy + to_hit_base - target.evasion`).
+    /// Off by default so the headless scenarios resolve purely on frames/positions; the game turns
+    /// it on to fold in the RPG attributes (a `MoveDef::accuracy` vs an `Actor::evasion`).
+    pub wwn_checks: bool,
+    /// The fixed "taken dice" added to a move's accuracy (WWN takes the 2d6 average, 7).
+    pub to_hit_base: i32,
+    /// A hit whose margin is at least this is *strong* — it crits for `strong_mult` damage.
+    pub strong_margin: i32,
+    pub strong_mult: Fixed,
+    /// Ticks an interrupted fighter is stunned (staggered) when its wind-up is cut off.
+    pub interrupt_stagger: u32,
 }
 
 impl Default for Config {
@@ -79,6 +90,11 @@ impl Default for Config {
             default_foresight_horizon: 24,
             starting_tempo: 6,
             max_ticks: 100_000,
+            wwn_checks: false,
+            to_hit_base: 7,
+            strong_margin: 4,
+            strong_mult: Fixed::from_ratio(3, 2), // 1.5
+            interrupt_stagger: 0,
         }
     }
 }
