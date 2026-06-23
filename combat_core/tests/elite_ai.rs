@@ -69,18 +69,13 @@ fn an_elite_interrupts_the_players_windup() {
 
     let mut interrupted = false;
     let mut guard = 0;
-    loop {
-        match sim.run_until_decision_or_end() {
-            StepResult::Decision { decision, view } => {
-                let cmd = if decision.faction == FactionId::PLAYER {
-                    player.decide(&decision, &view)
-                } else {
-                    elite.decide(&decision, &view)
-                };
-                sim.submit(cmd);
-            }
-            StepResult::Ended(_) => break,
-        }
+    while let StepResult::Decision { decision, view } = sim.run_until_decision_or_end() {
+        let cmd = if decision.faction == FactionId::PLAYER {
+            player.decide(&decision, &view)
+        } else {
+            elite.decide(&decision, &view)
+        };
+        sim.submit(cmd);
         for e in sim.drain_events() {
             if matches!(e, Event::Interrupted { by, .. } if by == ActorId(2)) {
                 interrupted = true;
