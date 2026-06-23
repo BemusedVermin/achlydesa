@@ -518,6 +518,15 @@ pub(crate) fn converse(
         }
     }
     let idx_of: HashMap<Entity, usize> = cands.iter().enumerate().map(|(i, c)| (c.e, i)).collect();
+    // Group candidates by their tile, so a speaker scans only the souls sharing its hex
+    // rather than the whole population — O(N * tile-occupancy) instead of O(N^2), which is
+    // what makes a crowded world affordable. Indices are pushed in ascending order, the very
+    // order the old full scan visited co-located souls in, so the chosen utterances (and the
+    // entire transcript) are byte-identical to the linear scan it replaces.
+    let mut by_tile: HashMap<usize, Vec<usize>> = HashMap::new();
+    for (i, c) in cands.iter().enumerate() {
+        by_tile.entry(c.tile).or_default().push(i);
+    }
 
     // --- Forget a little, everywhere (Ebbinghaus): trivia fades, the reopened wound stays.
     for log in dlg.mem.values_mut() {
@@ -552,10 +561,11 @@ pub(crate) fn converse(
             continue;
         }
         let stile = cands[ci].tile;
-        // Score every (listener, intent) and keep the most appealing thing worth saying.
+        // Score every co-located (listener, intent) and keep the most appealing thing worth
+        // saying. Only this speaker's own tile-bucket is scanned, not the whole population.
         let mut best: Option<(f32, Entity, usize)> = None;
-        for cj in 0..cands.len() {
-            if cj == ci || cands[cj].tile != stile {
+        for &cj in by_tile.get(&stile).map_or(&[][..], Vec::as_slice) {
+            if cj == ci {
                 continue;
             }
             let listener = cands[cj].e;
