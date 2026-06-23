@@ -346,13 +346,16 @@ impl BeatBook {
     /// Parse a beats document and resolve each beat's register name against `reg` (trait /
     /// mood names stay resolved lazily at enactment, but are validated here too). A typo in a
     /// register, trait, or mood name is a load error, not a silent no-op.
-    pub fn from_ron(ron: &str, reg: &Registry) -> Result<Self, String> {
-        let defs: Vec<BeatDef> = config::parse(ron).map_err(|e| e.to_string())?;
+    pub fn from_ron(ron: &str, reg: &Registry) -> Result<Self, BeatError> {
+        let defs: Vec<BeatDef> = config::parse(ron)?;
         let mut beats = Vec::with_capacity(defs.len());
         for d in defs {
-            let register = reg
-                .register_id(&d.register)
-                .ok_or_else(|| format!("beat '{}': unknown register '{}'", d.id, d.register))?;
+            let register =
+                reg.register_id(&d.register)
+                    .ok_or_else(|| BeatError::UnknownRegister {
+                        beat: d.id.clone(),
+                        register: d.register.clone(),
+                    })?;
             beats.push(Beat {
                 id: d.id,
                 register,
@@ -373,18 +376,22 @@ impl BeatBook {
 
     /// Fail fast on any trait / mood name a beat refers to that the registry doesn't
     /// know — so a typo in `beats.ron` is caught at load, not silently no-op'd.
-    pub fn validate(&self, reg: &Registry) -> Result<(), String> {
+    pub fn validate(&self, reg: &Registry) -> Result<(), BeatError> {
         for b in &self.0 {
             for e in &b.effects {
                 match e {
                     Effect::Sway { trait_name, .. } => {
-                        reg.trait_id(trait_name).ok_or_else(|| {
-                            format!("beat '{}': unknown trait '{trait_name}'", b.id)
-                        })?;
+                        reg.trait_id(trait_name)
+                            .ok_or_else(|| BeatError::UnknownTrait {
+                                beat: b.id.clone(),
+                                trait_name: trait_name.clone(),
+                            })?;
                     }
                     Effect::Stir { mood, .. } => {
-                        reg.mood_id(mood)
-                            .ok_or_else(|| format!("beat '{}': unknown mood '{mood}'", b.id))?;
+                        reg.mood_id(mood).ok_or_else(|| BeatError::UnknownMood {
+                            beat: b.id.clone(),
+                            mood: mood.clone(),
+                        })?;
                     }
                     _ => {}
                 }
@@ -392,19 +399,67 @@ impl BeatBook {
             for p in &b.pre {
                 match p {
                     Pre::TraitAtLeast { trait_name, .. } | Pre::TraitAtMost { trait_name, .. } => {
-                        reg.trait_id(trait_name).ok_or_else(|| {
-                            format!("beat '{}': unknown trait '{trait_name}'", b.id)
-                        })?;
+                        reg.trait_id(trait_name)
+                            .ok_or_else(|| BeatError::UnknownTrait {
+                                beat: b.id.clone(),
+                                trait_name: trait_name.clone(),
+                            })?;
                     }
                     Pre::MoodAtLeast { mood, .. } => {
-                        reg.mood_id(mood)
-                            .ok_or_else(|| format!("beat '{}': unknown mood '{mood}'", b.id))?;
+                        reg.mood_id(mood).ok_or_else(|| BeatError::UnknownMood {
+                            beat: b.id.clone(),
+                            mood: mood.clone(),
+                        })?;
                     }
                     _ => {}
                 }
             }
         }
         Ok(())
+    }
+}
+
+/// Why loading beats failed — parse error, or a beat naming content the registry doesn't know.
+#[derive(Debug)]
+pub enum BeatError {
+    Config(config::ConfigError),
+    /// A beat names a register the registry doesn't define.
+    UnknownRegister {
+        beat: String,
+        register: String,
+    },
+    /// A beat's effect or precondition names a trait the registry doesn't define.
+    UnknownTrait {
+        beat: String,
+        trait_name: String,
+    },
+    /// A beat's effect or precondition names a mood the registry doesn't define.
+    UnknownMood {
+        beat: String,
+        mood: String,
+    },
+}
+
+impl std::fmt::Display for BeatError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BeatError::Config(e) => write!(f, "loading beats: {e}"),
+            BeatError::UnknownRegister { beat, register } => {
+                write!(f, "beat '{beat}': unknown register '{register}'")
+            }
+            BeatError::UnknownTrait { beat, trait_name } => {
+                write!(f, "beat '{beat}': unknown trait '{trait_name}'")
+            }
+            BeatError::UnknownMood { beat, mood } => {
+                write!(f, "beat '{beat}': unknown mood '{mood}'")
+            }
+        }
+    }
+}
+impl std::error::Error for BeatError {}
+impl From<config::ConfigError> for BeatError {
+    fn from(e: config::ConfigError) -> Self {
+        BeatError::Config(e)
     }
 }
 
