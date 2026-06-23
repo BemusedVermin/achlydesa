@@ -872,8 +872,9 @@ pub fn generate(prop: Prop, variant: u32) -> MeshBuf {
 #[derive(Resource)]
 pub struct PropLibrary {
     variants: HashMap<Prop, Vec<Handle<Mesh>>>,
-    /// The matte vertex-coloured material every prop shares (the mesh carries the colour).
-    pub material: Handle<StandardMaterial>,
+    /// The cel material every prop shares (the mesh carries the colour; the toon pass bands the
+    /// lighting). The whole world rides this one [`crate::toon::ToonMaterial`].
+    pub material: Handle<crate::toon::ToonMaterial>,
 }
 
 impl PropLibrary {
@@ -897,7 +898,10 @@ impl PropLibrary {
 
 /// Build the natural-prop library (trees, scrub, rock) and the built structures, registering a
 /// handful of variants of each kind.
-pub fn build_library(meshes: &mut Assets<Mesh>, material: Handle<StandardMaterial>) -> PropLibrary {
+pub fn build_library(
+    meshes: &mut Assets<Mesh>,
+    material: Handle<crate::toon::ToonMaterial>,
+) -> PropLibrary {
     let mut lib = PropLibrary {
         variants: HashMap::default(),
         material,

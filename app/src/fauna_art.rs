@@ -188,13 +188,13 @@ pub fn build_creature(form: Form, size: f32, color: [f32; 3], seed: u64) -> Mesh
 #[derive(Resource)]
 pub struct FaunaArt {
     pub meshes: Vec<Handle<Mesh>>,
-    pub material: Handle<StandardMaterial>,
+    pub material: Handle<crate::toon::ToonMaterial>,
 }
 
 /// Build a creature mesh for every species in the bestiary.
 pub fn build_fauna_art(
     meshes: &mut Assets<Mesh>,
-    material: Handle<StandardMaterial>,
+    material: Handle<crate::toon::ToonMaterial>,
     bestiary: &Bestiary,
 ) -> FaunaArt {
     let handles = bestiary
