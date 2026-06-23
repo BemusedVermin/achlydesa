@@ -15,8 +15,12 @@
 //! A fingerprint per config is printed too, so a determinism regression is obvious at a
 //! glance (the same N+layers must print the same fingerprint every run).
 //!
-//! Run with: `cargo run --release --example bench_scaling [ticks] [n1,n2,...]`
+//! Run with: `cargo run --release --example bench_scaling [ticks] [n1,n2,...] [WxH]`
 //!   e.g.     `cargo run --release --example bench_scaling 200 250,1000,4000`
+//!   crowded: `cargo run --release --example bench_scaling 100 500,2000 24x18`
+//!            (a small world packs the souls so `converse`'s co-location cost shows up —
+//!            with the tile-bucket the `+dialogue` per-agent delta stays flat as N grows,
+//!            i.e. linear, not the N^2 a full scan would give).
 
 use agents::{DirectorConfig, Setup, Simulation};
 use std::alloc::{GlobalAlloc, Layout, System};
@@ -60,14 +64,12 @@ impl Layers {
     }
 }
 
-/// Build a run with `npcs` people on a fixed, roomy world (so the population — not the
-/// map — is what grows), waking `layers`.
-fn build(npcs: usize, layers: Layers) -> Simulation {
-    // A roomy world kept fixed across N: 96x72 = 6912 tiles. Markets scale gently with the
-    // population so trade stays reachable as the crowd grows.
+/// Build a run with `npcs` people on a `width`x`height` world, waking `layers`.
+fn build(width: i32, height: i32, npcs: usize, layers: Layers) -> Simulation {
+    // Markets scale gently with the population so trade stays reachable as the crowd grows.
     let mut setup = Setup {
-        width: 96,
-        height: 72,
+        width,
+        height,
         seed: 7,
         warmup: 80,
         npcs,
@@ -93,8 +95,14 @@ fn build(npcs: usize, layers: Layers) -> Simulation {
 
 /// Time `ticks` steps of a freshly built run, returning (wall, allocs, surviving npcs,
 /// fingerprint). Worldgen + warm-up + one priming tick are excluded from the timing.
-fn measure(npcs: usize, layers: Layers, ticks: u64) -> (Duration, usize, usize, u64) {
-    let mut sim = build(npcs, layers);
+fn measure(
+    width: i32,
+    height: i32,
+    npcs: usize,
+    layers: Layers,
+    ticks: u64,
+) -> (Duration, usize, usize, u64) {
+    let mut sim = build(width, height, npcs, layers);
     sim.run(1); // prime: first-touch allocations (pools, lazy statics) out of the window
 
     let allocs_before = ALLOCS.load(Ordering::Relaxed);
@@ -112,8 +120,15 @@ fn main() {
         .next()
         .map(|s| s.split(',').filter_map(|x| x.parse().ok()).collect())
         .unwrap_or_else(|| vec![250, 1000, 4000]);
+    let (width, height) = args
+        .next()
+        .and_then(|s| {
+            let (w, h) = s.split_once('x')?;
+            Some((w.parse().ok()?, h.parse().ok()?))
+        })
+        .unwrap_or((96, 72));
 
-    println!("scaling bench — 96x72 world, {ticks} ticks/config\n");
+    println!("scaling bench — {width}x{height} world, {ticks} ticks/config\n");
     for &n in &ns {
         println!("N = {n}");
         println!(
@@ -122,7 +137,7 @@ fn main() {
         );
         let mut prev: Option<Duration> = None;
         for layers in [Layers::Economy, Layers::Dialogue, Layers::Director] {
-            let (wall, allocs, alive, fp) = measure(n, layers, ticks);
+            let (wall, allocs, alive, fp) = measure(width, height, n, layers, ticks);
             let per_tick = wall.as_secs_f64() / ticks as f64;
             let tps = 1.0 / per_tick;
             let us_tick = per_tick * 1e6;
