@@ -1,0 +1,97 @@
+[
+  {
+    "TickAdvanced": {
+      "to": 0
+    }
+  },
+  {
+    "ActionScheduled": {
+      "instance": 0,
+      "actor": 1,
+      "mv": 2,
+      "target": 2,
+      "start": 0
+    }
+  },
+  {
+    "ActionStarted": {
+      "instance": 0,
+      "tick": 0
+    }
+  },
+  {
+    "ActionScheduled": {
+      "instance": 1,
+      "actor": 3,
+      "mv": 1,
+      "target": 2,
+      "start": 0
+    }
+  },
+  {
+    "ActionStarted": {
+      "instance": 1,
+      "tick": 0
+    }
+  },
+  {
+    "TickAdvanced": {
+      "to": 2
+    }
+  },
+  {
+    "ActionActive": {
+      "instance": 1,
+      "tick": 2
+    }
+  },
+  {
+    "WindowOpened": {
+      "window": 0,
+      "actor": 2,
+      "tag": "Exposed",
+      "end": 12
+    }
+  },
+  {
+    "TickAdvanced": {
+      "to": 4
+    }
+  },
+  {
+    "ActionActive": {
+      "instance": 0,
+      "tick": 4
+    }
+  },
+  {
+    "TempoChanged": {
+      "actor": 1,
+      "delta": 2,
+      "new_total": 2
+    }
+  },
+  {
+    "Hit": {
+      "instance": 0,
+      "attacker": 1,
+      "target": 2,
+      "amount": 15
+    }
+  },
+  {
+    "ActorDowned": {
+      "actor": 2,
+      "tick": 4
+    }
+  },
+  {
+    "CombatEnded": {
+      "outcome": {
+        "Victory": {
+          "faction": 0
+        }
+      }
+    }
+  }
+]

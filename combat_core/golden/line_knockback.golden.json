@@ -1,0 +1,204 @@
+[
+  {
+    "TickAdvanced": {
+      "to": 0
+    }
+  },
+  {
+    "ActionScheduled": {
+      "instance": 0,
+      "actor": 1,
+      "mv": 1,
+      "target": 2,
+      "start": 0
+    }
+  },
+  {
+    "ActionStarted": {
+      "instance": 0,
+      "tick": 0
+    }
+  },
+  {
+    "ActionScheduled": {
+      "instance": 1,
+      "actor": 3,
+      "mv": 3,
+      "target": 2,
+      "start": 0
+    }
+  },
+  {
+    "ActionStarted": {
+      "instance": 1,
+      "tick": 0
+    }
+  },
+  {
+    "ActionScheduled": {
+      "instance": 2,
+      "actor": 2,
+      "mv": 2,
+      "target": 1,
+      "start": 0
+    }
+  },
+  {
+    "ActionStarted": {
+      "instance": 2,
+      "tick": 0
+    }
+  },
+  {
+    "TickAdvanced": {
+      "to": 2
+    }
+  },
+  {
+    "ActionActive": {
+      "instance": 0,
+      "tick": 2
+    }
+  },
+  {
+    "LineShoved": {
+      "target": 2,
+      "instance": 2,
+      "ticks": 5
+    }
+  },
+  {
+    "Hit": {
+      "instance": 0,
+      "attacker": 1,
+      "target": 2,
+      "amount": 3
+    }
+  },
+  {
+    "TickAdvanced": {
+      "to": 3
+    }
+  },
+  {
+    "ActionActive": {
+      "instance": 1,
+      "tick": 3
+    }
+  },
+  {
+    "Hit": {
+      "instance": 1,
+      "attacker": 3,
+      "target": 2,
+      "amount": 5
+    }
+  },
+  {
+    "TickAdvanced": {
+      "to": 6
+    }
+  },
+  {
+    "ActionCompleted": {
+      "instance": 0,
+      "tick": 6
+    }
+  },
+  {
+    "ActionCompleted": {
+      "instance": 1,
+      "tick": 6
+    }
+  },
+  {
+    "ActionScheduled": {
+      "instance": 3,
+      "actor": 1,
+      "mv": 1,
+      "target": 2,
+      "start": 6
+    }
+  },
+  {
+    "ActionStarted": {
+      "instance": 3,
+      "tick": 6
+    }
+  },
+  {
+    "ActionScheduled": {
+      "instance": 4,
+      "actor": 3,
+      "mv": 3,
+      "target": 2,
+      "start": 6
+    }
+  },
+  {
+    "ActionStarted": {
+      "instance": 4,
+      "tick": 6
+    }
+  },
+  {
+    "TickAdvanced": {
+      "to": 8
+    }
+  },
+  {
+    "ActionActive": {
+      "instance": 3,
+      "tick": 8
+    }
+  },
+  {
+    "LineShoved": {
+      "target": 2,
+      "instance": 2,
+      "ticks": 5
+    }
+  },
+  {
+    "Hit": {
+      "instance": 3,
+      "attacker": 1,
+      "target": 2,
+      "amount": 3
+    }
+  },
+  {
+    "TickAdvanced": {
+      "to": 9
+    }
+  },
+  {
+    "ActionActive": {
+      "instance": 4,
+      "tick": 9
+    }
+  },
+  {
+    "Hit": {
+      "instance": 4,
+      "attacker": 3,
+      "target": 2,
+      "amount": 5
+    }
+  },
+  {
+    "ActorDowned": {
+      "actor": 2,
+      "tick": 9
+    }
+  },
+  {
+    "CombatEnded": {
+      "outcome": {
+        "Victory": {
+          "faction": 0
+        }
+      }
+    }
+  }
+]
