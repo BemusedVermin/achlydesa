@@ -39,8 +39,8 @@ const EDIT_TICKS: u32 = 3;
 /// The active fight and its interaction state. Lives in `Game::combat` while a fight is on.
 pub(crate) struct CombatUi {
     pub enc: agents::Encounter,
-    /// The enemy controller — a deterministic stub policy.
-    ai: cc::StubAi,
+    /// The enemy controller — a deterministic policy that dilates (elites bend the line).
+    ai: cc::EliteAi,
     /// The pending *player* decision, if the engine is waiting on us.
     pending: Option<cc::Decision>,
     /// The fogged view for the pending decision (what to render + reason over).
@@ -60,7 +60,7 @@ pub(crate) struct Ending {
 
 impl CombatUi {
     pub fn new(enc: agents::Encounter) -> Self {
-        let ai = cc::StubAi::new(enc.sim.library().clone());
+        let ai = cc::EliteAi::new(enc.sim.library().clone(), *enc.sim.config());
         let target = enc
             .combatants
             .iter()
