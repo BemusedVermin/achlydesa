@@ -30,6 +30,13 @@
 @group(#{MATERIAL_BIND_GROUP}) @binding(100)
 var<uniform> bands: f32;
 
+// The ink edge. `RIM_POWER` is how tightly the silhouette darkening hugs the true grazing angle
+// (higher = thinner, only the very edge); `RIM_STRENGTH` is how dark it goes (1.0 = black). These
+// live here as constants rather than uniforms so the material keeps its single binding — tweak to
+// taste and re-run.
+const RIM_POWER: f32 = 4.0;
+const RIM_STRENGTH: f32 = 0.8;
+
 @fragment
 fn fragment(
     in: VertexOutput,
@@ -54,6 +61,14 @@ fn fragment(
     let lum = max(dot(out.color.rgb, vec3<f32>(0.2126, 0.7152, 0.0722)), 1e-5);
     let banded = (floor(lum * steps) + 0.5) / steps;
     out.color = vec4<f32>(out.color.rgb * (banded / lum), out.color.a);
+
+    // Ink edge: darken toward the silhouette, where the surface turns away from the view. On these
+    // flat-shaded forms it lands a hand-drawn outline on every tree, rock, and figure — and traces
+    // the relief's cliffs — without a separate full-screen outline pass. Applied before fog so the
+    // far ink lines fade into the haze with everything else.
+    let ndotv = clamp(dot(pbr_input.N, pbr_input.V), 0.0, 1.0);
+    let ink = 1.0 - pow(1.0 - ndotv, RIM_POWER) * RIM_STRENGTH;
+    out.color = vec4<f32>(out.color.rgb * ink, out.color.a);
 
     // Stock post-processing: distance fog, alpha premultiply, and tonemapping on non-HDR cameras.
     out.color = main_pass_post_lighting_processing(pbr_input, out.color);
