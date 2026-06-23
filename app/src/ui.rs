@@ -187,7 +187,7 @@ pub fn tile_interact(
     cams: Query<(&Camera, &GlobalTransform), With<CamRig>>,
     mut game: NonSendMut<Game>,
 ) {
-    if game.convo.is_some() || game.paused || game.talk_choices.is_some() {
+    if game.convo.is_some() || game.paused || game.talk_choices.is_some() || game.combat.is_some() {
         game.hovered = None;
         return;
     }

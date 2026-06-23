@@ -31,6 +31,7 @@ use std::collections::HashMap;
 
 use app::theme::{self, ThemeFonts};
 
+mod combat;
 mod convo_ui;
 mod fauna_art;
 mod feature_art;
@@ -187,6 +188,9 @@ struct Game {
     accum: f32,
     status: String,
     convo: Option<Convo>,
+    /// The active fight, when the avatar is in combat — a modal over the world like a conversation.
+    /// The world clock is suspended while it is `Some`; the player drives the headless engine inside.
+    combat: Option<combat::CombatUi>,
     /// The optional on-device voice; renders the focused conversation's words.
     voice: voice_bridge::Bridge,
     /// Monotonic id stamped on each voicing request, so an async result can be matched
@@ -326,6 +330,7 @@ fn main() {
         accum: 0.0,
         status: "Welcome. Click a tile to set out - the world moves when you do.".into(),
         convo: None,
+        combat: None,
         voice: voice_bridge::Bridge::spawn(),
         req_seq: 0,
         classify: HashMap::new(),
@@ -453,11 +458,26 @@ fn main() {
             map_drag,
             hide_overlays_when_paused,
             dev_capture,
+            dev_fight,
             dev_open_convo,
             dev_talk_pick,
             dev_walk,
             update_quests,
         ),
+    )
+    // The combat mode: detect the start of a fight, drive the engine to the next player decision,
+    // take the player's commands, and paint the timeline-ribbon HUD. Runs after the action inputs.
+    .add_systems(
+        Update,
+        (
+            attack_input,
+            combat::combat_step,
+            combat::combat_input,
+            combat::combat_clicks,
+            combat::update_combat_ui,
+            hide_hud_in_combat,
+        )
+            .chain(),
     )
     // The framed HUD: keep the whole frame scaled to the window, then refresh the trays.
     .add_systems(
@@ -562,6 +582,10 @@ fn build_world() -> Simulation {
             rpg: true,
             party: true,
             exploration: true,
+            // The combat layer: the avatar and party can fight adjacent hostiles (press **G**) and
+            // are ambushed by predators/grudge-bearers they step beside. Downed enemies die; the
+            // party's HP carries between fights. The fight runs in the headless `combat_core` engine.
+            combat: true,
             // Survival is on but **party-scoped**: only the avatar and its companions face thirst /
             // warmth / stamina drain. The general NPC population is untouched (no Vitals, flat
             // hunger), so the mostly-arid world doesn't depopulate before NPCs can seek water/shelter
@@ -710,6 +734,7 @@ fn setup(
     let grassy = asset_server.load("ui/grassy_rock.jpg");
     hud::spawn(&mut commands, &theme_fonts, grassy);
     convo_ui::spawn(&mut commands, &theme_fonts);
+    combat::spawn_combat_ui(&mut commands, &theme_fonts);
     let parchment = asset_server.load("ui/parchment.jpg");
     spawn_pause_menu(&mut commands, &theme_fonts, parchment);
     commands.insert_resource(theme_fonts);
@@ -899,7 +924,7 @@ fn spawn_pause_menu(commands: &mut Commands, f: &ThemeFonts, parchment: Handle<I
 /// total hexes walked. While idle the clock is frozen; the player's action *is* the clock.
 /// (Steps are paced by `TICK_DT` only so the walk is watchable — it remains one tick / hex.)
 fn drive_sim(mut game: NonSendMut<Game>, time: Res<Time>) {
-    if game.paused {
+    if game.paused || game.combat.is_some() {
         return;
     }
     let g = &mut *game;
@@ -914,7 +939,43 @@ fn drive_sim(mut game: NonSendMut<Game>, time: Res<Time>) {
         if let Some(p) = g.sim.player_position() {
             g.avatar_pos = p;
         }
+        // A predator or grudge-bearer the avatar just stepped beside springs an ambush.
+        if g.combat.is_none() {
+            let ambush = g.sim.combat_ambush();
+            if !ambush.is_empty() {
+                g.sim.player_halt();
+                combat::start(g, ambush);
+            }
+        }
     }
+}
+
+/// **Attack** — press **G** to set upon the bodies next to you (a foe, a beast): the world freezes
+/// and the fight opens in the combat mode. Ignored mid-journey, in menus or conversation, or when
+/// nothing stands adjacent.
+fn attack_input(keys: Res<ButtonInput<KeyCode>>, mut game: NonSendMut<Game>) {
+    if game.combat.is_some()
+        || game.convo.is_some()
+        || game.paused
+        || game.talk_choices.is_some()
+        || !keys.just_pressed(KeyCode::KeyG)
+    {
+        return;
+    }
+    if game.sim.player_traveling() {
+        return;
+    }
+    let foes: Vec<Entity> = game
+        .sim
+        .combat_targets()
+        .into_iter()
+        .map(|(e, _)| e)
+        .collect();
+    if foes.is_empty() {
+        game.status = "There is no one here to fight.".into();
+        return;
+    }
+    combat::start(&mut game, foes);
 }
 
 /// **Wait** — the second player action. Tap **Space** to let one tick pass where you stand:
@@ -930,7 +991,7 @@ fn wait_input(keys: Res<ButtonInput<KeyCode>>, mut game: NonSendMut<Game>) {
 
 /// Let one tick pass where the avatar stands (shared by Space and the Wait button).
 fn do_wait(g: &mut Game) {
-    if g.sim.player_traveling() {
+    if g.sim.player_traveling() || g.combat.is_some() {
         return;
     }
     if g.sim.player_wait() {
@@ -950,7 +1011,7 @@ fn search_input(keys: Res<ButtonInput<KeyCode>>, mut game: NonSendMut<Game>) {
 
 /// Search the tile underfoot (shared by F and the Search button).
 fn do_search(g: &mut Game) {
-    if g.sim.player_traveling() {
+    if g.sim.player_traveling() || g.combat.is_some() {
         return;
     }
     let out = g.sim.player_search();
@@ -983,7 +1044,7 @@ fn use_input(keys: Res<ButtonInput<KeyCode>>, mut game: NonSendMut<Game>) {
 
 /// Engage the first affordance the avatar stands on (shared by E and the Use button).
 fn do_use(g: &mut Game) {
-    if g.sim.player_traveling() {
+    if g.sim.player_traveling() || g.combat.is_some() {
         return;
     }
     let Some((idx, verb)) = g.sim.affordances_here().into_iter().next() else {
@@ -999,7 +1060,7 @@ fn do_use(g: &mut Game) {
 /// **Journal** — press **J** to open or close the discoveries journal (what you've found and the
 /// lore you hold). A look at the world, not an action: time does not pass.
 fn journal_input(keys: Res<ButtonInput<KeyCode>>, mut game: NonSendMut<Game>) {
-    if game.convo.is_none() && keys.just_pressed(KeyCode::KeyJ) {
+    if game.combat.is_none() && game.convo.is_none() && keys.just_pressed(KeyCode::KeyJ) {
         game.paused = true;
         game.menu_tab = 0;
     }
@@ -1017,7 +1078,7 @@ fn recruit_input(keys: Res<ButtonInput<KeyCode>>, mut game: NonSendMut<Game>) {
 
 /// Ask the nearest soul into the party (shared by R and the Recruit button).
 fn do_recruit(g: &mut Game) {
-    if g.sim.player_traveling() {
+    if g.sim.player_traveling() || g.combat.is_some() {
         return;
     }
     let Some((npc, _)) = g.sim.player_nearby_npcs().into_iter().next() else {
@@ -1048,7 +1109,7 @@ pub const QUICK_ACTS: &[(KeyCode, &str, &str)] = &[
 /// **Character sheet** — press **C** to open or close the avatar's Worlds-Without-Number sheet
 /// (attributes, trained skills, gear, vitals, party). A look, not an action: no time passes.
 fn sheet_input(keys: Res<ButtonInput<KeyCode>>, mut game: NonSendMut<Game>) {
-    if game.convo.is_none() && keys.just_pressed(KeyCode::KeyC) {
+    if game.combat.is_none() && game.convo.is_none() && keys.just_pressed(KeyCode::KeyC) {
         game.paused = true;
         game.menu_tab = 1;
         game.sheet_subject = None; // C always opens the avatar's own sheet
@@ -1058,7 +1119,7 @@ fn sheet_input(keys: Res<ButtonInput<KeyCode>>, mut game: NonSendMut<Game>) {
 /// **Esc** — the back button. A conversation handles its own Esc (in `talk_input`, which runs
 /// after this); otherwise Esc closes an open panel (journal/sheet), or toggles the pause menu.
 fn pause_input(keys: Res<ButtonInput<KeyCode>>, mut game: NonSendMut<Game>) {
-    if game.convo.is_some() || !keys.just_pressed(KeyCode::Escape) {
+    if game.convo.is_some() || game.combat.is_some() || !keys.just_pressed(KeyCode::Escape) {
         return;
     }
     // Esc first dismisses the who-to-talk-to chooser; otherwise it toggles the pause menu.
@@ -1111,8 +1172,9 @@ fn hide_overlays_when_paused(
     game: NonSend<Game>,
     mut q: Query<&mut Visibility, With<ui::HideOnPause>>,
 ) {
+    let hide = game.paused || game.combat.is_some();
     for mut vis in &mut q {
-        *vis = if game.paused {
+        *vis = if hide {
             Visibility::Hidden
         } else {
             Visibility::Inherited
@@ -1315,6 +1377,46 @@ fn dev_capture(
     }
     if clock.0 >= 48 {
         exit.write(AppExit::Success);
+    }
+}
+
+/// Hide the exploration HUD frame while a fight is on, so the combat overlay reads as its own clean
+/// screen (the trays otherwise sit dimly beneath the translucent overlay). Restored when it ends.
+fn hide_hud_in_combat(game: NonSend<Game>, mut trays: Query<&mut Visibility, With<hud::Tray>>) {
+    let hide = game.combat.is_some();
+    for mut v in &mut trays {
+        *v = if hide {
+            Visibility::Hidden
+        } else {
+            Visibility::Inherited
+        };
+    }
+}
+
+/// Dev hook: with `ACHLYDESA_FIGHT` set, drop the avatar straight into a fight once at startup so
+/// the combat HUD can be screenshotted headlessly. Uses souls already in the world as foes.
+fn dev_fight(mut game: NonSendMut<Game>, mut done: Local<bool>) {
+    if *done || std::env::var("ACHLYDESA_FIGHT").is_err() || game.combat.is_some() {
+        return;
+    }
+    *done = true;
+    let g = &mut *game;
+    let mut foes: Vec<Entity> = g
+        .sim
+        .player_nearby_npcs()
+        .into_iter()
+        .map(|(e, _)| e)
+        .take(3)
+        .collect();
+    if foes.is_empty() {
+        foes.extend(g.sim.any_npc());
+    }
+    if !foes.is_empty() {
+        combat::start(g, foes);
+        // Auto-play a few turns so the screenshot shows a populated timeline ribbon.
+        if let Some(ui) = g.combat.as_mut() {
+            combat::dev_autoplay(ui, 4);
+        }
     }
 }
 
@@ -1656,7 +1758,7 @@ fn npc_card(sim: &mut Simulation, npc: Entity) -> String {
 /// Open a free-text conversation with the nearest soul in reach (shared by T and the Talk button).
 /// Assembles the character card from real sim state and lets the soul speak first.
 fn start_talk(g: &mut Game) {
-    if g.sim.player_traveling() || g.paused || g.convo.is_some() {
+    if g.sim.player_traveling() || g.paused || g.convo.is_some() || g.combat.is_some() {
         return;
     }
     let nearby: Vec<Entity> = g

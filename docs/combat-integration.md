@@ -63,8 +63,19 @@ outcomes written back through a deterministic `agents` API.
 
 - [x] **Phase 1 — `combat_core` + `combat_cli`.** Engine, 5 golden scenarios, determinism +
   property tests, `PORTING.md`. Complete and green.
-- [ ] **Phase 2 — `agents` bridge.** `setup.combat`, scenario extraction, ambush detection, attack
-  API, outcome write-back, RNG stream, re-export.
-- [ ] **Phase 3 — `app` combat mode.** HUD re-skin, timeline ribbon band, positioning map, party
-  command flow, StubAi enemies, transition in/out.
+- [x] **Phase 2 — `agents` bridge.** `setup.combat`, scenario extraction, ambush detection, attack
+  API, outcome write-back, RNG stream, re-export. Bridge smoke + off tests green.
+- [x] **Phase 3 — `app` combat mode.** A combat overlay reusing the HUD chrome: the timeline-ribbon
+  band, combatant roster with HP/Tempo, the move tray (which becomes the Slow/Haste/Interrupt/Insert
+  edit verbs on a dilation turn), the field reserved for future 3D, and the combat log. Transition
+  via the **G** Attack verb and predator/grudge ambush after a step; StubAi enemies; write-back and
+  return on the result banner. Verified by headless screenshot (`ACHLYDESA_FIGHT` + `ACHLYDESA_SHOT`).
+
+### Deferred (follow-ups)
+- A real **game-over** when the avatar falls (today it shows a banner and returns to the overworld;
+  the avatar is left at 0 HP rather than removed).
+- **Zone gating + the position map's direction controls** (zones exist but don't gate in v1).
+- **RON-authored move kits / archetypes** (kits are code-authored in `combat.rs` for v1).
+- **Out-of-combat HP regen** (HP persists but only heals via a future rest mechanic).
+- **3D fight rendering** in the reserved field area, and AI that actually dilates (elites).
 ```
