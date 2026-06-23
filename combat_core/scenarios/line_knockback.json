@@ -11,7 +11,7 @@
       "effects": [{ "LineKnockback": { "ticks": 5 } }, { "Damage": { "amount": 3 } }],
       "requires_tag": null,
       "has_armor": false,
-      "range": "AnyZone",
+      "reach": 65536000,
       "tempo_cost": 0
     },
     {
@@ -22,7 +22,7 @@
       "effects": [{ "Damage": { "amount": 10 } }],
       "requires_tag": null,
       "has_armor": true,
-      "range": "AnyZone",
+      "reach": 65536000,
       "tempo_cost": 0
     },
     {
@@ -33,7 +33,7 @@
       "effects": [{ "Damage": { "amount": 5 } }],
       "requires_tag": null,
       "has_armor": false,
-      "range": "AnyZone",
+      "reach": 65536000,
       "tempo_cost": 0
     }
   ],

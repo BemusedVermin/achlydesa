@@ -2,9 +2,10 @@
 //! observer is allowed to see. The same function safely serves both the player UI and an AI
 //! policy — fog is applied here, once, so no caller can peek at data it shouldn't.
 
-use crate::actor::{ActorState, ZoneId};
+use crate::actor::ActorState;
 use crate::ids::{ActorId, FactionId, InstanceId, MoveId};
 use crate::sim::Sim;
+use crate::space::Pos;
 use crate::tick::Tick;
 use crate::windows::{Window, WindowTag};
 use serde::{Deserialize, Serialize};
@@ -25,7 +26,8 @@ pub struct ActorView {
     pub faction: FactionId,
     pub hp: i32,
     pub max_hp: i32,
-    pub zone: ZoneId,
+    /// Where the actor stands on the field.
+    pub pos: Pos,
     /// `None` when fogged (enemy Tempo with `hide_enemy_tempo`).
     pub tempo: Option<i32>,
     pub state: ActorStateView,
@@ -153,7 +155,7 @@ pub fn project(sim: &Sim, observer: ActorId) -> ForesightView {
             faction: a.faction,
             hp: a.vitals.hp,
             max_hp: a.vitals.max_hp,
-            zone: a.zone,
+            pos: a.pos,
             tempo: if a.faction == own_faction || !hide_enemy_tempo {
                 Some(a.tempo)
             } else {

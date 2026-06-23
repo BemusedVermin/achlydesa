@@ -2,12 +2,9 @@
 //! deliberately flat and `Copy` so it maps cleanly onto an ECS later.
 
 use crate::ids::{ActorId, FactionId, InstanceId};
+use crate::space::Pos;
 use crate::tick::Tick;
 use serde::{Deserialize, Serialize};
-
-/// The minimal spatial coordinate (spec §11/§18): a small set of abstract zones. The continuous
-/// lane+offset model is a future module that slots in behind `ZoneId`/`ZoneReq`.
-pub type ZoneId = u8;
 
 /// Hit points.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -48,7 +45,8 @@ pub struct Actor {
     pub state: ActorState,
     /// How many ticks ahead this actor can see (a stat; falls back to `Config`).
     pub foresight_horizon: u32,
-    pub zone: ZoneId,
+    /// Where the actor stands on the continuous 2D field.
+    pub pos: Pos,
 }
 
 impl Actor {

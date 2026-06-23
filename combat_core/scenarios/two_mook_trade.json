@@ -11,7 +11,7 @@
       "effects": [{ "Damage": { "amount": 4 } }],
       "requires_tag": null,
       "has_armor": false,
-      "range": "AnyZone",
+      "reach": 65536000,
       "tempo_cost": 0
     }
   ],

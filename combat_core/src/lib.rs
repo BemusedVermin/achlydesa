@@ -42,6 +42,7 @@ pub mod moves;
 pub mod rng;
 pub mod scenario;
 pub mod sim;
+pub mod space;
 pub mod tick;
 pub mod timeline;
 pub mod verbs;
@@ -50,7 +51,7 @@ pub mod windows;
 mod resolve;
 
 // ── Flat public surface — `use combat_core::*` brings in the whole vocabulary. ──────────────
-pub use actor::{Actor, ActorState, Vitals, ZoneId};
+pub use actor::{Actor, ActorState, Vitals};
 pub use config::{Config, CostModel, EditLockPolicy, TempoModel};
 pub use controller::{
     Command, Controller, Decision, DecisionKind, EliteAi, ScriptedController, StubAi,
@@ -58,10 +59,11 @@ pub use controller::{
 pub use events::{Event, FizzleReason, Outcome};
 pub use foresight::{ActorStateView, ActorView, ForesightView, VisibleInstance, WindowView};
 pub use ids::{ActorId, FactionId, InstanceId, MoveId, WindowId};
-pub use moves::{Effect, FrameData, MoveBuilder, MoveDef, MoveLibrary, ZoneReq};
+pub use moves::{Effect, FrameData, MoveBuilder, MoveDef, MoveLibrary};
 pub use rng::Rng;
 pub use scenario::{ActorSpec, Scenario, ScriptedCmd, run, run_with_mode};
 pub use sim::{Sim, StepResult};
+pub use space::Pos;
 pub use tick::{Fixed, Tick};
 pub use timeline::{ActionInstance, InstanceStatus, Phase, Timeline};
 pub use verbs::{EditVerb, VerbError};

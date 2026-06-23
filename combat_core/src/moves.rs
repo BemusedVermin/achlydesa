@@ -2,7 +2,6 @@
 //! hand-built `MoveDef`s; a future RPG stat layer compiles into the same shape through the
 //! [`MoveDef::builder`] seam (spec §18), so the bridge has a single construction surface.
 
-use crate::actor::ZoneId;
 use crate::ids::MoveId;
 use crate::tick::Fixed;
 use crate::windows::WindowTag;
@@ -52,21 +51,23 @@ pub enum Effect {
     Stagger {
         ticks: u32,
     },
-    /// Move the *acting* actor to another zone — the minimal positioning verb (spec §11). Unlike
-    /// the other effects this targets self, not the move's target.
-    Reposition {
-        zone: ZoneId,
+    /// Slide the *acting* actor along the 1D line toward its target by `distance` (close in).
+    /// Unlike the landing effects this moves self and never whiffs.
+    Approach {
+        distance: Fixed,
+    },
+    /// Slide the *acting* actor directly away from its target by `distance` (open the gap).
+    Withdraw {
+        distance: Fixed,
     },
 }
 
-/// Range requirement, against the minimal zone model (spec §11).
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
-pub enum ZoneReq {
-    /// Target must share the attacker's zone.
-    SameZone,
-    /// Any zone is fine.
-    #[default]
-    AnyZone,
+impl Effect {
+    /// Whether this effect lands *on the target* (and so is subject to the reach/whiff check).
+    /// Movement effects act on self and always apply.
+    pub fn lands_on_target(&self) -> bool {
+        !matches!(self, Effect::Approach { .. } | Effect::Withdraw { .. })
+    }
 }
 
 /// One authored move.
@@ -82,7 +83,10 @@ pub struct MoveDef {
     pub requires_tag: Option<WindowTag>,
     /// If true, the move cannot be interrupted during its startup.
     pub has_armor: bool,
-    pub range: ZoneReq,
+    /// How far the move can land on its target. Its landing effects whiff if the target is beyond
+    /// this at the active frame (movement effects within the same move resolve first, so a move can
+    /// close the gap and then strike).
+    pub reach: Fixed,
     /// Tempo deducted when committed (normally 0 for a reactive readiness action).
     pub tempo_cost: i32,
 }
@@ -99,7 +103,7 @@ impl MoveDef {
                 effects: Vec::new(),
                 requires_tag: None,
                 has_armor: false,
-                range: ZoneReq::AnyZone,
+                reach: Fixed::from_int(1),
                 tempo_cost: 0,
             },
         }
@@ -127,8 +131,11 @@ impl MoveBuilder {
     pub fn damage(self, amount: i32) -> Self {
         self.effect(Effect::Damage { amount })
     }
-    pub fn reposition(self, zone: crate::actor::ZoneId) -> Self {
-        self.effect(Effect::Reposition { zone })
+    pub fn approach(self, distance: Fixed) -> Self {
+        self.effect(Effect::Approach { distance })
+    }
+    pub fn withdraw(self, distance: Fixed) -> Self {
+        self.effect(Effect::Withdraw { distance })
     }
     pub fn requires(mut self, tag: WindowTag) -> Self {
         self.def.requires_tag = Some(tag);
@@ -138,8 +145,8 @@ impl MoveBuilder {
         self.def.has_armor = true;
         self
     }
-    pub fn range(mut self, range: ZoneReq) -> Self {
-        self.def.range = range;
+    pub fn reach(mut self, reach: Fixed) -> Self {
+        self.def.reach = reach;
         self
     }
     pub fn tempo_cost(mut self, cost: i32) -> Self {

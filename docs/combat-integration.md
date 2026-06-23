@@ -71,14 +71,29 @@ outcomes written back through a deterministic `agents` API.
   via the **G** Attack verb and predator/grudge ambush after a step; StubAi enemies; write-back and
   return on the result banner. Verified by headless screenshot (`ACHLYDESA_FIGHT` + `ACHLYDESA_SHOT`).
 
-### Extensions (done)
+### The combat scene (rebuilt) — continuous field, its own screen
+
+After review the combat presentation was rebuilt to the intended design:
+
+- **Continuous 2D spatial model** (`combat_core::space`): actors have a `Pos`; a move targets a
+  *person* and travels the 1D line to them, landing only **within reach** (else it whiffs).
+  `Approach`/`Withdraw` close/open the gap along that line; movement resolves before the reach gate
+  (a Lunge closes *and* strikes). This replaces the abstract zones — the spec's deferred "full
+  spatial model". Determinism preserved (Fixed positions, integer sqrt). New golden:
+  `whiff_and_lunge`.
+- **A separate, opaque battle scene** (`app/combat.rs` + `app/combat_field.rs`): nothing of
+  exploration shows through; the field is software-rasterised — tokens at continuous positions, a
+  reach ring, the attack line drawn **cyan = in reach / red = whiff**, HP arcs, plus a legend.
+- **Real-time burst playback that pauses at every decision.** The engine resolves to the next
+  decision; the app plays the burst over real time (tokens glide on `Moved`, blows flash, the
+  timeline playhead sweeps) then pauses — the player's decisions wait for input; a foe's chosen
+  move is shown and auto-advances after a readable beat (skippable).
+- **Move previews**: hovering/selecting a move shows its damage, effects, timing, reach, and
+  whether it would land or whiff against the current target — before you commit. Edit verbs preview
+  their effect too.
+
 - **Dilating elite AI** (`combat_core::EliteAi`): enemies spend Tempo to interrupt/slow the
-  player's line — the per-actor opposed economy is now two-sided. The app drives enemies with it.
-- **Zone gating + the position map.** Three zones (Left/Center/Right); the heavy melee moves
-  (Strike/Heavy/Riposte) require the target's zone, while a ranged **Loose** and the **Shove** reach
-  any zone (so no one ever stalls). Everyone starts engaged in the centre. The bottom-right position
-  map shows who stands where (`@`=avatar, `+`=ally, `x`=foe); ◄/► or clicking a zone repositions the
-  active actor (a readiness action). `CombatConfig::zone_gating` flips it off.
+  player's line — the per-actor opposed economy is two-sided. The app drives enemies with it.
 - **RON-authored content.** The move catalogue + per-archetype kits live in `assets/data/combat.ron`
   (sourced through `config`, parsed by the bridge into `MoveDef`s via the builder). Kits are picked
   by archetype: adventurer (avatar/party), soldier (NPCs), predator (carnivores), prey (herbivores).

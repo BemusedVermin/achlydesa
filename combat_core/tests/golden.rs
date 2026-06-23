@@ -16,6 +16,7 @@ const SCENARIOS: &[&str] = &[
     "line_knockback",
     "setup_payoff",
     "opposed_dilation",
+    "whiff_and_lunge",
 ];
 
 fn scenarios_dir() -> PathBuf {
@@ -73,6 +74,10 @@ fn golden_setup_payoff() {
 #[test]
 fn golden_opposed_dilation() {
     check_golden("opposed_dilation");
+}
+#[test]
+fn golden_whiff_and_lunge() {
+    check_golden("whiff_and_lunge");
 }
 
 /// Running a scenario twice yields a bit-identical trace (spec §17.3).

@@ -1,0 +1,38 @@
+{
+  "name": "whiff-and-lunge",
+  "seed": 6,
+  "ai_factions": [],
+  "moves": [
+    {
+      "id": 1,
+      "name": "Lunge",
+      "frames": { "startup": 3, "active": 1, "recovery": 2 },
+      "priority_class": 2,
+      "effects": [{ "Approach": { "distance": 262144 } }, { "Damage": { "amount": 6 } }],
+      "requires_tag": null,
+      "has_armor": false,
+      "reach": 131072,
+      "tempo_cost": 0
+    },
+    {
+      "id": 2,
+      "name": "Backstep",
+      "frames": { "startup": 2, "active": 1, "recovery": 2 },
+      "priority_class": 2,
+      "effects": [{ "Withdraw": { "distance": 262144 } }],
+      "requires_tag": null,
+      "has_armor": false,
+      "reach": 131072,
+      "tempo_cost": 0
+    }
+  ],
+  "actors": [
+    { "id": 1, "faction": 0, "hp": 20, "x": 0, "y": 0, "ready_tick": 0, "kit": [1] },
+    { "id": 2, "faction": 1, "hp": 6, "x": 5, "y": 0, "ready_tick": 0, "kit": [2] }
+  ],
+  "script": [
+    { "tick": 0, "actor": 1, "command": { "CommitAction": { "mv": 1, "target": 2 } } },
+    { "tick": 0, "actor": 2, "command": { "CommitAction": { "mv": 2, "target": 1 } } },
+    { "tick": 6, "actor": 1, "command": { "CommitAction": { "mv": 1, "target": 2 } } }
+  ]
+}

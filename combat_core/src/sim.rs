@@ -636,7 +636,7 @@ mod tests {
                     next_ready_tick: Tick(0),
                     state: ActorState::Idle,
                     foresight_horizon: 0,
-                    zone: 0,
+                    pos: crate::space::Pos::ORIGIN,
                 },
                 vec![MoveId(1)],
             );

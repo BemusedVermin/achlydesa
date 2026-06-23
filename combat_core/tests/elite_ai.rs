@@ -29,7 +29,7 @@ fn rig() -> (Sim, MoveLibrary, Config) {
             next_ready_tick: Tick(0),
             state: ActorState::Idle,
             foresight_horizon: 0,
-            zone: 0,
+            pos: Pos::ORIGIN,
         },
         vec![MoveId(1)],
     );
@@ -43,7 +43,7 @@ fn rig() -> (Sim, MoveLibrary, Config) {
             next_ready_tick: Tick(100),
             state: ActorState::Idle,
             foresight_horizon: 0,
-            zone: 0,
+            pos: Pos::ORIGIN,
         },
         vec![MoveId(2)],
     );

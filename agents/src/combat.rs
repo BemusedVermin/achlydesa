@@ -22,21 +22,10 @@ use serde::Deserialize;
 
 // ── Move catalogue (RON-authored) ────────────────────────────────────────────────────────────
 // The catalogue and per-archetype kits are authored in `assets/data/combat.ron` and compiled into
-// `combat_core` MoveDefs here. Repositioning verbs are generated (one per zone), not authored.
+// `combat_core` MoveDefs here.
 
-/// Repositioning moves are `REPOSITION_BASE + zone`.
-const REPOSITION_BASE: u32 = 10;
-/// Number of abstract zones in the positioning model (Left / Center / Right).
-pub const ZONE_COUNT: u8 = 3;
-/// Everyone starts engaged in the centre zone.
-pub const CENTER_ZONE: u8 = 1;
-
-/// The move id that repositions to `zone` (for the position map's direction controls).
-pub fn reposition_move(zone: u8) -> cc::MoveId {
-    cc::MoveId(REPOSITION_BASE + zone.min(ZONE_COUNT - 1) as u32)
-}
-
-/// One authored move, compiled into a [`cc::MoveDef`] through the builder seam.
+/// One authored move, compiled into a [`cc::MoveDef`] through the builder seam. Distances are in
+/// whole world units (lifted to fixed-point on compile).
 #[derive(Clone, Debug, Deserialize)]
 struct MoveSpec {
     id: u32,
@@ -48,9 +37,9 @@ struct MoveSpec {
     priority: u8,
     #[serde(default)]
     armored: bool,
-    /// Gated to the attacker's zone when zone-gating is on.
-    #[serde(default)]
-    melee: bool,
+    /// How close the target must be for the landing effects to connect (beyond it: a whiff).
+    #[serde(default = "default_reach")]
+    reach: u32,
     #[serde(default)]
     damage: i32,
     /// `LineKnockback` ticks (0 = none).
@@ -61,24 +50,36 @@ struct MoveSpec {
     expose: u32,
     #[serde(default)]
     requires_exposed: bool,
+    /// Slide toward the target by this many units before the reach check (0 = none).
+    #[serde(default)]
+    approach: u32,
+    /// Slide away from the target by this many units (0 = none).
+    #[serde(default)]
+    withdraw: u32,
     #[serde(default)]
     tempo_cost: i32,
 }
 
+fn default_reach() -> u32 {
+    2
+}
+
 impl MoveSpec {
-    fn compile(&self, melee_range: cc::ZoneReq) -> cc::MoveDef {
-        use cc::{Effect, Fixed, MoveDef, MoveId, WindowTag, ZoneReq};
+    fn compile(&self) -> cc::MoveDef {
+        use cc::{Effect, Fixed, MoveDef, MoveId, WindowTag};
         let mut b = MoveDef::builder(MoveId(self.id), self.name.clone())
             .frames(self.startup, self.active, self.recovery)
             .priority(self.priority)
             .tempo_cost(self.tempo_cost)
-            .range(if self.melee {
-                melee_range
-            } else {
-                ZoneReq::AnyZone
-            });
+            .reach(Fixed::from_int(self.reach as i32));
         if self.armored {
             b = b.armored();
+        }
+        if self.approach > 0 {
+            b = b.approach(Fixed::from_int(self.approach as i32));
+        }
+        if self.withdraw > 0 {
+            b = b.withdraw(Fixed::from_int(self.withdraw as i32));
         }
         if self.knockback > 0 {
             b = b.effect(Effect::LineKnockback {
@@ -125,25 +126,17 @@ impl CombatContent {
             .expect("bundled combat.ron parses")
     }
 
-    /// Compile the catalogue into a move library, appending the generated reposition verbs. Melee
-    /// moves are zone-gated when `gating` is set.
-    fn library(&self, gating: bool) -> cc::MoveLibrary {
-        let melee = if gating {
-            cc::ZoneReq::SameZone
-        } else {
-            cc::ZoneReq::AnyZone
-        };
-        let mut defs: Vec<cc::MoveDef> = self.moves.iter().map(|m| m.compile(melee)).collect();
-        for zone in 0..ZONE_COUNT {
-            defs.push(
-                cc::MoveDef::builder(cc::MoveId(REPOSITION_BASE + zone as u32), "Reposition")
-                    .frames(2, 1, 1)
-                    .priority(1)
-                    .reposition(zone)
-                    .build(),
-            );
-        }
-        cc::MoveLibrary::from_defs(defs)
+    /// Compile the catalogue into a move library.
+    fn library(&self) -> cc::MoveLibrary {
+        cc::MoveLibrary::from_defs(self.moves.iter().map(|m| m.compile()))
+    }
+
+    /// The move definition for `id`, if present (for the UI's move previews).
+    pub fn move_def(&self, id: cc::MoveId) -> Option<cc::MoveDef> {
+        self.moves
+            .iter()
+            .find(|m| m.id == id.0)
+            .map(|m| m.compile())
     }
 
     /// The kit for `archetype` (falling back to the action-tray kit for an unknown one).
@@ -188,9 +181,11 @@ pub struct CombatConfig {
     pub party_tempo: i32,
     /// Tempo an *elite* enemy spawns with (a named NPC); mooks/beasts spawn with 0.
     pub elite_tempo: i32,
-    /// Gate the heavy melee moves to the attacker's zone (close in to land them). Off makes every
-    /// move reach any zone — the position map then only displays, never gates.
-    pub zone_gating: bool,
+    /// Half the starting gap between the sides on the field: the party lines up at `-x`, the
+    /// enemies at `+x`, this many world units out.
+    pub field_half_width: i32,
+    /// Vertical spacing between same-side combatants on the field.
+    pub lane_gap: i32,
     /// Ticks of overworld time per 1 HP mended out of combat (0 disables regen). Combat freezes the
     /// world, so this only heals between fights.
     pub regen_period: u64,
@@ -204,7 +199,8 @@ impl Default for CombatConfig {
             hp_per_con: 6,
             party_tempo: 8,
             elite_tempo: 6,
-            zone_gating: true,
+            field_half_width: 8,
+            lane_gap: 3,
             regen_period: 25,
         }
     }
@@ -222,7 +218,7 @@ pub fn regen_health(
         return;
     }
     *counter += 1;
-    if *counter % cfg.regen_period != 0 {
+    if !(*counter).is_multiple_of(cfg.regen_period) {
         return;
     }
     for mut h in &mut bodies {
@@ -396,53 +392,104 @@ pub(crate) fn build_encounter(
     roster: &[Entity],
     enemies: &[Entity],
 ) -> Encounter {
-    let mut sim = cc::Sim::new(cfg.engine, content.library(cfg.zone_gating), seed);
+    let mut sim = cc::Sim::new(cfg.engine, content.library(), seed);
     let mut combatants = Vec::new();
     let mut next = 0u32;
 
-    let mut enroll = |sim: &mut cc::Sim, e: Entity, faction: u32, tempo: i32, is_avatar: bool| {
-        let max = max_hp(world, e, cfg);
-        let hp = current_hp(world, e, max);
-        let id = cc::ActorId(next);
-        next += 1;
-        let kit = content.kit_of(archetype_of(world, e, faction == 0));
-        sim.add_actor(
-            cc::Actor {
-                id,
-                faction: cc::FactionId(faction),
-                vitals: cc::Vitals { hp, max_hp: max },
-                tempo,
-                next_ready_tick: cc::Tick(0),
-                state: cc::ActorState::Idle,
-                foresight_horizon: 0,
-                zone: CENTER_ZONE,
-            },
-            kit,
-        );
-        combatants.push(Combatant {
-            actor: id,
-            entity: e,
-            name: name_of(world, e),
-            is_player_side: faction == 0,
+    // The party lines up on the left edge, the enemies on the right, each side spread vertically
+    // and centred — a continuous field the moves then close across.
+    let players: Vec<(Entity, bool)> = std::iter::once((avatar, true))
+        .chain(roster.iter().map(|&e| (e, false)))
+        .collect();
+    let np = players.len() as i32;
+    for (i, &(e, is_avatar)) in players.iter().enumerate() {
+        let pos = cc::Pos::from_ints(-cfg.field_half_width, lane_y(i as i32, np, cfg.lane_gap));
+        enroll(
+            &mut sim,
+            &mut combatants,
+            world,
+            cfg,
+            content,
+            &mut next,
+            e,
+            0,
+            cfg.party_tempo,
             is_avatar,
-        });
-    };
-
-    enroll(&mut sim, avatar, 0, cfg.party_tempo, true);
-    for &m in roster {
-        enroll(&mut sim, m, 0, cfg.party_tempo, false);
+            pos,
+        );
     }
-    for &en in enemies {
+    let ne = enemies.len() as i32;
+    for (j, &en) in enemies.iter().enumerate() {
         // Named NPCs fight as elites (they hold Tempo); beasts and the nameless are mooks.
         let tempo = if is_npc(world, en) {
             cfg.elite_tempo
         } else {
             0
         };
-        enroll(&mut sim, en, 1, tempo, false);
+        let pos = cc::Pos::from_ints(cfg.field_half_width, lane_y(j as i32, ne, cfg.lane_gap));
+        enroll(
+            &mut sim,
+            &mut combatants,
+            world,
+            cfg,
+            content,
+            &mut next,
+            en,
+            1,
+            tempo,
+            false,
+            pos,
+        );
     }
 
     Encounter { sim, combatants }
+}
+
+/// The centred vertical offset for combatant `i` of `count` on one side.
+fn lane_y(i: i32, count: i32, gap: i32) -> i32 {
+    i * gap - (count - 1) * gap / 2
+}
+
+/// Register one combatant in the sim and the encounter roster.
+#[allow(clippy::too_many_arguments)]
+fn enroll(
+    sim: &mut cc::Sim,
+    combatants: &mut Vec<Combatant>,
+    world: &World,
+    cfg: &CombatConfig,
+    content: &CombatContent,
+    next: &mut u32,
+    e: Entity,
+    faction: u32,
+    tempo: i32,
+    is_avatar: bool,
+    pos: cc::Pos,
+) {
+    let max = max_hp(world, e, cfg);
+    let hp = current_hp(world, e, max);
+    let id = cc::ActorId(*next);
+    *next += 1;
+    let kit = content.kit_of(archetype_of(world, e, faction == 0));
+    sim.add_actor(
+        cc::Actor {
+            id,
+            faction: cc::FactionId(faction),
+            vitals: cc::Vitals { hp, max_hp: max },
+            tempo,
+            next_ready_tick: cc::Tick(0),
+            state: cc::ActorState::Idle,
+            foresight_horizon: 0,
+            pos,
+        },
+        kit,
+    );
+    combatants.push(Combatant {
+        actor: id,
+        entity: e,
+        name: name_of(world, e),
+        is_player_side: faction == 0,
+        is_avatar,
+    });
 }
 
 /// Apply a finished fight to the world: persist survivors' HP, despawn fallen enemies, and report
