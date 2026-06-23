@@ -667,3 +667,358 @@ pub(crate) fn detention_countdown(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::features::Feature;
+    use game_sim::World as GameWorld;
+
+    /// A **contrived realm** for the faction turn: a tiny world with hand-seated courts and members
+    /// placed on them, plus the resources [`faction_turn`] reads. No worldgen, no settlement placer,
+    /// no climate — courts and members are placed directly, so a test seeds exactly the political
+    /// situation it means to check, then runs turns. `period` is forced to 1, so each `turn()` is a
+    /// faction turn regardless of the (unadvanced) world clock. This runs in microseconds, where the
+    /// old emergence tests ran 48x32 worlds warmed 200 ticks for hundreds of ticks each.
+    struct Realm {
+        world: World,
+        reg: Registry,
+        coords: Vec<Coord>,
+        courts: Vec<(usize, Feature)>,
+    }
+
+    impl Realm {
+        fn new(mut cfg: FactionConfig) -> Self {
+            cfg.period = 1; // every `turn()` is a faction turn
+            let reg = Registry::bundled();
+            let gw = GameWorld::generate(20, 16, config::tunables::params(), 7);
+            let coords: Vec<Coord> = {
+                let t = gw.topology();
+                (0..t.len()).map(|i| t.coord(i)).collect()
+            };
+            let mut world = World::new();
+            world.insert_resource(Substrate(gw));
+            world.insert_resource(FactionRes(cfg));
+            world.insert_resource(reg.clone());
+            world.insert_resource(FeatureCatalog::bundled());
+            world.insert_resource(Features::default());
+            world.insert_resource(Factions(Vec::new()));
+            Self {
+                world,
+                reg,
+                coords,
+                courts: Vec::new(),
+            }
+        }
+
+        fn topo_len(&self) -> usize {
+            self.world.resource::<Substrate>().0.topology().len()
+        }
+
+        /// Seat a court of `kind` at tile `tile`; returns its coord. Members at (or within `reach`
+        /// of) that coord will form a bloc around it.
+        fn seat_court(&mut self, tile: usize, kind: &str) -> Coord {
+            let id = self
+                .world
+                .resource::<FeatureCatalog>()
+                .id_of(kind)
+                .expect("court kind exists");
+            self.courts.push((
+                tile,
+                Feature {
+                    kind: id,
+                    discovered: true,
+                    defiled: false,
+                },
+            ));
+            let n = self.topo_len();
+            self.world
+                .insert_resource(Features::from_placed(n, &self.courts));
+            self.coords[tile]
+        }
+
+        /// Spawn a member at `coord` with the given ambition and purse.
+        fn member(&mut self, coord: Coord, ambition: f32, money: i64) -> Entity {
+            let mut pers = vec![0.0; self.reg.trait_count()];
+            if let Some(a) = self.reg.trait_id("ambition") {
+                pers[a] = ambition;
+            }
+            self.world
+                .spawn((
+                    Npc,
+                    Position(coord),
+                    Inventory {
+                        money,
+                        stock: Vec::new(),
+                    },
+                    Personality(pers),
+                    Allegiance::default(),
+                    Opinion::default(),
+                ))
+                .id()
+        }
+
+        fn give_grudge(&mut self, who: Entity, against: Entity) {
+            self.world.entity_mut(who).insert(Grievance(against));
+        }
+
+        /// Pre-declare a war between the factions at `sa` and `sb` — carried into the turn's `old`
+        /// state, so the war machinery (exclusion, casualties, champions) plays out without relying
+        /// on a force imbalance that adjacent, border-sharing blocs cannot cleanly produce.
+        fn declare_war(&mut self, sa: Coord, sb: Coord) {
+            let at = |seat, foe| Faction {
+                seat,
+                government: Government::Monarchy,
+                leaders: SmallVec::new(),
+                members: Vec::new(),
+                laws: SmallVec::new(),
+                at_war: SmallVec::from_slice(&[foe]),
+                force: 3.0,
+                cunning: 0.0,
+                wealth: 0,
+            };
+            self.world.resource_mut::<Factions>().0 = vec![at(sa, sb), at(sb, sa)];
+        }
+
+        fn turn(&mut self) {
+            let mut sched = Schedule::default();
+            sched.add_systems(faction_turn);
+            sched.run(&mut self.world);
+        }
+
+        fn factions(&self) -> &[Faction] {
+            &self.world.resource::<Factions>().0
+        }
+
+        fn money_of(&self, e: Entity) -> i64 {
+            self.world.get::<Inventory>(e).map_or(0, |i| i.money)
+        }
+
+        fn total_money(&mut self) -> i64 {
+            let mut q = self.world.query_filtered::<&Inventory, With<Npc>>();
+            q.iter(&self.world).map(|i| i.money).sum()
+        }
+
+        fn npc_count(&mut self) -> usize {
+            let mut q = self.world.query_filtered::<(), With<Npc>>();
+            q.iter(&self.world).count()
+        }
+
+        fn detained_count(&mut self) -> usize {
+            let mut q = self
+                .world
+                .query_filtered::<(), (With<Npc>, With<Detained>)>();
+            q.iter(&self.world).count()
+        }
+
+        fn grudge_count(&mut self) -> usize {
+            let mut q = self.world.query_filtered::<(), (With<Npc>, With<Grievance>)>();
+            q.iter(&self.world).count()
+        }
+
+        fn alive(&self, e: Entity) -> bool {
+            self.world.get::<Position>(e).is_some()
+        }
+    }
+
+    /// Seat a court and place `n` members on it (ambition rising by index, so the election is
+    /// determinate). Returns the seat and the members.
+    fn bloc(r: &mut Realm, tile: usize, kind: &str, n: usize) -> (Coord, Vec<Entity>) {
+        let seat = r.seat_court(tile, kind);
+        let members = (0..n)
+            .map(|i| r.member(seat, 0.2 + 0.05 * i as f32, 100))
+            .collect();
+        (seat, members)
+    }
+
+    #[test]
+    fn a_bloc_forms_around_its_court() {
+        // People within reach of a court cohere into a bloc with a live head — and one that clears
+        // the membership threshold and outgrows it. (The old test waited a 260-tick season on a
+        // 48x36 world to watch this consolidate.)
+        let mut r = Realm::new(FactionConfig::default());
+        let (seat, members) = bloc(&mut r, 0, "royal_court", 5);
+        r.turn();
+        let factions = r.factions().to_vec();
+        assert_eq!(factions.len(), 1, "one court, one bloc");
+        let f = &factions[0];
+        assert_eq!(f.seat, seat);
+        assert_eq!(f.members.len(), 5, "every soul on the court joined");
+        assert!(f.force > 0.0 && f.members.len() > FactionConfig::default().min_members);
+        assert!(
+            f.head().is_some_and(|h| r.alive(h) && members.contains(&h)),
+            "a faction has a live head drawn from its members",
+        );
+    }
+
+    #[test]
+    fn government_follows_the_court_kind() {
+        // A faction's government is the kind of court it forms around — a guild is an oligarchy, a
+        // temple a democracy, a royal seat a monarchy.
+        for (kind, gov) in [
+            ("guild", Government::Oligarchy),
+            ("temple", Government::Democracy),
+            ("royal_court", Government::Monarchy),
+        ] {
+            let mut r = Realm::new(FactionConfig::default());
+            bloc(&mut r, 0, kind, 4);
+            r.turn();
+            assert_eq!(
+                r.factions()[0].government,
+                gov,
+                "a {kind} should be a {gov:?}",
+            );
+        }
+    }
+
+    #[test]
+    fn leaders_grow_rich_on_tribute_and_money_is_conserved() {
+        // Factions *act*: each turn members pay their leader tribute. That coin flows up, never
+        // created — total money can only fall (deaths are the one sink) — leaving the head richer
+        // than its average member.
+        let mut r = Realm::new(FactionConfig {
+            tax_rate: 0.12,
+            ..Default::default()
+        });
+        bloc(&mut r, 0, "royal_court", 5);
+        let before = r.total_money();
+        for _ in 0..4 {
+            r.turn();
+        }
+        assert!(
+            r.total_money() <= before,
+            "tribute must not create money ({before} -> {})",
+            r.total_money(),
+        );
+        let f = &r.factions()[0];
+        let head = f.head().expect("a head");
+        let avg = f.wealth / f.members.len() as i64;
+        assert!(
+            r.money_of(head) > avg,
+            "tribute should leave the leader above the bloc's average ({} vs {avg})",
+            r.money_of(head),
+        );
+    }
+
+    #[test]
+    fn a_soul_can_hold_two_nearby_factions() {
+        // Membership is not exclusive: someone within reach of two (peaceful, comparable) courts
+        // belongs to both.
+        let mut r = Realm::new(FactionConfig::default());
+        let a = r.seat_court(0, "guild");
+        let b = r.seat_court(1, "guild"); // one hex over — within reach, equal force, no war
+        for _ in 0..3 {
+            r.member(a, 0.3, 100);
+        }
+        for _ in 0..3 {
+            r.member(b, 0.3, 100);
+        }
+        r.turn();
+        let mut q = r.world.query_filtered::<&Allegiance, With<Npc>>();
+        let multi = q.iter(&r.world).filter(|al| al.0.len() >= 2).count();
+        assert!(multi > 0, "a soul near both courts should belong to both");
+    }
+
+    #[test]
+    fn war_makes_rivals_exclusive_and_costs_lives() {
+        // A declared war makes the two blocs mutually exclusive (an exclusion law) and takes a life
+        // (the weaker bloc loses a soul).
+        let mut r = Realm::new(FactionConfig::default());
+        let a = r.seat_court(0, "guild");
+        let b = r.seat_court(1, "guild");
+        for _ in 0..4 {
+            r.member(a, 0.3, 100);
+        }
+        for _ in 0..4 {
+            r.member(b, 0.3, 100);
+        }
+        r.declare_war(a, b);
+        let before = r.npc_count();
+        r.turn();
+        let factions = r.factions().to_vec();
+        assert!(
+            factions.iter().any(|f| !f.at_war.is_empty()),
+            "the war should persist",
+        );
+        assert!(
+            factions
+                .iter()
+                .any(|f| f.laws.iter().any(|l| matches!(l, Law::Exclude(_)))),
+            "war should impose mutual exclusion",
+        );
+        assert!(
+            r.npc_count() < before,
+            "war should have cost a life ({before} -> {})",
+            r.npc_count(),
+        );
+    }
+
+    #[test]
+    fn a_war_drafts_a_champion() {
+        // A faction at war sets its keenest loyal member on the enemy's head — a grudge granted
+        // through the ordinary avenge machinery. With no grudge seeded, any grudge that appears is
+        // a drafted champion.
+        let mut r = Realm::new(FactionConfig::default());
+        let a = r.seat_court(0, "guild");
+        let b = r.seat_court(1, "guild");
+        for _ in 0..4 {
+            r.member(a, 0.3, 100);
+        }
+        for _ in 0..4 {
+            r.member(b, 0.3, 100);
+        }
+        r.declare_war(a, b);
+        r.turn();
+        assert!(
+            r.grudge_count() > 0,
+            "war should have drafted a champion (a fresh grudge)",
+        );
+    }
+
+    #[test]
+    fn serving_a_leader_forms_an_opinion_of_them() {
+        // The opinion graph: serving a leader over time leaves a member with a real, warm opinion
+        // of them (loyalty climbs with the bloc's strength, and opinion follows loyalty).
+        let mut r = Realm::new(FactionConfig::default());
+        bloc(&mut r, 0, "royal_court", 5);
+        for _ in 0..8 {
+            r.turn();
+        }
+        let mut q = r.world.query_filtered::<&Opinion, With<Npc>>();
+        let formed = q
+            .iter(&r.world)
+            .any(|o| o.0.values().any(|&v| v.abs() > 0.05));
+        assert!(formed, "a member should form an opinion of its leader");
+    }
+
+    #[test]
+    fn a_no_kill_faction_jails_the_vengeful() {
+        // A law-abiding court forbids killing; a grudge-bearing member who falls under that law is
+        // detained by its enforcers.
+        let mut r = Realm::new(FactionConfig::default());
+        let (seat, members) = bloc(&mut r, 0, "royal_court", 4); // royal_court lays a no-kill taboo
+        let _ = seat;
+        r.give_grudge(members[0], members[3]); // members[0] is the least ambitious → never the head
+        r.turn();
+        assert!(
+            r.detained_count() > 0,
+            "a no-kill faction should have jailed its grudge-bearer",
+        );
+    }
+
+    #[test]
+    fn the_faction_turn_is_deterministic() {
+        let build = || {
+            let mut r = Realm::new(FactionConfig::default());
+            bloc(&mut r, 0, "guild", 5);
+            for _ in 0..4 {
+                r.turn();
+            }
+            r.factions()
+                .iter()
+                .map(|f| (f.seat.col, f.seat.row, f.members.len()))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(build(), build(), "same seed must give the same factions");
+    }
+}
