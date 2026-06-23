@@ -219,6 +219,17 @@ pub struct Features {
 }
 
 impl Features {
+    /// A test-only world of `n` empty tiles with the given features seated by storage index — so a
+    /// unit test can place a court (or two) without running worldgen and the settlement placer.
+    #[cfg(test)]
+    pub(crate) fn from_placed(n: usize, placed: &[(usize, Feature)]) -> Self {
+        let mut tiles = vec![Vec::new(); n];
+        for &(i, f) in placed {
+            tiles[i].push(f);
+        }
+        Self { tiles }
+    }
+
     /// The features on tile `i` (topology storage index).
     pub fn at_index(&self, i: usize) -> &[Feature] {
         self.tiles.get(i).map_or(&[], Vec::as_slice)
