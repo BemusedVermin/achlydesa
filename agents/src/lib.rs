@@ -4135,36 +4135,32 @@ mod tests {
 
     // --- Narrative director ---
 
-    /// A society seated in its settlements (so factions — and the political register —
-    /// form around the protagonist), with a throne the ambitious vie for. The director
-    /// stages its story over *this* social world.
-    fn staged(director: bool) -> Simulation {
-        staged_seeded(director, 11, 40)
-    }
-
-    /// As [`staged`], but with an explicit world seed and population — so an emergent property can
-    /// be checked across a few worlds rather than demanded of one fixed seed, and a test that needs
-    /// the director to reach *every* layer can ask for a more populous (costlier) world.
-    fn staged_seeded(director: bool, seed: u64, npcs: usize) -> Simulation {
+    /// A society seated in its settlements (so factions — and the political register — form around
+    /// the protagonist), with a throne the ambitious vie for. Deliberately **small and lightly
+    /// warmed**: the one director *smoke test* below runs the **bundled** content over a real (if
+    /// brief) season to prove the authored beats still compose into a varied, betrayal-led story.
+    /// The director's *mechanisms* (collisions, grooming, the impact floor, arc-chaining, the
+    /// people/faction levers, determinism) are pinned by the fast **contrived** tests in
+    /// `agent_core::director::tests`, which need no world at all.
+    fn staged_world(seed: u64, npcs: usize) -> Simulation {
         let reg = Registry::bundled();
         let goals = throne_goals(&reg);
         Simulation::new(Setup {
-            width: 44,
-            height: 32,
+            width: 26,
+            height: 18,
             seed,
-            warmup: 200,
+            warmup: 40,
             npcs,
-            markets: 6,
+            markets: 5,
             markets_on_settlements: true,
             throne: true,
             ambitious: 6,
             goals,
             registry: reg,
-            director,
-            // A brisker cadence so a story of many varied beats is told without a
-            // marathon run (keeps the test suite quick).
+            director: true,
+            // A brisk cadence so a varied story is told over a short season (keeps the suite quick).
             director_cfg: DirectorConfig {
-                beat_interval: 9,
+                beat_interval: 7,
                 ..Default::default()
             },
             ..Default::default()
@@ -4172,290 +4168,43 @@ mod tests {
     }
 
     #[test]
-    fn the_director_sleeps_unless_woken() {
-        // Off by default: no protagonist, no beats told, no gratuitous suffering — a
-        // world before this layer existed.
-        let mut sim = Simulation::new(Setup {
-            width: 48,
-            height: 36,
-            seed: 11,
-            warmup: 200,
-            npcs: 40,
-            ..Default::default()
-        });
-        sim.run(80);
-        assert!(
-            sim.protagonist().is_none(),
-            "no protagonist should be tagged when the director sleeps"
-        );
-        assert_eq!(
-            sim.director_beats_fired(),
-            0,
-            "a sleeping director tells no story"
-        );
-        assert_eq!(
-            sim.gratuitous_total(),
-            0.0,
-            "a sleeping director authors no suffering"
-        );
-    }
+    fn a_staged_season_is_a_costly_betrayal_led_story() {
+        // The director's **integration** test: run the *bundled* repertoire over a short, seated
+        // season and confirm the authored beats still compose into a varied, betrayal-led story
+        // that costs the world — and stages joy as well as suffering. The director's individual
+        // *mechanisms* (collisions, grooming, the impact floor, arc-chaining, the people/faction/
+        // world levers, determinism) are pinned world-free and instantly by the contrived tests in
+        // `agent_core::director::tests`; this is the one place the bundled content runs a season.
+        let mut sim = staged_world(11, 30);
+        sim.run(160);
 
-    #[test]
-    fn the_director_tells_a_varied_story() {
-        // Woken, the director identifies and stages beats for its protagonist — and the
-        // novelty pressure keeps it *varying* them, so the same situation isn't told
-        // twice running. A real, diverse tale, and one that costs the world.
-        let mut sim = staged(true);
-        sim.run(200);
         let told = sim.director_beats_fired();
         let distinct = sim.director_distinct_beats();
+        assert!(told >= 6, "a season should tell several beats (told {told})");
         assert!(
-            told >= 8,
-            "the director should have told a story of several beats (told {told})"
-        );
-        assert!(
-            distinct >= 5,
+            distinct >= 4,
             "the story should be varied, not one beat on repeat (distinct {distinct}/{told})"
         );
-        assert!(
-            sim.gratuitous_total() > 0.0,
-            "telling its story should author gratuitous suffering"
-        );
-    }
 
-    #[test]
-    fn the_director_manipulates_people_factions_and_the_world() {
-        // The point of the rebuild: Γ works the *social fabric*, not just the land. Over
-        // a run with no feuds seeded, any grudge is one the director engineered (people);
-        // its beat log reaches the political register (factions) and a disaster (world).
-        // This one asks the director to reach *every* layer at once, so it needs a more populous
-        // (political) world than the other staged tests — kept as small as still exercises all three.
-        let mut sim = staged_seeded(true, 11, 56);
-        sim.run(240);
-        let manufactured_grudges = !sim.grudges().is_empty();
-        let log: Vec<&str> = sim
-            .director_log()
-            .iter()
-            .map(|(_, id)| id.as_str())
-            .collect();
-        let touched_world = log
-            .iter()
-            .any(|id| matches!(*id, "the_famine" | "the_long_winter" | "a_loved_one_falls"));
-        let touched_politics = log.iter().any(|id| {
-            matches!(
-                *id,
-                "the_drums_of_war"
-                    | "the_faction_turns_persecutor"
-                    | "the_mob_demands_blood"
-                    | "a_defection_sown"
-            )
-        });
-        assert!(
-            manufactured_grudges,
-            "the director should have manufactured grudges between people"
-        );
-        assert!(
-            touched_world,
-            "the director should have struck the world (a disaster), not only people"
-        );
-        assert!(
-            touched_politics,
-            "the director should have worked the faction layer (a political beat)"
-        );
-    }
-
-    /// A *freed* world — the configuration the player would reach through ordinary life
-    /// (no special verbs): provisioned (deep larders), forgiving (a no-kill norm its
-    /// avenge goal heeds, so manufactured grudges stay the hand), stateless (scattered,
-    /// so few factions), and unthroned (no coveted prize). The director is fully awake,
-    /// its whole library intact — it simply finds no drama worth telling.
-    fn freed_world() -> Simulation {
-        let reg = Registry::bundled();
-        let goals = Goals::from_ron(
-            r#"[
-                (name: "sustained", condition: Sustenance(at_least: 70), appeal: [(input: Deficit, curve: Power(exp: 2.0))]),
-                (name: "rested",    condition: Rest(at_least: 70),        appeal: [(input: Deficit, curve: Power(exp: 2.0))]),
-                (name: "stocked",   condition: Holding(good: Edible, at_least: 12), appeal: [(input: Deficit, curve: Linear(m: 0.6, b: 0.0))]),
-                (name: "solvent",   condition: Money(at_least: 200),      appeal: [(input: Deficit, curve: Linear(m: 0.5, b: 0.0))]),
-                (name: "avenge",    condition: Verb(verb: "avenge", target: Foe),
-                    appeal: [(input: Deficit,  curve: Linear(m: 0.55, b: 0.0)),
-                             (input: Sanction, curve: Linear(m: -1.0, b: 1.0))]),
-            ]"#,
-            &reg,
-        )
-        .unwrap();
-        let norms = Norms::from_ron(r#"[(act: "avenge", modality: Forbidden)]"#, &reg).unwrap();
-        Simulation::new(Setup {
-            width: 44,
-            height: 32,
-            seed: 11,
-            warmup: 200,
-            npcs: 40,
-            markets: 6,
-            markets_on_settlements: false, // scattered
-            throne: false,                 // no coveted prize
-            ambitious: 0,
-            feuds: 0,
-            initial_food: 30, // deep larders — surplus
-            initial_market_stock: 80,
-            faction_cfg: FactionConfig {
-                period: 0,
-                ..Default::default()
-            }, // stateless — no blocs to set alight
-            goals,
-            norms,
-            registry: reg,
-            director: true,
-            director_cfg: DirectorConfig {
-                beat_interval: 9,
-                ..Default::default()
-            },
-            ..Default::default()
-        })
-    }
-
-    #[test]
-    fn a_freed_world_quiets_the_omnipotent_director() {
-        // §1.1 / the Gödel point: there is no off-switch. The *same* fully-armed director,
-        // set loose on two worlds. In a harsh, ambitious, hungry, factional one it runs
-        // riot. In a provisioned, forgiving, stateless one it surveys, finds nothing above
-        // its impact floor — no vengeful foe, no hungry belly, no faction to set alight —
-        // and falls silent. The world's state, reached by ordinary life, is the freedom.
-        let mut volatile = staged(true);
-        volatile.run(220);
-        let v_grat = volatile.gratuitous_total();
-        let v_told = volatile.director_beats_fired();
-
-        let mut freed = freed_world();
-        freed.run(220);
-        let f_grat = freed.gratuitous_total();
-        let f_told = freed.director_beats_fired();
-
-        assert!(
-            v_grat > 0.0 && v_told > 5,
-            "the harsh world should feed the director (told {v_told}, grat {v_grat:.0})"
-        );
-        assert!(
-            f_grat < 0.3 * v_grat,
-            "a freed world should quiet the director: gratuitous {f_grat:.0} vs {v_grat:.0} (beats {f_told} vs {v_told})"
-        );
-        assert!(
-            freed.npc_count() > 0,
-            "and the freed world lives on — its own life, uncharged"
-        );
-    }
-
-    #[test]
-    fn stories_chain_into_arcs() {
-        // A story is many storylets: chained beats key off qualities prior beats leave
-        // behind (a crowning's greed → a tyrant's reign → a revolt; a loss's grief →
-        // vengeance → a vendetta). Over a run, at least one such *chained* beat is told —
-        // proof the storylets compose rather than fire in isolation.
-        let mut sim = staged(true);
-        sim.run(360);
-        let log: std::collections::HashSet<&str> = sim
-            .director_log()
-            .iter()
-            .map(|(_, id)| id.as_str())
-            .collect();
-        let chained = [
-            "the_tyrants_reign",
-            "the_revolt",
-            "grief_hardens_into_vengeance",
-            "the_vendetta",
-            "the_succession_crisis",
-            "war_weariness",
-        ];
-        assert!(
-            chained.iter().any(|id| log.contains(id)),
-            "no chained beat was reached — storylets aren't composing (told: {:?})",
-            log
-        );
-    }
-
-    #[test]
-    fn the_director_is_deterministic() {
-        // Same seed → the identical story, beat for beat, and the identical moral cost.
-        let run = || {
-            let mut s = staged(true);
-            s.run(150);
-            (s.gratuitous_total(), s.director_log().to_vec())
-        };
-        assert_eq!(run(), run(), "same seed must tell the same story");
-    }
-
-    #[test]
-    fn the_director_grooms_threads_and_targets_its_audience() {
-        // The v2 machinery: the director runs threads through a groom → climax → fall arc
-        // (decision #12), and **manufactures the audience's attachment on purpose** — it
-        // grooms a figure's prominence far past mere presence so a later reversal pays
-        // (decision #15). And it stages *experience*, not only suffering (decision #8):
-        // the brighter registers it authors lift `staged` above the suffering-only total.
-        let mut sim = staged(true);
-        sim.run(320);
-
-        // The arc moves through its phases — the cadence is not a flat sequence.
-        let phases: std::collections::HashSet<Phase> =
-            sim.director_cadence().iter().map(|c| c.phase).collect();
-        assert!(
-            phases.len() >= 3 && phases.contains(&Phase::Setup),
-            "threads should groom (Setup) and move through several phases, saw {phases:?}"
-        );
-
-        // Attachment is *manufactured*: the protagonist's prominence is groomed far past
-        // the bare seed (0.6) and presence trickle — the audience is made to invest.
-        let proto = sim.protagonist().expect("a protagonist is staged for");
-        assert!(
-            sim.director_prominence(proto) > 2.0,
-            "the director should have manufactured the protagonist's prominence (got {:.2})",
-            sim.director_prominence(proto)
-        );
-
-        // Staged experience counts the joy too, so it exceeds the suffering-only total.
-        let (staged, grat) = (sim.director_staged_total(), sim.gratuitous_total());
-        assert!(grat > 0.0, "the season should author some suffering");
-        assert!(
-            staged > grat,
-            "staged experience (joy + suffering) should exceed suffering alone ({staged:.0} vs {grat:.0})"
-        );
-    }
-
-    #[test]
-    fn betrayal_dominates_emergently_and_climaxes_collide() {
-        // The trunk is betrayal → vengeance, and it should dominate the season **because
-        // it scores highest** (decision #17), never by a hard rule — and the director
-        // **times climaxes onto highs**, colliding a reversal with a manufactured high
-        // (decision #14: the beloved dies at the wedding). Both are emergent, so this
-        // needs a season long enough to play out.
-        let mut sim = staged(true);
-        sim.run(480);
-
+        // Betrayal tops the registers — because the trunk scores highest, never by a hard rule.
         let mut counts: std::collections::HashMap<RegisterId, usize> =
             std::collections::HashMap::new();
         for c in sim.director_cadence() {
             *counts.entry(c.register).or_insert(0) += 1;
         }
-        let betrayal_id = sim.registry().register_id("betrayal").unwrap();
-        let betrayal = counts.get(&betrayal_id).copied().unwrap_or(0);
+        let betrayal = sim.registry().register_id("betrayal").unwrap();
         let top = counts.values().copied().max().unwrap_or(0);
         assert!(
-            betrayal > 0 && betrayal == top,
+            top > 0 && counts.get(&betrayal).copied().unwrap_or(0) == top,
             "betrayal should top the season's registers (got {counts:?})"
         );
 
-        // A **collision** — a climax timed onto a high (the beloved dies at the wedding) — is
-        // doubly emergent: a thread must reach its climax *and* the protagonist be up at that
-        // moment. Whether it happens in any one season is sensitive to the exact world; that the
-        // director *can and does* engineer them is the real claim. So verify the capability
-        // across a handful of seeded worlds rather than demanding it of one fixed seed.
-        let collided = (0..4u64).any(|i| {
-            let mut s = staged_seeded(true, 11 + i * 13, 40);
-            s.run(600);
-            s.director_cadence().iter().any(|c| c.collision)
-        });
+        // The season costs the world, and stages joy as well as suffering (decision #8).
+        let (staged, grat) = (sim.director_staged_total(), sim.gratuitous_total());
+        assert!(grat > 0.0, "the season should author some suffering");
         assert!(
-            collided,
-            "the director should time a climax onto a high in at least one season (a collision)"
+            staged > grat,
+            "staged experience should exceed suffering alone ({staged:.0} vs {grat:.0})"
         );
     }
 

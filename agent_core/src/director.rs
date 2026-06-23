@@ -1794,3 +1794,517 @@ pub(crate) fn director_step(
     director.has_fired = true;
     director.advances += 1;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use game_sim::World as GameWorld;
+
+    /// A **contrived stage** for the director: the tiny ECS world and the handful of resources
+    /// [`director_step`] reads, with helpers to hand-place souls and seed the director's own
+    /// threads/prominence. No worldgen warmup and no emergent population — a test seeds the exact
+    /// dramatic situation it means to check, then ticks the director directly. This is the whole
+    /// point of the harness: the director is a precondition engine, so its decisions can be tested
+    /// against *constructed* state in microseconds, where the old whole-season emergence tests in
+    /// the `agents` crate ran for seconds to let the same situation arise by chance.
+    struct Stage {
+        world: World,
+        reg: Registry,
+        coords: Vec<Coord>,
+        next_tile: usize,
+        proto: Option<Entity>,
+    }
+
+    impl Stage {
+        /// A stage with the given director knobs (use [`knobs`] for the `enabled` defaults). The
+        /// world is a tiny, unwarmed map: the director reads only topology, positions and features
+        /// — never the climate — so terrain detail is irrelevant and no `evolve` passes are needed.
+        fn new(cfg: DirectorConfig) -> Self {
+            let reg = Registry::bundled();
+            let gw = GameWorld::generate(16, 12, config::tunables::params(), 7);
+            let coords: Vec<Coord> = {
+                let topo = gw.topology();
+                (0..topo.len()).map(|i| topo.coord(i)).collect()
+            };
+            let mut world = World::new();
+            world.insert_resource(Substrate(gw));
+            world.insert_resource(DirectorRes(cfg));
+            world.insert_resource(reg.clone());
+            world.insert_resource(Features::default());
+            world.insert_resource(FeatureCatalog::default());
+            world.insert_resource(Factions(Vec::new()));
+            world.insert_resource(Director::seeded(0));
+            world.insert_resource(BeatBook(Vec::new()));
+            Self {
+                world,
+                reg,
+                coords,
+                next_tile: 0,
+                proto: None,
+            }
+        }
+
+        /// Replace the director's repertoire (its action set `L`).
+        fn beats(&mut self, beats: Vec<Beat>) {
+            self.world.insert_resource(BeatBook(beats));
+        }
+
+        /// Spawn a soul — all traits/moods neutral, well-fed — at its own tile. The first soul
+        /// spawned becomes the [`Protagonist`].
+        fn soul(&mut self) -> Entity {
+            let coord = self.coords[self.next_tile % self.coords.len()];
+            self.next_tile += 1;
+            let e = self
+                .world
+                .spawn((
+                    Npc,
+                    Position(coord),
+                    Personality(vec![0.0; self.reg.trait_count()]),
+                    Mood(vec![0.0; self.reg.mood_count()]),
+                    Opinion::default(),
+                    Allegiance::default(),
+                    Needs {
+                        sustenance: 100.0,
+                        rest: 100.0,
+                    },
+                ))
+                .id();
+            if self.proto.is_none() {
+                self.world.entity_mut(e).insert(Protagonist);
+                self.proto = Some(e);
+            }
+            e
+        }
+
+        fn set_mood(&mut self, e: Entity, mood: &str, v: f32) {
+            let id = self.reg.mood_id(mood).expect("mood exists");
+            self.world.entity_mut(e).get_mut::<Mood>().unwrap().0[id] = v;
+        }
+
+        /// Move a soul to a chosen tile (e.g. into the protagonist's blast radius).
+        fn place(&mut self, e: Entity, coord: Coord) {
+            self.world.entity_mut(e).get_mut::<Position>().unwrap().0 = coord;
+        }
+
+        /// Set `who`'s opinion *of* `of` (warm → ally, cold → foe).
+        fn set_opinion(&mut self, who: Entity, of: Entity, v: f32) {
+            self.world
+                .entity_mut(who)
+                .get_mut::<Opinion>()
+                .unwrap()
+                .0
+                .insert(of, v);
+        }
+
+        /// Enrol `who` in the faction seated at `seat` (so the director reads it as `InFaction`).
+        fn join_faction(&mut self, who: Entity, seat: Coord) {
+            self.world
+                .entity_mut(who)
+                .get_mut::<Allegiance>()
+                .unwrap()
+                .0
+                .push(crate::factions::Bond { seat, loyalty: 1.0 });
+        }
+
+        /// Seat a faction led by `leader` at `seat` — enough for the director's faction levers
+        /// (war, decree) to have a bloc to work.
+        fn seat_faction(&mut self, seat: Coord, leader: Entity) {
+            use crate::factions::{Faction, Government};
+            self.world
+                .resource_mut::<Factions>()
+                .0
+                .push(Faction {
+                    seat,
+                    government: Government::Monarchy,
+                    leaders: SmallVec::from_slice(&[leader]),
+                    members: vec![leader],
+                    laws: SmallVec::new(),
+                    at_war: SmallVec::new(),
+                    force: 1.0,
+                    cunning: 0.0,
+                    wealth: 0,
+                });
+        }
+
+        /// Seed a running thread directly, at a chosen point in its groom→climax→fall arc — the
+        /// lever the old tests could only reach by waiting a thread to groom and ripen across a
+        /// whole season. Reaches `Director`'s private state, which a child test module may touch.
+        fn seed_thread(&mut self, spine: &str, lead: Entity, other: Option<Entity>, phase: Phase) {
+            let spine = self.reg.register_id(spine).expect("register exists");
+            let is_trunk = self.reg.register_def(spine).trunk;
+            let mut d = self.world.resource_mut::<Director>();
+            let id = d.next_thread;
+            d.next_thread += 1;
+            d.threads.push(Thread {
+                id,
+                spine,
+                lead,
+                other,
+                phase,
+                heat: 0.0,
+                ripeness: 1.0,
+                beats: 0,
+                climaxed: false,
+                is_trunk,
+            });
+        }
+
+        fn director(&self) -> &Director {
+            self.world.resource::<Director>()
+        }
+
+        /// Run the director for one tick. A one-system schedule applies the deferred `Commands`
+        /// the director enacts (grudges, bonds, the promoted protagonist) before returning.
+        fn tick(&mut self) {
+            let mut sched = Schedule::default();
+            sched.add_systems(director_step);
+            sched.run(&mut self.world);
+        }
+    }
+
+    /// A minimal beat built in-test, so a mechanism test exercises the director against a
+    /// *controlled* storylet rather than the bundled content (which is checked separately). A
+    /// positive `tension` (an escalation) keeps the reversal keyed to the protagonist's *high*.
+    fn beat(id: &str, reg: &Registry, register: &str, phase: Phase, cast: Vec<Role>) -> Beat {
+        Beat {
+            id: id.into(),
+            register: reg.register_id(register).expect("register exists"),
+            tags: Vec::new(),
+            phases: vec![phase],
+            tension: 1.0,
+            stakes: 5.0,
+            weight: 1.0,
+            cast,
+            pre: Vec::new(),
+            effects: Vec::new(),
+        }
+    }
+
+    /// Knobs for a woken director with the impact floor dropped to 0 — a contrived stage offers
+    /// little ambient drama, so the floor (which makes a barren world fall silent) is lifted unless
+    /// a test sets it. `enabled` is on, since most tests want the director awake.
+    fn knobs() -> DirectorConfig {
+        DirectorConfig {
+            enabled: true,
+            impact_floor: 0.0,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn a_due_beat_is_told() {
+        // The simplest mechanism: a woken director with a tellable beat and a protagonist fires
+        // it on its first due tick — no season required.
+        let mut s = Stage::new(knobs());
+        let reg = s.reg.clone();
+        s.beats(vec![beat(
+            "a_quiet_moment",
+            &reg,
+            "wonder",
+            Phase::Setup,
+            vec![Role::Protagonist],
+        )]);
+        s.soul();
+        s.tick();
+        assert_eq!(s.director().log.len(), 1, "a due beat should be told");
+        assert_eq!(s.director().cadence[0].beat, "a_quiet_moment");
+    }
+
+    #[test]
+    fn a_climax_is_timed_onto_a_high() {
+        // The collision the old `betrayal_dominates_…` test hunted across four 600-tick seasons:
+        // a climax timed onto the protagonist's manufactured high (the beloved dies at the
+        // wedding). Seed a thread already at its climax and a protagonist riding a high, and the
+        // director marks the telling a collision — directly, in one tick.
+        let mut cfg = knobs();
+        cfg.max_threads = 1; // only our seeded thread runs
+        cfg.collision_chance = 1.0; // a near-peak climax always collides (no RNG flake)
+        let mut s = Stage::new(cfg);
+        let reg = s.reg.clone();
+        s.beats(vec![beat(
+            "the_reversal",
+            &reg,
+            "betrayal",
+            Phase::Climax,
+            vec![Role::Protagonist],
+        )]);
+        let proto = s.soul();
+        s.set_mood(proto, "joy", 0.5); // a high to reverse
+        s.seed_thread("betrayal", proto, None, Phase::Climax);
+        s.tick();
+        assert!(
+            s.director().cadence.iter().any(|c| c.collision),
+            "a climax on a high should be recorded as a collision",
+        );
+    }
+
+    #[test]
+    fn betrayal_is_the_trunk_spine() {
+        // Betrayal dominates a season **because it is the trunk** the first thread always takes
+        // and the spine that self-perpetuates — not by a hard rule in the director. The old test
+        // inferred this from a 480-tick register tally; here we read it off `pick_spine` directly.
+        let reg = Registry::bundled();
+        let cfg = knobs();
+        let mut d = Director::seeded(0);
+        let spine = pick_spine(&mut d, &cfg, &reg, &[], true);
+        assert_eq!(
+            spine,
+            reg.register_id("betrayal").expect("betrayal register"),
+            "the first thread should take the betrayal trunk",
+        );
+        assert!(
+            reg.register_def(spine).trunk,
+            "the trunk spine should be flagged trunk",
+        );
+    }
+
+    #[test]
+    fn the_director_falls_silent_below_the_impact_floor() {
+        // The Gödel point (§5): the director is omnipotent yet a precondition engine with an
+        // **impact floor** — a world offering no drama worth telling starves it and it falls
+        // silent. With a real floor and only a toothless (low-stakes) beat, nothing is told;
+        // raise the stakes past the floor and the same director speaks. No "freed world" season
+        // needed — the floor is the whole mechanism.
+        let mut quiet = Stage::new(DirectorConfig {
+            impact_floor: 1.0,
+            ..knobs()
+        });
+        let reg = quiet.reg.clone();
+        let mut toothless = beat("a_toothless_beat", &reg, "wonder", Phase::Setup, vec![Role::Protagonist]);
+        toothless.stakes = 0.0; // no impact — below the floor
+        quiet.beats(vec![toothless]);
+        quiet.soul();
+        quiet.tick();
+        assert!(
+            quiet.director().log.is_empty(),
+            "a world below the impact floor should quiet the director",
+        );
+
+        let mut loud = Stage::new(DirectorConfig {
+            impact_floor: 1.0,
+            ..knobs()
+        });
+        loud.beats(vec![beat("real_drama", &reg, "betrayal", Phase::Setup, vec![Role::Protagonist])]);
+        loud.soul();
+        loud.tick();
+        assert_eq!(
+            loud.director().log.len(),
+            1,
+            "drama above the floor should be told by the same director",
+        );
+    }
+
+    #[test]
+    fn the_same_seed_tells_the_same_story() {
+        // Determinism: same seed, same world, same story — beat for beat, and the same moral cost.
+        let run = || {
+            let mut s = Stage::new(knobs());
+            s.beats(BeatBook::bundled().0);
+            s.soul();
+            s.soul();
+            for _ in 0..8 {
+                s.tick();
+            }
+            let d = s.director();
+            (d.gratuitous_total, d.log.clone())
+        };
+        assert_eq!(run(), run(), "same seed must tell the same story");
+    }
+
+    #[test]
+    fn featuring_a_soul_grooms_its_prominence() {
+        // *The game makes you love them on purpose* (decision #15): being featured in beats
+        // groomms a soul's prominence far past the bare presence trickle, so a later reversal
+        // pays. A handful of fires lifts the protagonist well past the seed floor.
+        let mut s = Stage::new(DirectorConfig {
+            beat_interval: 0, // due every tick — fire a beat each step
+            max_threads: 1,
+            ..knobs()
+        });
+        let reg = s.reg.clone();
+        s.beats(vec![beat("featured", &reg, "wonder", Phase::Setup, vec![Role::Protagonist])]);
+        let proto = s.soul();
+        for _ in 0..6 {
+            s.tick();
+        }
+        assert!(
+            s.director().prominence_of(proto) > 2.0,
+            "featuring should manufacture prominence (got {:.2})",
+            s.director().prominence_of(proto),
+        );
+    }
+
+    #[test]
+    fn staged_experience_counts_joy_not_only_suffering() {
+        // The moral arithmetic is *staged experience*, not tragedy (decision #8): a beat that
+        // authors both anguish and joy lifts `staged_total` above the suffering-only
+        // `gratuitous_total`. A single mixed beat shows both totals diverge.
+        let mut s = Stage::new(DirectorConfig {
+            max_threads: 1,
+            ..knobs()
+        });
+        let reg = s.reg.clone();
+        let mut mixed = beat("a_bittersweet_turn", &reg, "betrayal", Phase::Setup, vec![Role::Protagonist]);
+        mixed.effects = vec![
+            Effect::Stir {
+                who: Role::Protagonist,
+                mood: "anger".into(),
+                delta: 0.5,
+            },
+            Effect::Stir {
+                who: Role::Protagonist,
+                mood: "joy".into(),
+                delta: 0.5,
+            },
+        ];
+        s.beats(vec![mixed]);
+        s.soul();
+        s.tick();
+        let d = s.director();
+        assert!(d.gratuitous_total > 0.0, "the beat should author suffering");
+        assert!(
+            d.staged_total > d.gratuitous_total,
+            "staged experience (joy + suffering) should exceed suffering alone ({:.3} vs {:.3})",
+            d.staged_total,
+            d.gratuitous_total,
+        );
+    }
+
+    #[test]
+    fn a_trunk_threads_fall_seeds_the_next_vengeance() {
+        // Storylets chain into arcs: a trunk (betrayal/loss) thread's *fall* seeds the next
+        // thread — its `seeds:` register (vengeance) — so the spine self-perpetuates. The old
+        // test waited a 360-tick season for a chained beat; here we close one trunk thread and
+        // read the seeded successor directly.
+        let mut s = Stage::new(DirectorConfig {
+            max_threads: 1,
+            ..knobs()
+        });
+        let reg = s.reg.clone();
+        let mut fall = beat("the_aftermath", &reg, "betrayal", Phase::Fall, vec![Role::Protagonist]);
+        fall.tension = -1.0; // a fall is relief-keyed
+        s.beats(vec![fall]);
+        let proto = s.soul();
+        // A betrayal thread that has already climaxed and is now falling — closing it seeds vengeance.
+        s.seed_thread("betrayal", proto, None, Phase::Fall);
+        s.world.resource_mut::<Director>().threads[0].climaxed = true;
+        s.tick();
+        let vengeance = reg.register_id("vengeance").expect("vengeance register");
+        assert!(
+            s.director().threads.iter().any(|t| t.spine == vengeance),
+            "a fallen betrayal thread should seed a vengeance thread (threads: {:?})",
+            s.director().threads.iter().map(|t| t.spine).collect::<Vec<_>>(),
+        );
+    }
+
+    #[test]
+    fn a_thread_advances_through_its_arc() {
+        // A thread moves groom → climax: heat banked by each beat ripens it Setup → Rising →
+        // Climax, so the cadence is an arc, not a flat sequence. (Decision #12.)
+        let mut s = Stage::new(DirectorConfig {
+            beat_interval: 0,
+            max_threads: 1,
+            ..knobs()
+        });
+        let reg = s.reg.clone();
+        // A phase-agnostic, high-tension beat: it fits any phase (so it always casts) and banks
+        // enough heat each telling to ripen the thread quickly.
+        let mut driver = beat("a_turn", &reg, "betrayal", Phase::Setup, vec![Role::Protagonist]);
+        driver.phases = Vec::new(); // any phase
+        driver.tension = 2.0;
+        s.beats(vec![driver]);
+        let proto = s.soul();
+        s.seed_thread("betrayal", proto, None, Phase::Setup);
+        for _ in 0..3 {
+            s.tick();
+        }
+        let phases: std::collections::HashSet<Phase> =
+            s.director().cadence.iter().map(|c| c.phase).collect();
+        assert!(
+            phases.len() >= 3 && phases.contains(&Phase::Setup),
+            "the thread should groom (Setup) and move through several phases, saw {phases:?}",
+        );
+    }
+
+    #[test]
+    fn an_asleep_director_does_nothing() {
+        // Off by default = byte-identical: a sleeping director (its switch off) tells no beat and
+        // authors no suffering, however rich the world. The integration that a director-free run
+        // is *bit-for-bit* unchanged stays an `agents` smoke test; here we pin the unit behaviour.
+        let mut s = Stage::new(DirectorConfig {
+            enabled: false,
+            ..knobs()
+        });
+        s.beats(BeatBook::bundled().0);
+        s.soul();
+        s.soul();
+        for _ in 0..5 {
+            s.tick();
+        }
+        let d = s.director();
+        assert!(d.log.is_empty(), "a sleeping director tells no story");
+        assert!(d.cadence.is_empty(), "a sleeping director leaves no cadence");
+        assert_eq!(d.gratuitous_total, 0.0, "a sleeping director authors no suffering");
+        assert_eq!(d.staged_total, 0.0, "a sleeping director stages nothing");
+    }
+
+    #[test]
+    fn the_director_works_people_factions_and_the_world() {
+        // The point of the rebuild: `Γ` reaches the *social fabric*, not just the land — and the
+        // land too. A single beat carrying Grudge, War and Disaster levers, told over a seated
+        // faction, manufactures a grudge between people (people layer), sets that faction at war
+        // with its rival (faction layer), and scours a soul caught in the blast (world layer). The
+        // old test inferred all three from which beats happened to fire across a 240-tick, 56-soul
+        // season; here the levers are exercised directly, in one tick.
+        let mut s = Stage::new(DirectorConfig {
+            max_threads: 1,
+            ..knobs()
+        });
+        let reg = s.reg.clone();
+        let proto = s.soul();
+        let foe = s.soul();
+        let proto_pos = s.world.get::<Position>(proto).unwrap().0;
+        s.place(foe, proto_pos); // stand the foe in the protagonist's tile — inside the blast
+        s.set_opinion(foe, proto, -1.0); // a foe: opinion of the protagonist well past cold
+        let seat = s.coords[0];
+        let rival_seat = s.coords[6];
+        s.join_faction(proto, seat);
+        s.seat_faction(seat, proto);
+        s.seat_faction(rival_seat, foe);
+        let mut strike = beat(
+            "the_director_strikes",
+            &reg,
+            "betrayal",
+            Phase::Climax,
+            vec![Role::Protagonist, Role::Foe],
+        );
+        strike.effects = vec![
+            Effect::Grudge {
+                who: Role::Protagonist,
+                against: Role::Foe,
+            },
+            Effect::War,
+            Effect::Disaster {
+                radius: 1,
+                severity: 40.0,
+            },
+        ];
+        s.beats(vec![strike]);
+        s.tick();
+        assert!(
+            s.world.get::<Grievance>(proto).is_some(),
+            "the director should have manufactured a grudge (the people layer)",
+        );
+        assert!(
+            s.world
+                .resource::<Factions>()
+                .at(seat)
+                .is_some_and(|f| f.at_war.contains(&rival_seat)),
+            "the director should have set its faction at war (the faction layer)",
+        );
+        assert!(
+            s.world.get::<Needs>(foe).unwrap().sustenance < 100.0,
+            "the director's disaster should have scoured a body in the blast (the world layer)",
+        );
+    }
+}
