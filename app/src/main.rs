@@ -17,6 +17,7 @@
 use agents::{Coord, FindState, Goals, Registry, Setup, Simulation};
 use bevy::asset::AssetPlugin;
 use bevy::camera::ScalingMode;
+use bevy::core_pipeline::prepass::DepthPrepass;
 use bevy::input::ButtonState;
 use bevy::input::keyboard::{Key, KeyboardInput};
 use bevy::input::mouse::{AccumulatedMouseMotion, AccumulatedMouseScroll};
@@ -38,6 +39,7 @@ mod hud;
 mod layout;
 mod mesh;
 mod minimap;
+mod outline;
 mod palette;
 mod props;
 mod scatter;
@@ -372,8 +374,12 @@ fn main() {
             }),
     )
     // The cel pass over the world: a material plugin for the toon-extended StandardMaterial the
-    // terrain/props/fauna/figures all share (selection rings stay plain StandardMaterial).
-    .add_plugins(MaterialPlugin::<ToonMaterial>::default())
+    // terrain/props/fauna/figures all share (selection rings stay plain StandardMaterial), plus the
+    // post-process outline that inks edges off the depth + normal prepass.
+    .add_plugins((
+        MaterialPlugin::<ToonMaterial>::default(),
+        outline::OutlinePlugin,
+    ))
     .insert_resource(ClearColor(Color::srgb(
         palette::SKY_RGB[0],
         palette::SKY_RGB[1],
@@ -665,6 +671,11 @@ fn setup(
     commands.spawn((
         Camera3d::default(),
         projection,
+        // The outline pass reads the depth prepass for its edge detection. MSAA is off so the depth
+        // texture (and the colour target) are single-sampled — what the post-process shader's plain
+        // `texture_depth_2d` binding expects.
+        DepthPrepass,
+        Msaa::Off,
         cam_transform(Vec3::new(aw.x, 0.0, aw.y), &rig),
         rig,
         // A cool ambient and a pale distance haze — the dream half-drowned in fog.
