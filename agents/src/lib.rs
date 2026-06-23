@@ -2482,9 +2482,10 @@ mod tests {
 
     fn economy(npcs: usize) -> Simulation {
         Simulation::new(Setup {
-            width: 40,
-            height: 30,
+            width: 32,
+            height: 24,
             seed: 2026,
+            warmup: 60,
             npcs,
             ..Default::default()
         })
@@ -2887,6 +2888,7 @@ mod tests {
             width: 40,
             height: 30,
             seed: 2026,
+            warmup: 60,
             npcs: 40,
             throne: true,
             ambitious: 6,
@@ -2934,6 +2936,7 @@ mod tests {
             width: 40,
             height: 30,
             seed: 2026,
+            warmup: 60,
             npcs: 30,
             throne: true,
             ambitious: 4,
@@ -3031,6 +3034,7 @@ mod tests {
             width: 40,
             height: 30,
             seed: 2026,
+            warmup: 60,
             npcs: 30,
             feuds: 3,
             goals,
@@ -3071,6 +3075,7 @@ mod tests {
                 width: 40,
                 height: 30,
                 seed: 2026,
+                warmup: 60,
                 npcs: 30,
                 feuds: 3,
                 goals,
@@ -3272,6 +3277,7 @@ mod tests {
         let build = |sift: bool| {
             let mut s = Simulation::new(Setup {
                 seed: 42,
+                warmup: 60,
                 npcs: 40,
                 markets: 4,
                 feuds: 4,
@@ -3318,6 +3324,7 @@ mod tests {
                 width: 32,
                 height: 24,
                 seed: 42,
+                warmup: 60,
                 npcs: 40,
                 markets: 4,
                 feuds: 8,
@@ -3410,6 +3417,7 @@ mod tests {
                 width: 32,
                 height: 24,
                 seed: 42,
+                warmup: 60,
                 npcs: 40,
                 markets: 4,
                 feuds: 8,
