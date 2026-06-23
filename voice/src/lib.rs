@@ -393,7 +393,7 @@ mod tests {
             p.contains(&u.speaker_name) && p.contains(&u.listener_name),
             "names are in the card"
         );
-        assert!(p.contains(u.act.key()), "the speech act is named");
+        assert!(p.contains(u.act.as_str()), "the speech act is named");
         assert!(
             p.contains(&format!("{} just said", u.listener_name)),
             "the prior line is included for context"
@@ -613,7 +613,7 @@ mod tests {
             fell += fb as usize;
             eprintln!(
                 "[{:<8}] fallback={fb} raw_len={:>3} raw={raw:?}",
-                u.act.key(),
+                u.act,
                 raw.chars().count()
             );
         }
