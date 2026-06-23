@@ -52,7 +52,9 @@ mod resolve;
 // ── Flat public surface — `use combat_core::*` brings in the whole vocabulary. ──────────────
 pub use actor::{Actor, ActorState, Vitals, ZoneId};
 pub use config::{Config, CostModel, EditLockPolicy, TempoModel};
-pub use controller::{Command, Controller, Decision, DecisionKind, ScriptedController, StubAi};
+pub use controller::{
+    Command, Controller, Decision, DecisionKind, EliteAi, ScriptedController, StubAi,
+};
 pub use events::{Event, FizzleReason, Outcome};
 pub use foresight::{ActorStateView, ActorView, ForesightView, VisibleInstance, WindowView};
 pub use ids::{ActorId, FactionId, InstanceId, MoveId, WindowId};

@@ -2,10 +2,13 @@
 //! serialized decision point it hands a [`Decision`] plus a fogged [`ForesightView`] to a
 //! [`Controller`] and applies the [`Command`] it returns.
 //!
-//! Two implementations ship: [`ScriptedController`] (replays a fixed command log — what the
-//! golden-vector tests drive) and [`StubAi`] (a minimal, deterministic placeholder policy).
+//! Three implementations ship: [`ScriptedController`] (replays a fixed command log — what the
+//! golden-vector tests drive), [`StubAi`] (a minimal, deterministic placeholder that never
+//! dilates), and [`EliteAi`] (a stub that *does* dilate — spends Tempo to interrupt/slow the
+//! player's line, the source of enemy-driven reversals).
 
-use crate::foresight::ForesightView;
+use crate::config::Config;
+use crate::foresight::{ActorStateView, ForesightView, VisibleInstance};
 use crate::ids::{ActorId, FactionId, MoveId};
 use crate::moves::{Effect, MoveLibrary, ZoneReq};
 use crate::tick::Tick;
@@ -97,6 +100,94 @@ impl Controller for ScriptedController {
     }
 }
 
+/// A readiness action: the highest-priority affordable damage move against the lowest-id reachable
+/// enemy, else `Hold`. Shared by both stub controllers; deterministic (lowest move/actor id breaks
+/// ties).
+fn readiness_command(lib: &MoveLibrary, decision: &Decision, view: &ForesightView) -> Command {
+    let my_zone = view
+        .actors
+        .iter()
+        .find(|a| a.id == decision.actor)
+        .map(|a| a.zone)
+        .unwrap_or(0);
+    let enemy = |req: ZoneReq| -> Option<ActorId> {
+        view.actors
+            .iter()
+            .filter(|a| a.faction != view.own_faction && !matches!(a.state, ActorStateView::Down))
+            .filter(|a| req == ZoneReq::AnyZone || a.zone == my_zone)
+            .map(|a| a.id)
+            .min()
+    };
+
+    let mut best: Option<(u8, MoveId, ActorId)> = None;
+    for &mv in &view.own_moves {
+        let Some(def) = lib.get(mv) else { continue };
+        if def.tempo_cost > view.own_tempo {
+            continue;
+        }
+        if !def
+            .effects
+            .iter()
+            .any(|e| matches!(e, Effect::Damage { .. }))
+        {
+            continue;
+        }
+        // A move gated by a window the AI can't guarantee is skipped (keep it simple).
+        if def.requires_tag.is_some() {
+            continue;
+        }
+        let Some(target) = enemy(def.range) else {
+            continue;
+        };
+        let pick = match best {
+            None => true,
+            Some((p, m, _)) => def.priority_class > p || (def.priority_class == p && mv.0 < m.0),
+        };
+        if pick {
+            best = Some((def.priority_class, mv, target));
+        }
+    }
+    match best {
+        Some((_, mv, target)) => Command::CommitAction {
+            mv,
+            target: Some(target),
+        },
+        None => Command::Hold,
+    }
+}
+
+/// A dilation (edit) action for a Tempo-holder: interrupt the soonest unarmored wind-up if it can
+/// afford it, else slow the most imminent opposing action, else `Pass`. `cfg` supplies the cost
+/// model; ties break on the lowest instance id. This is what turns enemy Tempo into reversals.
+fn dilation_command(lib: &MoveLibrary, cfg: &Config, view: &ForesightView) -> Command {
+    let tempo = view.own_tempo;
+    let now = view.current_tick;
+    let mut foes: Vec<&VisibleInstance> = view.instances.iter().filter(|i| !i.own).collect();
+    foes.sort_by_key(|i| (i.active_start.0, i.id.0));
+
+    // Interrupt an unarmored action still in startup, if affordable.
+    let interrupt_cost = cfg.verb_base_cost + cfg.verb_per_tick_cost;
+    for inst in &foes {
+        let in_startup = now >= inst.start_tick && now < inst.active_start;
+        let armored = lib.get(inst.mv).map(|d| d.has_armor).unwrap_or(true);
+        if in_startup && !armored && tempo >= interrupt_cost {
+            return Command::EditVerb(EditVerb::Interrupt { instance: inst.id });
+        }
+    }
+    // Else shove the most imminent threat down the line.
+    if let Some(inst) = foes.first() {
+        let ticks = 2u32;
+        let cost = cfg.verb_base_cost + cfg.verb_per_tick_cost * ticks as i32;
+        if tempo >= cost {
+            return Command::EditVerb(EditVerb::Slow {
+                instance: inst.id,
+                ticks,
+            });
+        }
+    }
+    Command::Pass
+}
+
 /// A minimal, deterministic policy (spec §13): on a readiness decision, commit the
 /// highest-priority affordable damage move against the lowest-id reachable enemy; otherwise Hold.
 /// Never dilates. No cleverness — a placeholder behind the trait.
@@ -113,69 +204,33 @@ impl StubAi {
 
 impl Controller for StubAi {
     fn decide(&mut self, decision: &Decision, view: &ForesightView) -> Command {
-        if decision.kind == DecisionKind::Dilation {
-            return Command::Pass;
+        match decision.kind {
+            DecisionKind::Dilation => Command::Pass,
+            DecisionKind::Readiness => readiness_command(&self.lib, decision, view),
         }
-        let my_zone = view
-            .actors
-            .iter()
-            .find(|a| a.id == decision.actor)
-            .map(|a| a.zone)
-            .unwrap_or(0);
+    }
+}
 
-        // Lowest-id alive enemy, by zone.
-        let enemy = |req: ZoneReq| -> Option<ActorId> {
-            view.actors
-                .iter()
-                .filter(|a| {
-                    a.faction != view.own_faction
-                        && !matches!(a.state, crate::foresight::ActorStateView::Down)
-                })
-                .filter(|a| req == ZoneReq::AnyZone || a.zone == my_zone)
-                .map(|a| a.id)
-                .min()
-        };
+/// Like [`StubAi`], but it *dilates*: a Tempo-holding elite spends to interrupt or slow the
+/// player's incoming actions (still deterministic). This is the enemy controller that makes the
+/// per-actor opposed Tempo economy two-sided — the source of enemy-driven reversals.
+#[derive(Clone, Debug)]
+pub struct EliteAi {
+    lib: MoveLibrary,
+    cfg: Config,
+}
 
-        let mut best: Option<(u8, MoveId, ActorId)> = None;
-        for &mv in &view.own_moves {
-            let Some(def) = self.lib.get(mv) else {
-                continue;
-            };
-            if def.tempo_cost > view.own_tempo {
-                continue;
-            }
-            let deals_damage = def
-                .effects
-                .iter()
-                .any(|e| matches!(e, Effect::Damage { .. }));
-            if !deals_damage {
-                continue;
-            }
-            // A move gated by a window the AI can't guarantee is skipped (keep it simple).
-            if def.requires_tag.is_some() {
-                continue;
-            }
-            let Some(target) = enemy(def.range) else {
-                continue;
-            };
-            // Prefer higher priority; tie-break on the lowest move id.
-            let pick = match best {
-                None => true,
-                Some((p, m, _)) => {
-                    def.priority_class > p || (def.priority_class == p && mv.0 < m.0)
-                }
-            };
-            if pick {
-                best = Some((def.priority_class, mv, target));
-            }
-        }
+impl EliteAi {
+    pub fn new(lib: MoveLibrary, cfg: Config) -> Self {
+        Self { lib, cfg }
+    }
+}
 
-        match best {
-            Some((_, mv, target)) => Command::CommitAction {
-                mv,
-                target: Some(target),
-            },
-            None => Command::Hold,
+impl Controller for EliteAi {
+    fn decide(&mut self, decision: &Decision, view: &ForesightView) -> Command {
+        match decision.kind {
+            DecisionKind::Readiness => readiness_command(&self.lib, decision, view),
+            DecisionKind::Dilation => dilation_command(&self.lib, &self.cfg, view),
         }
     }
 }
