@@ -13,6 +13,7 @@ explore = { path = "../explore" }
 game_sim = { path = "../game_sim" }
 party = { path = "../party" }
 rpg = { path = "../rpg" }
+serde = { version = "1", features = ["derive"] }
 sim = { path = "../sim" }
 survival = { path = "../survival" }
 travel = { path = "../travel" }

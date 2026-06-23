@@ -18,101 +18,159 @@ use agent_core::Position;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::prelude::*;
 use combat_core as cc;
+use serde::Deserialize;
 
-// ── Move catalogue (v1, code-authored) ──────────────────────────────────────────────────────
-// The five action-tray moves of the fighting HUD, plus repositioning verbs for the position map.
+// ── Move catalogue (RON-authored) ────────────────────────────────────────────────────────────
+// The catalogue and per-archetype kits are authored in `assets/data/combat.ron` and compiled into
+// `combat_core` MoveDefs here. Repositioning verbs are generated (one per zone), not authored.
 
-const M_STRIKE: u32 = 1;
-const M_HEAVY: u32 = 2;
-const M_FEINT: u32 = 3;
-const M_RIPOSTE: u32 = 4;
-const M_SHOVE: u32 = 5;
-/// A thrown/ranged jab — works from any zone, so an out-of-zone actor can always act (no stall).
-const M_LOOSE: u32 = 6;
 /// Repositioning moves are `REPOSITION_BASE + zone`.
 const REPOSITION_BASE: u32 = 10;
-
 /// Number of abstract zones in the positioning model (Left / Center / Right).
 pub const ZONE_COUNT: u8 = 3;
 /// Everyone starts engaged in the centre zone.
 pub const CENTER_ZONE: u8 = 1;
 
-/// The move library. With `gating` on, the heavy melee moves require the target share the
-/// attacker's zone (close in to land them); the ranged jab and shove always reach. Construction
-/// goes through `MoveDef::builder`, the seam a future WWN→frame bridge will target.
-pub fn library(gating: bool) -> cc::MoveLibrary {
-    use cc::{Effect, Fixed, MoveDef, MoveId, WindowTag, ZoneReq};
-    let melee = if gating {
-        ZoneReq::SameZone
-    } else {
-        ZoneReq::AnyZone
-    };
-    let mut defs = vec![
-        MoveDef::builder(MoveId(M_STRIKE), "Strike")
-            .frames(3, 1, 2)
-            .priority(2)
-            .range(melee)
-            .damage(4)
-            .build(),
-        MoveDef::builder(MoveId(M_HEAVY), "Heavy Blow")
-            .frames(6, 1, 3)
-            .priority(1)
-            .armored()
-            .range(melee)
-            .damage(9)
-            .build(),
-        MoveDef::builder(MoveId(M_FEINT), "Feint")
-            .frames(3, 1, 2)
-            .priority(1)
-            .effect(Effect::OpenWindow {
-                tag: WindowTag::Exposed,
-                duration: 8,
-                magnitude: Fixed::ZERO,
-            })
-            .build(),
-        MoveDef::builder(MoveId(M_RIPOSTE), "Riposte")
-            .frames(4, 1, 3)
-            .priority(2)
-            .requires(WindowTag::Exposed)
-            .range(melee)
-            .damage(7)
-            .build(),
-        MoveDef::builder(MoveId(M_SHOVE), "Shove")
-            .frames(2, 1, 3)
-            .priority(2)
-            .effect(Effect::LineKnockback { ticks: 4 })
-            .damage(2)
-            .build(),
-        MoveDef::builder(MoveId(M_LOOSE), "Loose")
-            .frames(2, 1, 2)
-            .priority(2)
-            .damage(3)
-            .build(),
-    ];
-    for zone in 0..ZONE_COUNT {
-        defs.push(
-            MoveDef::builder(MoveId(REPOSITION_BASE + zone as u32), "Reposition")
-                .frames(2, 1, 1)
-                .priority(1)
-                .reposition(zone)
-                .build(),
-        );
-    }
-    cc::MoveLibrary::from_defs(defs)
-}
-
-/// The five action-tray moves every combatant carries in v1: a melee Strike, a ranged Loose, a
-/// knockback Shove, and the Feint→Riposte setup/payoff pair.
-pub fn kit() -> Vec<cc::MoveId> {
-    [M_STRIKE, M_LOOSE, M_SHOVE, M_FEINT, M_RIPOSTE]
-        .into_iter()
-        .map(cc::MoveId)
-        .collect()
-}
-
 /// The move id that repositions to `zone` (for the position map's direction controls).
 pub fn reposition_move(zone: u8) -> cc::MoveId {
     cc::MoveId(REPOSITION_BASE + zone.min(ZONE_COUNT - 1) as u32)
+}
+
+/// One authored move, compiled into a [`cc::MoveDef`] through the builder seam.
+#[derive(Clone, Debug, Deserialize)]
+struct MoveSpec {
+    id: u32,
+    name: String,
+    startup: u32,
+    active: u32,
+    recovery: u32,
+    #[serde(default)]
+    priority: u8,
+    #[serde(default)]
+    armored: bool,
+    /// Gated to the attacker's zone when zone-gating is on.
+    #[serde(default)]
+    melee: bool,
+    #[serde(default)]
+    damage: i32,
+    /// `LineKnockback` ticks (0 = none).
+    #[serde(default)]
+    knockback: u32,
+    /// `OpenWindow(Exposed)` duration (0 = none).
+    #[serde(default)]
+    expose: u32,
+    #[serde(default)]
+    requires_exposed: bool,
+    #[serde(default)]
+    tempo_cost: i32,
+}
+
+impl MoveSpec {
+    fn compile(&self, melee_range: cc::ZoneReq) -> cc::MoveDef {
+        use cc::{Effect, Fixed, MoveDef, MoveId, WindowTag, ZoneReq};
+        let mut b = MoveDef::builder(MoveId(self.id), self.name.clone())
+            .frames(self.startup, self.active, self.recovery)
+            .priority(self.priority)
+            .tempo_cost(self.tempo_cost)
+            .range(if self.melee {
+                melee_range
+            } else {
+                ZoneReq::AnyZone
+            });
+        if self.armored {
+            b = b.armored();
+        }
+        if self.knockback > 0 {
+            b = b.effect(Effect::LineKnockback {
+                ticks: self.knockback,
+            });
+        }
+        if self.expose > 0 {
+            b = b.effect(Effect::OpenWindow {
+                tag: WindowTag::Exposed,
+                duration: self.expose,
+                magnitude: Fixed::ZERO,
+            });
+        }
+        if self.damage != 0 {
+            b = b.damage(self.damage);
+        }
+        if self.requires_exposed {
+            b = b.requires(WindowTag::Exposed);
+        }
+        b.build()
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct ArchetypeSpec {
+    name: String,
+    kit: Vec<u32>,
+}
+
+/// The RON-authored combat content: the move catalogue, the default action-tray kit, and the
+/// per-archetype kits. Inserted as a resource when the combat layer is on.
+#[derive(Resource, Clone, Debug, Deserialize)]
+pub struct CombatContent {
+    tray: Vec<u32>,
+    moves: Vec<MoveSpec>,
+    archetypes: Vec<ArchetypeSpec>,
+}
+
+impl CombatContent {
+    /// The content baked in at compile time (via `config`), parsed from `assets/data/combat.ron`.
+    pub fn bundled() -> Self {
+        config::Config::bundled()
+            .load(config::Asset::Combat)
+            .expect("bundled combat.ron parses")
+    }
+
+    /// Compile the catalogue into a move library, appending the generated reposition verbs. Melee
+    /// moves are zone-gated when `gating` is set.
+    fn library(&self, gating: bool) -> cc::MoveLibrary {
+        let melee = if gating {
+            cc::ZoneReq::SameZone
+        } else {
+            cc::ZoneReq::AnyZone
+        };
+        let mut defs: Vec<cc::MoveDef> = self.moves.iter().map(|m| m.compile(melee)).collect();
+        for zone in 0..ZONE_COUNT {
+            defs.push(
+                cc::MoveDef::builder(cc::MoveId(REPOSITION_BASE + zone as u32), "Reposition")
+                    .frames(2, 1, 1)
+                    .priority(1)
+                    .reposition(zone)
+                    .build(),
+            );
+        }
+        cc::MoveLibrary::from_defs(defs)
+    }
+
+    /// The kit for `archetype` (falling back to the action-tray kit for an unknown one).
+    fn kit_of(&self, archetype: &str) -> Vec<cc::MoveId> {
+        self.archetypes
+            .iter()
+            .find(|a| a.name == archetype)
+            .map(|a| &a.kit)
+            .unwrap_or(&self.tray)
+            .iter()
+            .map(|&id| cc::MoveId(id))
+            .collect()
+    }
+}
+
+/// Which kit a body fights with: the avatar and party are adventurers, predators bull in, prey
+/// kite, everyone else is a soldier.
+fn archetype_of(world: &World, e: Entity, is_player: bool) -> &'static str {
+    if is_player {
+        "adventurer"
+    } else if world.get::<fauna::Carnivore>(e).is_some() {
+        "predator"
+    } else if world.get::<fauna::Herbivore>(e).is_some() {
+        "prey"
+    } else {
+        "soldier"
+    }
 }
 
 // ── Tunables / resources / components ────────────────────────────────────────────────────────
@@ -306,12 +364,13 @@ fn is_hostile(world: &World, e: Entity, avatar: Entity) -> bool {
 pub(crate) fn build_encounter(
     world: &mut World,
     cfg: &CombatConfig,
+    content: &CombatContent,
     seed: u64,
     avatar: Entity,
     roster: &[Entity],
     enemies: &[Entity],
 ) -> Encounter {
-    let mut sim = cc::Sim::new(cfg.engine, library(cfg.zone_gating), seed);
+    let mut sim = cc::Sim::new(cfg.engine, content.library(cfg.zone_gating), seed);
     let mut combatants = Vec::new();
     let mut next = 0u32;
 
@@ -320,6 +379,7 @@ pub(crate) fn build_encounter(
         let hp = current_hp(world, e, max);
         let id = cc::ActorId(next);
         next += 1;
+        let kit = content.kit_of(archetype_of(world, e, faction == 0));
         sim.add_actor(
             cc::Actor {
                 id,
@@ -331,7 +391,7 @@ pub(crate) fn build_encounter(
                 foresight_horizon: 0,
                 zone: CENTER_ZONE,
             },
-            kit(),
+            kit,
         );
         combatants.push(Combatant {
             actor: id,

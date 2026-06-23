@@ -345,6 +345,8 @@ pub(crate) fn combat_input(keys: Res<ButtonInput<KeyCode>>, mut game: NonSendMut
             return;
         }
     }
+    // coupling-lint:allow const_all SLOT_KEYS: a keyboard binding table (the digit keys 1..6 → the
+    // tray slots), not content — what each slot *does* is the kit/edit-verb, which is data-driven.
     const SLOT_KEYS: [KeyCode; MOVE_BTNS] = [
         KeyCode::Digit1,
         KeyCode::Digit2,
