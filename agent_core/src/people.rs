@@ -351,7 +351,7 @@ pub fn read_resources(world: &GameWorld, c: Coord) -> [f32; ResourceKind::COUNT]
 }
 
 /// Draw a resource down at a tile (for recipes that deplete what they harvest).
-fn deplete_resource(world: &mut GameWorld, c: Coord, kind: ResourceKind, amount: f32) {
+pub(crate) fn deplete_resource(world: &mut GameWorld, c: Coord, kind: ResourceKind, amount: f32) {
     match kind {
         ResourceKind::Vegetation => {
             world.graze(c, amount);
@@ -454,6 +454,9 @@ pub(crate) fn people_plan(
             With<Npc>,
             Without<crate::Suspended>,
             Without<crate::Dormant>,
+            // Tier-1 drifters run the cheap gradient brain (`fields::drift`), not the full
+            // GOAP plan/execute. Absent by default, so a non-tiered world is byte-identical.
+            Without<crate::Drifter>,
         ),
     >,
     markets: Query<(&Position, &Market), Without<Npc>>,
@@ -693,6 +696,9 @@ pub(crate) fn people_execute(
             With<Npc>,
             Without<crate::Suspended>,
             Without<crate::Dormant>,
+            // Tier-1 drifters run the cheap gradient brain (`fields::drift`), not the full
+            // GOAP plan/execute. Absent by default, so a non-tiered world is byte-identical.
+            Without<crate::Drifter>,
         ),
     >,
     lieges: Query<(Entity, &Liege), With<Npc>>,
