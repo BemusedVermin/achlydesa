@@ -31,7 +31,7 @@ use crate::people::{
 };
 use crate::{Position, Registry, Substrate};
 use bevy_ecs::prelude::*;
-use game_sim::{Coord, SplitMix64};
+use game_sim::{Coord, SplitMix64, World as GameWorld};
 use sim::Rng;
 
 /// One region's managed mass: a population by calling, the coins it holds, and how well it is fed.
@@ -45,6 +45,10 @@ pub struct Cohort {
     pub market: Entity,
     /// Population by calling (skill id); `pop.len() == skill_count`. The *un-crystallized* remainder.
     pub pop: Vec<u32>,
+    /// The region's **carrying capacity** — the population its land (fertility) can sustain. Fixed at
+    /// seeding. The fixed resource that makes the population *converge* here instead of running away:
+    /// below it the land runs a surplus (wellbeing rises → births), above it a deficit (→ deaths).
+    pub capacity: u32,
     /// Coins held by the un-crystallized population (its share of the world's money).
     pub pool: i64,
     /// Aggregate wellbeing, `0` (starving) to `100` (sated).
@@ -121,36 +125,51 @@ impl Default for CohortConfig {
     }
 }
 
-/// Seed one region per market, splitting `population` evenly across the markets and, within each,
-/// round-robin across callings so every trade is represented. Each region starts at `pool` coins and
-/// a comfortable sustenance. Deterministic (no RNG): the split is arithmetic.
+/// Seed one region per market. Each region's **carrying capacity** is `population` split by *land
+/// fertility* (so fertile regions support more — and the population then settles there via
+/// migration); it is seeded *at* that capacity, spread round-robin across callings, with a neutral
+/// sustenance in the birth/death dead-band so it starts in its stable state rather than booming or
+/// crashing into it. Falls back to an even split on uniformly barren land. Deterministic (no RNG).
 pub fn seed_regions(
     markets: &[(Entity, Coord)],
     skill_count: usize,
     population: u64,
     pool_each: i64,
+    substrate: &GameWorld,
 ) -> Regions {
     if markets.is_empty() || skill_count == 0 {
         return Regions::default();
     }
-    let per_region = population / markets.len() as u64;
+    let fert: Vec<f32> = markets
+        .iter()
+        .map(|&(_, seat)| substrate.carrying_capacity(seat).max(0.0))
+        .collect();
+    let total_fert: f32 = fert.iter().sum();
     let cohorts = markets
         .iter()
-        .map(|&(market, seat)| {
+        .enumerate()
+        .map(|(r, &(market, seat))| {
+            let capacity = if total_fert > 0.0 {
+                (population as f64 * (fert[r] / total_fert) as f64).round() as u32
+            } else {
+                (population / markets.len() as u64) as u32
+            };
+            // Seed at capacity, spread evenly across callings (exact headcount: `cap / nc` each plus
+            // one to the first `cap % nc`).
             let mut pop = vec![0u32; skill_count];
-            // Spread this region's people round-robin across callings.
-            for c in pop.iter_mut() {
-                *c = (per_region / skill_count as u64) as u32;
+            let nc = skill_count as u32;
+            let base = capacity / nc;
+            let extra = capacity % nc;
+            for (i, c) in pop.iter_mut().enumerate() {
+                *c = base + u32::from((i as u32) < extra);
             }
-            // Any remainder lands on the first calling, so the headcount is exact.
-            let assigned: u64 = pop.iter().map(|&n| n as u64).sum();
-            pop[0] += (per_region - assigned) as u32;
             Cohort {
                 seat,
                 market,
                 pop,
+                capacity,
                 pool: pool_each,
-                sustenance: 80.0,
+                sustenance: 50.0, // neutral — inside the birth/death dead-band, so a fed cohort holds
                 crystallized: false,
             }
         })
@@ -201,7 +220,9 @@ pub(crate) fn cohort_step(
             continue;
         };
 
-        // --- Production: each calling sells what it makes into the market (market money -> pool). ---
+        // --- Trade-goods production: each calling sells its (non-food) good into the market (market
+        // money -> pool). Food is *not* made per-head — it comes from the land below, so the
+        // population can't bootstrap unlimited food and run away; that is what bounds it. ---
         for (calling, &n) in cohort.pop.iter().enumerate() {
             if n == 0 {
                 continue;
@@ -209,6 +230,9 @@ pub(crate) fn cohort_step(
             let Some(good) = output[calling] else {
                 continue;
             };
+            if reg.good(good).nutrition > 0.0 {
+                continue; // food is land-limited, handled below
+            }
             let made = (n as f32 * cfg.productivity).round() as u32;
             if made == 0 {
                 continue;
@@ -228,8 +252,22 @@ pub(crate) fn cohort_step(
             }
         }
 
-        // --- Consumption: buy food back out (pool -> market money), set how well-fed they are. ---
-        let ratio = if let Some(g) = food {
+        // --- Food from the land: the region yields enough to feed its *carrying capacity*, no more.
+        // Sold into the market (so a crystallized cast can buy it, and money flows), then eaten by the
+        // population below. The fixed cap is the anchor the population converges to. ---
+        if let Some(g) = food {
+            let made = (cohort.capacity as f32 * cfg.consume_per_capita).round() as u32;
+            if made > 0 {
+                m.stock[g] = m.stock[g].saturating_add(made);
+                let p = price(&reg, &econ, g, m.price_basis[g].round().max(0.0) as u32);
+                let revenue = (made as i64).saturating_mul(p);
+                let paid = revenue.min(m.money);
+                if paid > 0 {
+                    m.money -= paid;
+                    cohort.pool += paid;
+                }
+            }
+            // Consumption: the population eats from the market's food stock (pool -> market money).
             let need = (total as f32 * cfg.consume_per_capita).round() as i64;
             if need > 0 {
                 let p = price(&reg, &econ, g, m.price_basis[g].round().max(0.0) as u32).max(1);
@@ -241,16 +279,15 @@ pub(crate) fn cohort_step(
                     cohort.pool -= cost;
                     m.money += cost;
                 }
-                units as f32 / need as f32
-            } else {
-                1.0
             }
-        } else {
-            1.0 // a world with no food good: cohorts don't starve on this axis
-        };
-        // Sustenance eases toward the fed ratio: well-fed climbs, short-fed falls.
+        }
+
+        // --- Wellbeing tracks land pressure: supply (the land's capacity) over demand (headcount).
+        // Below capacity → surplus → wellbeing climbs (births); above → deficit → it falls (deaths);
+        // at capacity → neutral, so the population settles there. A bounded step damps the swing. ---
+        let ratio = cohort.capacity as f32 / total as f32;
         cohort.sustenance =
-            (cohort.sustenance + cfg.feed_rate * (2.0 * ratio - 1.0)).clamp(0.0, 100.0);
+            (cohort.sustenance + cfg.feed_rate * (ratio - 1.0).clamp(-1.0, 1.0)).clamp(0.0, 100.0);
 
         // --- Births / deaths: the population tracks how well it is fed (deaths are a money sink). ---
         if cohort.sustenance >= cfg.birth_sustenance {
