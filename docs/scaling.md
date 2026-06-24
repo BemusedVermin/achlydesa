@@ -187,7 +187,7 @@ Add a handful of **resource/demand fields** ("food here", "market wants grain", 
 as additional substrate layers. Tier-1/2 agents then move by sampling the local gradient
 (6 hex neighbors) rather than running A\*. This collapses the dominant cost for everyone
 except Tier 0. The `world-model-review` punch-list already flagged "add stigmergy" -- this
-is where it pays off.
+is where it pays off. **(Now prototyped -- see "Track 2 -- what shipped" below.)**
 
 ### 2c. A regional economy removes the determinism bottleneck
 
@@ -197,6 +197,53 @@ clear locally per settlement as aggregate flows. Regions are then independent, s
 execution **shards by region and parallelizes** while still conserving money exactly
 (integer in/out per region balances). Tier-0 individuals still trade coin-for-coin at their
 local market; the masses trade as cohort flows. `total_money()` stays an exact invariant.
+
+## Track 2 -- what shipped (2b prototype: stigmergic fields + Tier-1 drifters)
+
+Built and measured on branch `scaling-track2-fields`. Everything here is **off by default and
+byte-identical** when off (the Track-1 fingerprint guard still passes). This is the 2b prototype
+from the roadmap, plus the minimal slice of 2a -- a two-tier LOD -- needed to put agents *on* the
+fields.
+
+- **Generic stigmergy layers in the substrate (`game_sim`).** `World::install_stigmergy(&[StigConfig
+  { diffuse, decay }])` allocates N zeroed, double-buffered scalar layers; `deposit(layer, coord,
+  amount)` / `stig(layer, coord)` are the write/read hooks, and a diffusion-stencil + exponential-
+  decay step (`update_stigmergy`) joins `Φ`. A layer carries **no meaning** -- `game_sim` stays
+  agent-agnostic -- and the step is `O(tiles · layers)`, **independent of agent count**. Zero layers
+  by default, so a stigmergy-free world is byte-identical. This is exactly the engine 2b called for,
+  on the same machinery the climate fields already use.
+- **Three fields, fed by agent-side deposit systems (`agent_core::fields`).** FOOD (from tile
+  biomass), DANGER (from predators), DEMAND (from markets short of stock) -- deposited *before* `Φ`
+  so the signal diffuses the same tick. The *meaning* (which index is which) lives in `agent_core`;
+  the substrate just spreads the numbers.
+- **The Tier-1 "drifter" brain.** `Drifter` generalises `Dormant` from "asleep" to "awake on a
+  cheaper brain": when the layer is on, `lod_dormancy` makes every NPC beyond `sim_radius` a drifter
+  instead of a coarse-clocked full brain. A drifter runs `drift` -- `O(1)`/tick, **no A\***: step one
+  tile up the weighted gradient (toward food when hungry, toward demand when carrying surplus, away
+  from danger), then meet needs by local rules (produce a calling-good, trade at an adjacent market,
+  eat or graze -- honouring the same `HungerModel` as `people_execute`, so a drifter feeds itself as
+  well as a planner). Deterministic and RNG-free (gradient ties break on a fixed entity-id rotation);
+  serial like `people_execute` because it trades against shared markets -- which is fine, since each
+  turn is `O(1)`, so even serial the masses are orders of magnitude under GOAP.
+  `people_plan`/`people_execute` skip drifters (`Without<Drifter>`); the near cast stays full Tier-0.
+- **Measured: per-tick cost decouples from N.** `bench_scaling`'s `fields(T1)` row (economy + fields
+  + a tight radius + a spawned avatar) against the all-full-brain `economy` baseline, 96×72 world,
+  120 ticks:
+
+  | N | economy µs/agent | fields(T1) µs/agent | ratio | economy µs/tick | fields(T1) µs/tick |
+  |---|---|---|---|---|---|
+  | 500 | 710 | 423 | 1.7× | 354,000 | 212,000 |
+  | 2000 | 764 | 69 | **11×** | 1,415,000 | **138,000** |
+
+  The fields tick stays ~flat as N grows 4× while the economy scales linearly, so the per-agent ratio
+  widens (1.7× → 11×); allocs/tick decouple from N too (fields ~9-14M vs economy 24.5M → 104M). The
+  Tier-0 cohort is bounded by the radius and the masses are cheap, so total per-tick work stops
+  tracking N -- the complexity-class change, not the constant factor `par_iter` buys.
+
+What this prototype does **not** yet do (deferred -- the rest of 2a/2c): cohorts that crystallise on
+promotion and dissolve when out of the lens, a regional/sharded economy, and demand that is per-good
+rather than one aggregate "wants stock" scalar. Drifters are still real ECS entities -- cheap to
+*run*, but still `O(N)` in *memory* -- so the actual millions still want Tier-2 cohorts.
 
 ## Continuous / background simulation
 
@@ -231,9 +278,12 @@ Continuous + tiering is the right pairing.
    shipped": the bench, the GOAP successor prune, the `converse` tile-bucket, and the
    plan-budget knob landed; SoA packing and a shared cross-system grid resource remain.)*
 2. **Prototype 2b (fields)** as new substrate layers; let Tier-1 agents follow gradients.
-   Biggest conceptual lever, reuses machinery we already trust.
-3. **Then 2a/2c** -- cohorts + regional economy for the actual millions, with continuous
-   background stepping layered in.
+   Biggest conceptual lever, reuses machinery we already trust. *(Done — see "Track 2 — what
+   shipped": generic stigmergy layers in `game_sim`, the food/danger/demand deposits, and the
+   Tier-1 drifter brain on a two-tier LOD; measured to decouple per-tick cost from N.)*
+3. **Then 2a/2c** -- cohorts + regional economy for the actual millions *(the remaining scale work:
+   crystallise/dissolve cohorts and shard the economy by region, so the masses cost `O(1)` in
+   memory too, not just `O(1)` to run)*
 
 ## Open questions / risks
 
