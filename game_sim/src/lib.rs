@@ -27,4 +27,4 @@ pub mod worldgen;
 pub use config::Params;
 pub use grid::{Buffered, Coord, Topology};
 pub use rng::SplitMix64;
-pub use world::{Interaction, TileView, World};
+pub use world::{Interaction, StigConfig, TileView, World};

@@ -72,6 +72,31 @@ pub enum Interaction {
     Noop,
 }
 
+/// How one **stigmergy** layer behaves under `Φ`: how much of it spreads to the
+/// neighbours each tick and how fast it fades. A pure scalar transport rule that
+/// carries no meaning — the *same* struct configures a "food", "danger", or "demand"
+/// layer; only the agents that deposit into and read it know what it represents. See
+/// [`World::install_stigmergy`].
+#[derive(Clone, Copy, Debug)]
+pub struct StigConfig {
+    /// Fraction pulled toward the neighbour mean each tick (`0` = no spread). The same
+    /// diffusion stencil the climate fields use; a small value (e.g. `0.2`) gives a
+    /// smooth gradient an agent several tiles away can still sense.
+    pub diffuse: f32,
+    /// Fraction of the signal lost each tick (`0` = permanent, `1` = gone next tick).
+    /// Decay is what bounds a continually-fed field and gives its gradient a finite
+    /// reach; typical values are `0.05..0.3`.
+    pub decay: f32,
+}
+
+/// A single stigmergy layer: its double-buffered field plus its transport rule.
+#[derive(Clone, Debug)]
+struct StigLayer {
+    field: Buffered<f32>,
+    diffuse: f32,
+    decay: f32,
+}
+
 /// The simulated world: a cylindrical hex grid of climate/geology/ecosystem
 /// fields plus the clock that drives them.
 pub struct World {
@@ -134,6 +159,16 @@ pub struct World {
     fire: Buffered<f32>,
     /// Surface reflectance `0..1` (derived). Offsets the temperature target.
     albedo: Vec<f32>,
+
+    // --- stigmergy (Φ; agent-driven, generic) ---
+    /// Optional scalar **stigmergy** layers: agent-deposited signals that diffuse and
+    /// decay across the tilemap so a distant agent can read a gradient and follow it
+    /// ("nudge, not command") instead of path-planning. Empty by default, so a world that
+    /// never installs any is byte-identical, and diffusion is `O(tiles · layers)`,
+    /// independent of how many agents there are. The meaning of each layer lives entirely
+    /// with whoever deposits — this crate only spreads and fades the numbers. Installed via
+    /// [`install_stigmergy`](Self::install_stigmergy).
+    stigmergy: Vec<StigLayer>,
 }
 
 impl World {
@@ -174,6 +209,9 @@ impl World {
             // Seeded at the neutral reflectance so the seeded temperature carries
             // no albedo offset; real albedo is computed below.
             albedo: vec![albedo_init; len],
+            // No stigmergy layers until a caller installs them — so a plain world is
+            // byte-identical and `Φ`'s stigmergy step is a no-op.
+            stigmergy: Vec::new(),
         };
         // Start the dynamic fields at sane values so observers and the first
         // tick don't see a cold black world. Humidity, water, snow, and the
@@ -311,6 +349,52 @@ impl World {
         self.surface_water.front_mut()[i] = before * keep;
         self.humidity.front_mut()[i] *= keep;
         before * (1.0 - keep)
+    }
+
+    // --- stigmergy (generic, agent-deposited fields) ---
+
+    /// Install `configs.len()` stigmergy layers, all initialised to zero, replacing any
+    /// already present. The number and order of layers — and what each one *means* — is
+    /// the caller's contract; this crate only diffuses and decays them each tick. Call once
+    /// after construction, before the agents that will deposit into and read these layers
+    /// start running.
+    pub fn install_stigmergy(&mut self, configs: &[StigConfig]) {
+        let len = self.topo.len();
+        self.stigmergy = configs
+            .iter()
+            .map(|c| StigLayer {
+                field: Buffered::filled(0.0, len),
+                diffuse: c.diffuse,
+                decay: c.decay,
+            })
+            .collect();
+    }
+
+    /// How many stigmergy layers are installed (`0` = none, the default).
+    pub fn stigmergy_layers(&self) -> usize {
+        self.stigmergy.len()
+    }
+
+    /// Add `amount` of signal to layer `l` at tile `c` — the **deposit hook**, the
+    /// sanctioned way an agent writes a stigmergic mark into the world (the counterpart to
+    /// [`graze`](Self::graze) for vegetation). The result is clamped non-negative. A deposit
+    /// to a layer that does not exist is silently ignored, so a caller may deposit
+    /// unconditionally and a stigmergy-free world stays byte-identical.
+    pub fn deposit(&mut self, l: usize, c: Coord, amount: f32) {
+        if let Some(layer) = self.stigmergy.get_mut(l) {
+            let i = self.topo.index_of(c);
+            let v = layer.field.front()[i] + amount;
+            layer.field.front_mut()[i] = v.max(0.0);
+        }
+    }
+
+    /// Read layer `l`'s signal at tile `c` — the **gradient-sampling hook** — or `0.0` if
+    /// there is no such layer. An agent samples this at its neighbouring tiles to follow the
+    /// gradient (toward food/demand, away from danger) without running a search.
+    pub fn stig(&self, l: usize, c: Coord) -> f32 {
+        self.stigmergy
+            .get(l)
+            .map_or(0.0, |layer| layer.field.front()[self.topo.index_of(c)])
     }
 
     pub fn litter(&self, c: Coord) -> f32 {
@@ -825,6 +909,31 @@ impl World {
         }
     }
 
+    /// Spread and fade every installed stigmergy layer one tick: a diffusion stencil
+    /// (toward the neighbour mean, polar-renormalised like the climate fields) followed by
+    /// exponential decay. Reads the old buffer and writes the new — so it is
+    /// order-independent — and a no-op when no layers are installed, so a stigmergy-free
+    /// world is byte-identical. Cost is `O(tiles · layers)`, independent of agent count:
+    /// the whole point of stigmergy.
+    fn update_stigmergy(&mut self) {
+        let topo = &self.topo;
+        for layer in &mut self.stigmergy {
+            let (diffuse, decay) = (layer.diffuse, layer.decay);
+            let (old, new) = layer.field.read_write();
+            for i in topo.indices() {
+                let neighbors = topo.neighbors(i);
+                let mean = if neighbors.is_empty() {
+                    old[i]
+                } else {
+                    neighbors.iter().map(|l| old[l.to]).sum::<f32>() / neighbors.len() as f32
+                };
+                let spread = old[i] + diffuse * (mean - old[i]);
+                new[i] = (spread * (1.0 - decay)).max(0.0);
+            }
+            layer.field.swap();
+        }
+    }
+
     /// Initialise temperature at its radiative target (no diffusion yet) so the
     /// world starts near equilibrium rather than at 0 °C everywhere.
     fn seed_temperature(&mut self) {
@@ -1051,6 +1160,7 @@ impl Substrate for World {
         self.update_biome();
         self.update_fire(rng);
         self.update_albedo();
+        self.update_stigmergy();
     }
 }
 
@@ -1624,6 +1734,82 @@ mod tests {
         assert!(
             world.surface_water(wettest) < before,
             "the tile should be drier after a drought"
+        );
+    }
+
+    #[test]
+    fn stigmergy_absent_by_default() {
+        let mut world = small_world();
+        assert_eq!(world.stigmergy_layers(), 0);
+        let c = Coord::new(5, 5);
+        // Reading a non-existent layer is 0; depositing into one is a silent no-op.
+        assert_eq!(world.stig(0, c), 0.0);
+        world.deposit(0, c, 10.0);
+        assert_eq!(
+            world.stig(0, c),
+            0.0,
+            "deposit with no layers must be inert"
+        );
+    }
+
+    #[test]
+    fn stigmergy_diffuses_to_neighbours_and_decays() {
+        let mut world = small_world();
+        world.install_stigmergy(&[StigConfig {
+            diffuse: 0.2,
+            decay: 0.1,
+        }]);
+        assert_eq!(world.stigmergy_layers(), 1);
+
+        // Drop a pulse on an interior tile (6 neighbours, away from the poles).
+        let center = Coord::new(18, 13);
+        world.deposit(0, center, 100.0);
+        let neighbor = {
+            let topo = world.topology();
+            topo.coord(topo.neighbors(topo.index_of(center))[0].to)
+        };
+        assert_eq!(world.stig(0, neighbor), 0.0, "pulse hasn't spread yet");
+
+        let mut rng = SplitMix64::new(0);
+        world.evolve(&mut rng);
+
+        // One tick: signal has bled into the neighbour and the centre has dropped.
+        assert!(
+            world.stig(0, neighbor) > 0.0,
+            "signal should diffuse to a neighbour"
+        );
+        assert!(
+            world.stig(0, center) < 100.0,
+            "the centre should fall as it spreads and decays"
+        );
+        assert!(
+            world.stig(0, center) > world.stig(0, neighbor),
+            "the gradient should still point uphill toward the source"
+        );
+    }
+
+    #[test]
+    fn stigmergy_fades_to_nothing_without_deposits() {
+        let mut world = small_world();
+        world.install_stigmergy(&[StigConfig {
+            diffuse: 0.2,
+            decay: 0.3,
+        }]);
+        let center = Coord::new(18, 13);
+        world.deposit(0, center, 1000.0);
+        let total = |w: &World| -> f32 {
+            let topo = w.topology();
+            topo.indices().map(|i| w.stig(0, topo.coord(i))).sum()
+        };
+        let mut rng = SplitMix64::new(0);
+        let start = total(&world);
+        for _ in 0..50 {
+            world.evolve(&mut rng);
+        }
+        let end = total(&world);
+        assert!(
+            end < start * 0.01,
+            "with decay and no fresh deposits the field should fade away ({start} -> {end})"
         );
     }
 }
