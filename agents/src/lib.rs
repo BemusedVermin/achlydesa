@@ -2953,6 +2953,55 @@ mod tests {
     }
 
     #[test]
+    fn crystallized_members_have_varied_skill_and_a_larder() {
+        let mut sim = Simulation::new(Setup {
+            seed: 21,
+            npcs: 0,
+            markets: 4,
+            warmup: 60,
+            cohorts: true,
+            cohort_pop: 100_000,
+            cohort_pool_each: 50_000,
+            cohort_cfg: agent_core::CohortConfig {
+                promote_radius: 12,
+                ..Default::default()
+            },
+            ..Default::default()
+        });
+        sim.spawn_player(None);
+        sim.run(1); // one tick: the cast crystallizes (lod/crystallize run first)
+
+        // Each crystallized member's primary-calling proficiency and total goods carried.
+        let cast: Vec<(f32, u32)> = {
+            let mut q = sim
+                .world
+                .query_filtered::<(&Skills, &Inventory), With<agent_core::CohortMember>>();
+            q.iter(&sim.world)
+                .map(|(s, inv)| {
+                    let prof = s.0.iter().cloned().fold(0.0f32, f32::max);
+                    (prof, inv.stock.iter().sum::<u32>())
+                })
+                .collect()
+        };
+        assert!(
+            cast.len() >= 2,
+            "need a cast to test fidelity, got {}",
+            cast.len()
+        );
+        // Varied proficiency — a cast of novices and veterans, not identical clones.
+        let first = cast[0].0;
+        assert!(
+            cast.iter().any(|&(p, _)| (p - first).abs() > 1e-4),
+            "crystallized skills are clones (no variation)"
+        );
+        // Provisioned — at least one member arrived carrying a larder (drawn from the market).
+        assert!(
+            cast.iter().any(|&(_, goods)| goods > 0),
+            "no crystallized member carries a larder"
+        );
+    }
+
+    #[test]
     fn combat_off_inserts_no_resources() {
         let sim = Simulation::new(Setup {
             npcs: 2,
