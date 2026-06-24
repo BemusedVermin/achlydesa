@@ -336,9 +336,12 @@ Continuous + tiering is the right pairing.
 - **Promotion fidelity.** When a Tier-2 cohort crystallizes into individuals, their state
   (skills, money, relationships) must be reconstructed deterministically and plausibly from
   cohort aggregates. Getting this seamless (no "pop-in" of personality) is the hard part.
-  *(Prototyped — `cohort_crystallize` reconstructs deterministically from the calling mix + pool,
-  with personality rolled from a dedicated stream. It is plausible, not the member's true lost
-  history; relationships are not yet reconstructed at all. Still the open fidelity question.)*
+  *(Improved — `cohort_crystallize` reconstructs deterministically: calling from the cohort's
+  calling mix, money as the pool share, personality rolled from a dedicated stream, skill jittered
+  per member (novices and veterans, not clones), and a larder of the staple food drawn from the
+  regional market. Still approximate — it is plausible, not the member's true lost history; and
+  **relationships are not reconstructed at all** (the cohort holds no social graph, and ties need
+  authored bond/feud content to matter). That remains the open fidelity question.)*
 - **Field expressiveness.** Gradient-following covers "go toward X." Goals that are not
   spatial-gradient-shaped (revenge against a specific moving foe, multi-step crafting) still
   need real planning -- those agents must be Tier 0/1, which bounds how cheap the mass can be.
@@ -348,6 +351,20 @@ Continuous + tiering is the right pairing.
 - **Benchmark first.** *(Done — `examples/bench_scaling.rs`.)* It confirmed the central
   claim: per-agent A\* planning is ~98% of the tick and the rest is <2%, so the work is a
   complexity-class problem (Track 2), not a constant-factor one.
+- **Deferred: fixed-point arithmetic everywhere (determinism hardening).** **All gameplay-affecting
+  floating-point arithmetic must, in the future, be replaced by fixed-point.** Two review findings on
+  PR #10 motivate this. (1) *Precision:* `total as f32` loses precision above 2^24 (~16.7M), biasing
+  per-capita flows at scale — now fixed for the cohort economy with an integer `scale()`, but the same
+  hazard lurks wherever a count or coin value meets a float. (2) *Associativity:* f32 addition is not
+  associative, so accumulating `sustenance` in ECS/archetype order made the fingerprint fragile to
+  layout changes (worked around by sorting on entity id, but the fragility is intrinsic to float
+  sums). Floats are also not guaranteed bit-identical across platforms or compiler/LLVM versions,
+  which directly threatens the determinism invariant in `CLAUDE.md`. The migration is large and
+  cross-cutting — `Needs`/`Mood`/`Personality`/`Skills`, market `price_basis`, cohort `sustenance`,
+  the IAUS/appraisal scoring, and ultimately the substrate's climate/ecology fields are all `f32`
+  today — so it is staged future work, but the direction is settled: **gameplay state and everything
+  the fingerprint folds should be exact integer / fixed-point**, with floats confined (if anywhere)
+  to cosmetic-only quantities that never feed back into simulation state.
 
 ## Relationship to existing docs
 
