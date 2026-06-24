@@ -805,12 +805,17 @@ impl Simulation {
         // own dedicated RNG stream so it perturbs nothing else.
         if setup.cohorts {
             let skill_count = world.resource::<Registry>().skill_count();
-            let regions = agent_core::seed_regions(
-                &markets,
-                skill_count,
-                setup.cohort_pop,
-                setup.cohort_pool_each,
-            );
+            // Carrying capacity is fertility-weighted, so seeding reads the (warmed) substrate.
+            let regions = {
+                let sub = &world.resource::<Substrate>().0;
+                agent_core::seed_regions(
+                    &markets,
+                    skill_count,
+                    setup.cohort_pop,
+                    setup.cohort_pool_each,
+                    sub,
+                )
+            };
             world.insert_resource(regions);
             world.insert_resource(setup.cohort_cfg);
             world.insert_resource(agent_core::CohortRng(SplitMix64::new(
@@ -2906,6 +2911,38 @@ mod tests {
             sim.total_money() <= money_before,
             "demotion minted money (before {money_before}, after {})",
             sim.total_money()
+        );
+    }
+
+    #[test]
+    fn cohort_population_stabilizes_under_the_economy() {
+        // No avatar → no crystallization → the pure Tier-2 economy, left to run a long time. With
+        // food tied to a fixed land carrying capacity, the population must *converge* and hold, not
+        // collapse to nothing or explode (the instability of population-scaled food production).
+        let mut sim = Simulation::new(Setup {
+            seed: 5,
+            npcs: 0,
+            markets: 6,
+            warmup: 60,
+            cohorts: true,
+            cohort_pop: 200_000,
+            cohort_pool_each: 100_000,
+            ..Default::default()
+        });
+        sim.run(150);
+        let mid = sim.cohort_population();
+        sim.run(150);
+        let late = sim.cohort_population();
+
+        assert!(mid > 20_000, "population collapsed by mid-run: {mid}");
+        assert!(late > 20_000, "population collapsed by late-run: {late}");
+        assert!(late < 5_000_000, "population exploded by late-run: {late}");
+        // Stabilized: the late window is within 25% of the mid window (no runaway drift either way).
+        let change = (late as f64 - mid as f64).abs() / mid as f64;
+        assert!(
+            change < 0.25,
+            "population not stable: {mid} -> {late} ({:.0}% change)",
+            change * 100.0
         );
     }
 
