@@ -461,6 +461,11 @@ pub(crate) fn cohort_crystallize(
             }
             // Dissolve: fold the survivors back into the count and despawn them.
             (false, true) => {
+                // Fold in entity-id order, not ECS-iteration (archetype) order: the f32
+                // `sustenance_sum` below is order-sensitive (float addition isn't associative), so a
+                // future archetype-layout change would otherwise silently shift the fingerprint
+                // without changing the sim. Entity id is the same deterministic key used elsewhere.
+                cast[ri].sort_unstable_by_key(|t| t.0.to_bits());
                 // The un-crystallized remainder kept evolving its own sustenance while the cast was
                 // away; capture its headcount before folding the cast back, so we *blend* rather than
                 // overwrite — a small cast must not clobber the whole region's evolved wellbeing.
@@ -512,8 +517,12 @@ fn primary_calling(skills: &[f32]) -> usize {
 fn pick_callings(pop: &[u32], k: u64) -> Vec<u32> {
     let mut tmp = pop.to_vec();
     let total: u64 = pop.iter().map(|&n| n as u64).sum();
-    let removed = remove_people(&mut tmp, k.min(total));
-    let _ = removed;
+    let want = k.min(total);
+    let removed = remove_people(&mut tmp, want);
+    // `remove_people` always reaches its target when `want <= total` (its mop-up pass covers the
+    // rounding remainder), so a shortfall would mean fewer entities crystallize than intended with
+    // no other signal — catch it in tests at zero release cost.
+    debug_assert_eq!(removed, want, "pick_callings: removal shortfall");
     // The picked slice is what `remove_people` took: before - after.
     pop.iter().zip(tmp.iter()).map(|(&b, &a)| b - a).collect()
 }
