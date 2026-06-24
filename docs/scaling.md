@@ -170,7 +170,8 @@ Promotion/demotion is a deterministic function of distance + director interest. 
 the "managed mass" approach (Dwarf Fortress / CK3): a million souls exist as content, but
 only the relevant few hundred are ever fully simulated *at once*. Content and drama do not
 come from a million brains -- they come from the right cast, which the director already
-manufactures. The masses are the texture and the **pool to promote from**.
+manufactures. The masses are the texture and the **pool to promote from**. **(Now built — see
+"Track 2 -- what shipped": `agent_core::cohorts`, with crystallization to/from a bounded live cast.)**
 
 ### 2b. Stigmergic fields (the Emergence lesson) -- and we already own the engine
 
@@ -196,14 +197,18 @@ money conservation across one shared pool). Make the **bulk** economy **regional
 clear locally per settlement as aggregate flows. Regions are then independent, so
 execution **shards by region and parallelizes** while still conserving money exactly
 (integer in/out per region balances). Tier-0 individuals still trade coin-for-coin at their
-local market; the masses trade as cohort flows. `total_money()` stays an exact invariant.
+local market; the masses trade as cohort flows. `total_money()` stays an exact invariant. **(Now
+built — see "Track 2 -- what shipped": the per-region cohort economy is shard-ready, kept serial for
+now.)**
 
-## Track 2 -- what shipped (2b prototype: stigmergic fields + Tier-1 drifters)
+## Track 2 -- what shipped (2a + 2b + 2c: tiers, fields, and the regional economy)
 
 Built and measured on branch `scaling-track2-fields`. Everything here is **off by default and
-byte-identical** when off (the Track-1 fingerprint guard still passes). This is the 2b prototype
-from the roadmap, plus the minimal slice of 2a -- a two-tier LOD -- needed to put agents *on* the
-fields.
+byte-identical** when off (the Track-1 fingerprint guard still passes). All three Track-2 ideas
+landed as a three-tier spectrum: **Tier 0** (full GOAP brain, near the avatar), **Tier 1**
+(gradient-following "drifters", the fields prototype, 2b), and **Tier 2** (statistical cohorts whose
+economy runs as integer regional flows, 2a+2c). Promotion/demotion moves souls between tiers as the
+avatar — the lens — moves.
 
 - **Generic stigmergy layers in the substrate (`game_sim`).** `World::install_stigmergy(&[StigConfig
   { diffuse, decay }])` allocates N zeroed, double-buffered scalar layers; `deposit(layer, coord,
@@ -240,10 +245,44 @@ fields.
   Tier-0 cohort is bounded by the radius and the masses are cheap, so total per-tick work stops
   tracking N -- the complexity-class change, not the constant factor `par_iter` buys.
 
-What this prototype does **not** yet do (deferred -- the rest of 2a/2c): cohorts that crystallise on
-promotion and dissolve when out of the lens, a regional/sharded economy, and demand that is per-good
-rather than one aggregate "wants stock" scalar. Drifters are still real ECS entities -- cheap to
-*run*, but still `O(N)` in *memory* -- so the actual millions still want Tier-2 cohorts.
+- **Tier-2 statistical cohorts + the regional economy (`agent_core::cohorts`, 2a+2c).** The millions
+  are **not entities**. Each region (a market) holds a `Cohort`: a population *count by calling*, a
+  coin *pool*, an aggregate *sustenance*. `cohort_step` advances it as **integer flows** — production
+  sells into the regional market, consumption buys food back out (setting sustenance), births/deaths
+  grow or shrink the count, and people migrate toward better-fed regions. Cost is `O(regions ·
+  callings)` + `O(regions²)` migration — **independent of headcount**, so a region of thirty souls
+  and one of thirty million cost the same. The per-region step writes only its own region and
+  migration is a snapshot-then-deltas pass, so it is **shard-ready (2c)** even though it is kept
+  serial for now (it is already dwarfed by the crystallized cast's GOAP).
+- **Crystallization (the 2a promotion seam).** `cohort_crystallize` promotes a **bounded** cast
+  (`crystallize_cap`) of real ECS entities from a region when the avatar comes near, and **dissolves**
+  them back into the count when it leaves — Tier 2 → Tier 0/1 and back. The live entity count stays
+  small however large the stated population. A dedicated `CohortRng` reconstructs personalities so it
+  perturbs no other stream; the lost-history "pop-in" the design flagged is reconstructed plausibly
+  (a prototype's fidelity, the open risk below).
+- **The integer economy holds across all three tiers.** Every coin flow — production, consumption,
+  migration, *and* promotion/demotion — is an explicit integer transfer between a cohort pool, a
+  market purse, and entity purses, so `total_money()` (now counting pools) is conserved exactly;
+  **deaths are the only sink**, as for individuals. A test pins this across the economy and the
+  promote→demote round-trip.
+- **Measured: the millions are nearly free.** `bench_scaling`'s `Tier-2 cohorts` section, 96×72, 12
+  regions, an avatar present, sweeping the stated population up by orders of magnitude:
+
+  | souls | µs/tick | ns/soul | live cast |
+  |---|---|---|---|
+  | 468 k | 46,000 | 98 | 24 |
+  | 4.7 M | 49,000 | 10 | 24 |
+  | 42 M | 51,000 | **1.2** | 24 |
+
+  µs/tick stays ~flat while souls grow 100×, so ns/soul collapses toward zero — **~42 million souls at
+  ~50 ms/tick**. (The tick is dominated by the bounded 24-agent crystallized cast's GOAP; the cohort
+  economy itself is ~0.6 ms with no cast — `O(regions)`, not `O(souls)`.) That is the only thing that
+  reaches millions: not faster brains, but *fewer* of them, with the mass carried as flows.
+
+What is **still** deferred (honest scope): the per-region step is shard-ready but kept serial;
+cohort demand is one aggregate "wants stock" scalar, not per-good; promotion fidelity reconstructs a
+member's skills/personality from aggregates (plausible, but not its true lost history); and the
+fields/economy tunings that keep cohort populations stable under stress are first-cut, not balanced.
 
 ## Continuous / background simulation
 
@@ -281,15 +320,19 @@ Continuous + tiering is the right pairing.
    Biggest conceptual lever, reuses machinery we already trust. *(Done — see "Track 2 — what
    shipped": generic stigmergy layers in `game_sim`, the food/danger/demand deposits, and the
    Tier-1 drifter brain on a two-tier LOD; measured to decouple per-tick cost from N.)*
-3. **Then 2a/2c** -- cohorts + regional economy for the actual millions *(the remaining scale work:
-   crystallise/dissolve cohorts and shard the economy by region, so the masses cost `O(1)` in
-   memory too, not just `O(1)` to run)*
+3. **Then 2a/2c** -- cohorts + regional economy for the actual millions *(Done — see "Track 2 — what
+   shipped": statistical cohorts per region, an integer regional economy, and crystallization to/from
+   a bounded live cast; measured at ~42M souls / ~50ms tick. Remaining: shard the region step across
+   threads, per-good demand, and higher-fidelity promotion.)*
 
 ## Open questions / risks
 
 - **Promotion fidelity.** When a Tier-2 cohort crystallizes into individuals, their state
   (skills, money, relationships) must be reconstructed deterministically and plausibly from
   cohort aggregates. Getting this seamless (no "pop-in" of personality) is the hard part.
+  *(Prototyped — `cohort_crystallize` reconstructs deterministically from the calling mix + pool,
+  with personality rolled from a dedicated stream. It is plausible, not the member's true lost
+  history; relationships are not yet reconstructed at all. Still the open fidelity question.)*
 - **Field expressiveness.** Gradient-following covers "go toward X." Goals that are not
   spatial-gradient-shaped (revenge against a specific moving foe, multi-step crafting) still
   need real planning -- those agents must be Tier 0/1, which bounds how cheap the mass can be.
