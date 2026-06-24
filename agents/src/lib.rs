@@ -3002,6 +3002,50 @@ mod tests {
     }
 
     #[test]
+    fn crystallized_cast_arrives_with_social_ties() {
+        use agent_core::people::{Bond, Liege};
+        let mut sim = Simulation::new(Setup {
+            seed: 21,
+            npcs: 0,
+            markets: 4,
+            warmup: 60,
+            cohorts: true,
+            cohort_pop: 100_000,
+            cohort_pool_each: 50_000,
+            cohort_cfg: agent_core::CohortConfig {
+                promote_radius: 12,
+                ..Default::default()
+            },
+            ..Default::default()
+        });
+        sim.spawn_player(None);
+        sim.run(1);
+
+        // The crystallized community arrives with an existing social fabric — friendships and a
+        // little vassalage — not a crowd of unconnected strangers.
+        let bonds = {
+            let mut q = sim
+                .world
+                .query_filtered::<(), (With<agent_core::CohortMember>, With<Bond>)>();
+            q.iter(&sim.world).count()
+        };
+        let vassals = {
+            let mut q = sim
+                .world
+                .query_filtered::<(), (With<agent_core::CohortMember>, With<Liege>)>();
+            q.iter(&sim.world).count()
+        };
+        assert!(
+            bonds > 0,
+            "crystallized cast has no friendships (expected some bonds)"
+        );
+        assert!(
+            vassals > 0,
+            "crystallized cast has no hierarchy (expected some vassals)"
+        );
+    }
+
+    #[test]
     fn combat_off_inserts_no_resources() {
         let sim = Simulation::new(Setup {
             npcs: 2,
