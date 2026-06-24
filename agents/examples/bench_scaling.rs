@@ -18,6 +18,12 @@
 //!    ratio vs the all-full-brain `economy` baseline — the complexity-class drop, not a constant
 //!    factor, which is the whole reason Track 2 exists.
 //!
+//!  * **Millions, as cohorts (Track 2 / 2a+2c).** A final `Tier-2 cohorts` section runs the whole
+//!    populace as statistical regional cohorts (no individual NPCs, just a bounded crystallized
+//!    cast) and sweeps the stated `souls` up by orders of magnitude. The per-tick wall stays ~flat
+//!    and `ns/soul` collapses toward zero, because the cohort economy is `O(regions)`, independent
+//!    of headcount — the only thing that reaches millions.
+//!
 //! A fingerprint per config is printed too, so a determinism regression is obvious at a
 //! glance (the same N+layers must print the same fingerprint every run).
 //!
@@ -148,6 +154,48 @@ fn measure(
     (wall, allocs, sim.npc_count(), sim.fingerprint())
 }
 
+/// Regions (markets) the cohort sweep spreads its population across.
+const COHORT_REGIONS: usize = 12;
+
+/// Time `ticks` steps of a **Tier-2 cohort** world holding `cohort_pop` souls across
+/// [`COHORT_REGIONS`] regions, with an avatar present to crystallize a cast. Returns (wall, souls
+/// alive after the run, live entities, fingerprint). The whole populace is cohorts (no individual
+/// NPCs), so the tick is the regional economy + the bounded crystallized cast — `O(regions)`,
+/// independent of `cohort_pop`.
+fn measure_cohorts(
+    width: i32,
+    height: i32,
+    cohort_pop: u64,
+    ticks: u64,
+) -> (Duration, u64, usize, u64) {
+    let mut sim = Simulation::new(Setup {
+        width,
+        height,
+        seed: 7,
+        warmup: 80,
+        npcs: 0,
+        markets: COHORT_REGIONS,
+        cohorts: true,
+        cohort_pop,
+        cohort_pool_each: 5_000_000,
+        // A wide promote radius so the stationary avatar is sure to land near a seat and
+        // crystallize a cast — the `live` column then shows the bounded entity count alongside the
+        // millions of cohort souls.
+        cohort_cfg: agents::CohortConfig {
+            promote_radius: 24,
+            ..Default::default()
+        },
+        ..Default::default()
+    });
+    sim.spawn_player(None);
+    sim.run(1); // prime
+    let t = Instant::now();
+    sim.run(ticks);
+    let wall = t.elapsed();
+    let souls = sim.cohort_population() + sim.npc_count() as u64;
+    (wall, souls, sim.npc_count(), sim.fingerprint())
+}
+
 fn main() {
     let mut args = std::env::args().skip(1);
     let ticks: u64 = args.next().and_then(|s| s.parse().ok()).unwrap_or(200);
@@ -220,4 +268,26 @@ fn main() {
         }
         println!();
     }
+
+    // --- Tier-2 cohorts (Track 2 / 2a+2c): the millions, as integer flows. ---
+    // The whole populace is statistical cohorts; only a bounded cast is ever a real entity. Cost is
+    // O(regions), independent of headcount, so the per-tick wall stays ~flat while `souls` grows by
+    // orders of magnitude — and ns/soul collapses toward zero. This is the row that reaches millions.
+    println!("Tier-2 cohorts — {COHORT_REGIONS} regions, avatar present, {ticks} ticks/config");
+    println!(
+        "  {:>13} {:>9} {:>11} {:>12} {:>7}  {:<18}",
+        "souls", "ticks/s", "us/tick", "ns/soul", "live", "fingerprint"
+    );
+    for &pop in &[1_000_000u64, 10_000_000, 100_000_000] {
+        let (wall, souls, live, fp) = measure_cohorts(width, height, pop, ticks);
+        let per_tick = wall.as_secs_f64() / ticks as f64;
+        let tps = 1.0 / per_tick;
+        let us_tick = per_tick * 1e6;
+        let ns_soul = per_tick * 1e9 / souls.max(1) as f64;
+        println!(
+            "  {:>13} {:>9.0} {:>11.0} {:>12.4} {:>7} 0x{:016X}",
+            souls, tps, us_tick, ns_soul, live, fp
+        );
+    }
+    println!();
 }
