@@ -350,6 +350,12 @@ pub struct Setup {
     /// stride. `1` = no coarsening (distant NPCs still run every tick). Ignored when `sim_radius` is
     /// `None`. Default `8`.
     pub sim_far_stride: u32,
+    /// **A\* planning budget** — the hard cap on search-node expansions per replanning agent
+    /// (`docs/scaling.md`, Track 1). `None` (the default) is the built-in 600-node search,
+    /// byte-identical to before this knob existed; `Some(n)` trades planning horizon for a
+    /// cheaper tick (fewer node expansions — the dominant per-tick allocation). The lever the
+    /// tiered model will later turn down for the distant masses, lower than for the near cast.
+    pub plan_budget: Option<usize>,
     /// Wake the **combat layer** (`docs/combat-integration.md`): let the avatar and party fight
     /// adjacent hostiles through the headless `combat_core` engine — downed enemies die, and HP
     /// carries between fights on a [`combat::Health`] component. Off by default → byte-identical;
@@ -409,6 +415,7 @@ impl Default for Setup {
             explore_cfg: ExploreConfig::default(),
             sim_radius: None,
             sim_far_stride: 8,
+            plan_budget: None,
             combat: false,
             combat_cfg: combat::CombatConfig::default(),
         }
@@ -732,6 +739,15 @@ impl Simulation {
             radius: setup.sim_radius,
             far_stride: setup.sim_far_stride,
         });
+        // The A* planning budget (`docs/scaling.md`, Track 1). Always present; `plan_budget`
+        // unset → the default 600-node search (`PlanConfig::default`), so a run that doesn't
+        // touch the knob is byte-identical to before it existed.
+        world.insert_resource(
+            setup
+                .plan_budget
+                .map(|node_budget| people::PlanConfig { node_budget })
+                .unwrap_or_default(),
+        );
 
         // The fixed-order, single-threaded per-step schedule is owned by `agent_core`; the
         // survival layer (when on) adds its per-day drain just before the core metabolism.
@@ -2593,6 +2609,44 @@ mod tests {
             let mut b = baseline_sim(kind);
             assert_eq!(got, b.fingerprint(), "{kind}: run is not reproducible");
         }
+    }
+
+    #[test]
+    fn plan_budget_default_is_identical_a_tighter_one_bites_and_stays_deterministic() {
+        // The same scenario the "economy" baseline pins, parameterised by the planning budget.
+        let run = |budget: Option<usize>| {
+            let mut sim = Simulation::new(Setup {
+                width: 32,
+                height: 24,
+                seed: 7,
+                warmup: 60,
+                npcs: 80,
+                markets: 4,
+                plan_budget: budget,
+                ..Default::default()
+            });
+            sim.run(150);
+            sim.fingerprint()
+        };
+        // `None` is exactly the built-in 600-node search — byte-identical to the pinned economy
+        // baseline (which is the same scenario with the field untouched).
+        assert_eq!(
+            run(None),
+            BASELINE_ECONOMY,
+            "plan_budget None must be the unchanged 600-node plan",
+        );
+        // A much tighter budget changes at least one plan (the knob actually bites)…
+        let tight = run(Some(40));
+        assert_ne!(
+            tight, BASELINE_ECONOMY,
+            "a 40-node budget should change some plan vs the 600-node search",
+        );
+        // …yet the budgeted run is still fully reproducible (determinism is preserved).
+        assert_eq!(
+            tight,
+            run(Some(40)),
+            "a budgeted run is still deterministic"
+        );
     }
 
     // --- Fauna ---

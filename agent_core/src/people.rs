@@ -298,8 +298,28 @@ impl std::ops::Deref for NeedsRes {
     }
 }
 
-/// Hard cap on A\* expansions per plan — keeps replanning real-time safe.
+/// Hard cap on A\* expansions per plan — keeps replanning real-time safe. The default the
+/// search runs at; [`PlanConfig`] can lower it for cheaper, shorter-horizon planning.
 const NODE_BUDGET: usize = 600;
+
+/// Tunable cap on A\* expansions per plan — the bulk knob behind `docs/scaling.md`'s "lower
+/// `NODE_BUDGET` for the masses". A smaller budget makes planning cheaper (fewer node
+/// expansions, so fewer `PlanState` clones — the dominant per-tick allocation) at the cost
+/// of a shorter planning horizon. **Absent, or set to [`NODE_BUDGET`], is the original
+/// 600-node search — byte-identical**, so a run that doesn't touch this knob is unchanged.
+/// The assembler sets it from `Setup::plan_budget`.
+#[derive(Resource, Clone, Copy, Debug)]
+pub struct PlanConfig {
+    pub node_budget: usize,
+}
+
+impl Default for PlanConfig {
+    fn default() -> Self {
+        Self {
+            node_budget: NODE_BUDGET,
+        }
+    }
+}
 
 /// Weight of a faction's taboo as a deontic prohibition on its members — how strongly
 /// a faction's law suppresses a member's appetite to break it (a unit taboo, like the
@@ -447,7 +467,12 @@ pub(crate) fn people_plan(
     world_affordances: Res<WorldAffordances>,
     factions: Res<Factions>,
     throne: Option<Res<Throne>>,
+    plan_cfg: Option<Res<PlanConfig>>,
 ) {
+    // The A* node budget for this run — the configured cap, or the default 600 (and so
+    // byte-identical) when the knob is untouched. A plain `usize`, copied into the parallel
+    // planning closure below.
+    let node_budget = plan_cfg.as_deref().map_or(NODE_BUDGET, |c| c.node_budget);
     // One start-of-tick snapshot of every market; everyone plans against the same
     // world, and live trades in `people_execute` keep money exactly conserved.
     let snapshots: Vec<MarketSnapshot> = markets
@@ -618,7 +643,7 @@ pub(crate) fn people_plan(
                     known: &|i| known.0.contains(&i),
                     resources: &resources,
                     neighbors: &neighbors,
-                    node_budget: NODE_BUDGET,
+                    node_budget,
                 };
                 let mut goal = None;
                 let mut steps = Vec::new();
