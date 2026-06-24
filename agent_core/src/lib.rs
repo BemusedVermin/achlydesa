@@ -30,6 +30,7 @@ pub mod events;
 pub mod factions;
 pub mod fauna;
 pub mod features;
+pub mod fields;
 pub mod goals;
 pub mod gossip;
 pub mod norms;
@@ -59,6 +60,7 @@ pub use features::{
     AffordanceDef, Category, Discovery, EffectDef, Feature, FeatureCatalog, FeatureConfig,
     FeatureDef, FeatureId, Features, FindState, NeedKind,
 };
+pub use fields::FieldsConfig;
 pub use game_sim::{Coord, Topology};
 pub use goals::{Goal, Goals};
 pub use player::{
@@ -119,6 +121,19 @@ pub struct Follower;
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Dormant;
 
+/// Marks an NPC as a **Tier-1 "drifter"** under level-of-detail (`docs/scaling.md`, Track 2): too
+/// far from the avatar to be worth a full GOAP brain, so instead of planning it follows the
+/// stigmergic field gradient and meets its needs by local rules ([`fields::drift`]) — cheap
+/// (`O(1)`/tick) but still alive (it moves, produces, trades, and eats, just without search). The
+/// generalisation of [`Dormant`] from "asleep" to "awake on a cheaper brain": where the coarse
+/// clock runs a *distant* full brain occasionally, a drifter runs a *cheap* brain every tick.
+/// Toggled by [`lod_dormancy`] only when the fields layer is on; **absent by default (and whenever
+/// the layer is off), so a world without it is byte-identical**. Skipped by the full-brain
+/// `people_plan`/`people_execute` via `Without<Drifter>`, and like `Dormant` it keeps `Npc`, so the
+/// director, factions, and mood still see every soul.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Drifter;
+
 /// Level-of-detail config. NPCs within `radius` hexes of the avatar run at full detail every tick;
 /// farther NPCs run on a coarse clock (once per `far_stride` ticks). `radius = None` = full detail
 /// everywhere — the default, byte-identical to a build without LOD. Set by the assembler from
@@ -167,13 +182,18 @@ fn advance_substrate(mut substrate: ResMut<Substrate>, mut rng: ResMut<SimRng>) 
 /// as much. A no-op (byte-identical) when the radius is unset or there is no avatar. Runs first, so
 /// the active set is settled before anyone plans. Dormant souls keep `Npc`, so the director, factions,
 /// and mood still see them every tick — drama intact.
+#[allow(clippy::type_complexity)]
 pub(crate) fn lod_dormancy(
     mut commands: Commands,
     cfg: Res<SimRadius>,
+    // Present only when the Track-2 stigmergic-fields layer is on. Its presence flips LOD from
+    // "coarse-clock the distant full brain" to "give the distant brain the cheap gradient one"
+    // ([`Drifter`]). Absent → the original behaviour, byte-identical.
+    fields: Option<Res<fields::FieldsConfig>>,
     player: Res<PlayerState>,
     substrate: Res<Substrate>,
     positions: Query<&Position>,
-    npcs: Query<(Entity, &Position, Has<Dormant>), With<people::Npc>>,
+    npcs: Query<(Entity, &Position, Has<Dormant>, Has<Drifter>), With<people::Npc>>,
 ) {
     let Some(r) = cfg.radius else { return };
     let Some(avatar) = player.avatar() else {
@@ -185,18 +205,34 @@ pub(crate) fn lod_dormancy(
     let width = substrate.0.topology().width();
     let tick = substrate.0.tick();
     let stride = cfg.far_stride.max(1) as u64;
-    for (e, &Position(p), dormant) in &npcs {
-        // Active = near, or it's this NPC's turn on the coarse clock (staggered by entity id).
-        let active =
-            within(ac, p, r, width) || stride <= 1 || tick % stride == e.to_bits() % stride;
-        match (active, dormant) {
-            (true, true) => {
-                commands.entity(e).remove::<Dormant>();
+    let tiered = fields.is_some();
+    for (e, &Position(p), dormant, drifter) in &npcs {
+        let near = within(ac, p, r, width);
+        if tiered {
+            // Tier 0 (full brain) within the radius; Tier 1 ([`Drifter`], gradient-follower)
+            // beyond. No coarse clock — a drifter is cheap enough to run every tick.
+            match (near, drifter) {
+                (true, true) => {
+                    commands.entity(e).remove::<Drifter>();
+                }
+                (false, false) => {
+                    commands.entity(e).insert(Drifter);
+                }
+                _ => {}
             }
-            (false, false) => {
-                commands.entity(e).insert(Dormant);
+        } else {
+            // Original LOD: a distant NPC keeps its full brain but on a staggered coarse clock —
+            // active when near, or on its turn (one tick in `far_stride`, staggered by entity id).
+            let active = near || stride <= 1 || tick % stride == e.to_bits() % stride;
+            match (active, dormant) {
+                (true, true) => {
+                    commands.entity(e).remove::<Dormant>();
+                }
+                (false, false) => {
+                    commands.entity(e).insert(Dormant);
+                }
+                _ => {}
             }
-            _ => {}
         }
     }
 }
@@ -222,9 +258,14 @@ pub fn build_schedule() -> Schedule {
     schedule.add_systems(
         (
             (
-                // Level-of-detail first: freeze NPCs far from the avatar so only the local populace
-                // pays the per-tick planning cost (off by default — see `SimRadius`).
+                // Level-of-detail first: settle which NPCs run a full brain vs. a cheap one this
+                // tick (off by default — see `SimRadius`/`FieldsConfig`).
                 lod_dormancy,
+                // Refresh the stigmergic fields *before* Φ, so this tick's deposits diffuse this
+                // tick. Each is a no-op (byte-identical) until the fields layer is woken.
+                fields::deposit_food,
+                fields::deposit_danger,
+                fields::deposit_demand,
                 advance_substrate,
                 fauna::forage,
                 fauna::lifecycle,
@@ -232,6 +273,9 @@ pub fn build_schedule() -> Schedule {
                 fauna::carnivore_lifecycle,
                 people::people_plan,
                 people::people_execute,
+                // Tier-1 masses act after the full-brain cast: one cheap gradient-following turn
+                // each (move/produce/trade/eat), against the same live world. No-op when off.
+                fields::drift,
                 people::smooth_prices,
                 people::discover_features,
                 // The player walks its route, revealing the map and finding what it passes.
