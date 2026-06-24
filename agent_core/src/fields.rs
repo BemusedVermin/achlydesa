@@ -2,7 +2,7 @@
 //!
 //! The substrate carries a handful of generic [`game_sim::StigConfig`] layers (deposited,
 //! diffused, decayed there — see [`game_sim::World::install_stigmergy`]); this module assigns
-//! them *meaning* ([`FOOD`]/[`DANGER`]/[`DEMAND`]), keeps them fed (the `deposit_*` systems),
+//! them *meaning* ([`FOOD`]/[`DANGER`]/per-good [`DEMAND_BASE`]), keeps them fed (the `deposit_*` systems),
 //! and lets distant agents live cheaply by **following the gradient instead of planning**
 //! (the [`drift`] system).
 //!
@@ -31,9 +31,18 @@ use std::collections::HashMap;
 /// layers. The assembler installs the layers in this exact order (see [`FieldsConfig::layers`]).
 pub const FOOD: usize = 0;
 pub const DANGER: usize = 1;
-pub const DEMAND: usize = 2;
-/// How many layers the fields layer installs.
-pub const LAYER_COUNT: usize = 3;
+/// Base index of the **per-good demand** layers: demand for good `g` lives at `DEMAND_BASE + g`.
+/// Per-good (not one aggregate "wants stock" scalar), so a drifter can follow the gradient for the
+/// *good it is actually carrying* — routing surplus to where that specific good is short.
+pub const DEMAND_BASE: usize = 2;
+/// Non-demand layers (food + danger); total installed = `BASE_LAYERS + good_count`.
+pub const BASE_LAYERS: usize = 2;
+
+/// The stigmergy layer holding demand for good `g`.
+#[inline]
+pub fn demand_layer(g: usize) -> usize {
+    DEMAND_BASE + g
+}
 
 /// Tunables for the stigmergic-fields / Tier-1 layer. Held as a resource so its presence is the
 /// on/off switch: absent ⇒ the whole layer is inert and the world is byte-identical.
@@ -88,10 +97,15 @@ impl Default for FieldsConfig {
 }
 
 impl FieldsConfig {
-    /// The per-layer transport configs in install order — the array the assembler hands to
-    /// [`game_sim::World::install_stigmergy`]. Order must match [`FOOD`]/[`DANGER`]/[`DEMAND`].
-    pub fn layers(&self) -> [StigConfig; LAYER_COUNT] {
-        [self.food, self.danger, self.demand]
+    /// The per-layer transport configs in install order — `[food, danger]` then one **demand** layer
+    /// per good — the slice the assembler hands to [`game_sim::World::install_stigmergy`]. Order must
+    /// match [`FOOD`]/[`DANGER`]/[`DEMAND_BASE`].
+    pub fn layers(&self, good_count: usize) -> Vec<StigConfig> {
+        let mut v = Vec::with_capacity(BASE_LAYERS + good_count);
+        v.push(self.food);
+        v.push(self.danger);
+        v.extend(std::iter::repeat_n(self.demand, good_count));
+        v
     }
 }
 
@@ -124,8 +138,9 @@ pub(crate) fn deposit_danger(
     }
 }
 
-/// **Deposit demand** at markets running short of stock — "goods wanted here", the gradient a
-/// drifter carrying surplus climbs to find a buyer. `O(markets · goods)`. No-op when off.
+/// **Deposit per-good demand** at markets running short of stock — a "this good is wanted here"
+/// gradient *per good*, so a drifter follows the one for the good it carries. `O(markets · goods)`.
+/// No-op when off.
 pub(crate) fn deposit_demand(
     markets: Query<(&Position, &Market), Without<Npc>>,
     mut substrate: ResMut<Substrate>,
@@ -133,22 +148,27 @@ pub(crate) fn deposit_demand(
     cfg: Option<Res<FieldsConfig>>,
 ) {
     let Some(cfg) = cfg else { return };
-    // Collect (tile, deficit) first, so the market-query borrow is released before the deposit.
-    let deposits: Vec<(Coord, f32)> = markets
+    // Collect (tile, per-good deficits) first, so the market-query borrow is released before the
+    // deposit. Each market contributes one tile and its vector of normalised per-good shortfalls.
+    let deposits: Vec<(Coord, Vec<f32>)> = markets
         .iter()
         .map(|(p, m)| {
-            let mut deficit = 0.0;
-            for g in 0..m.stock.len() {
-                let target = reg.good(g).target_stock.max(1) as f32;
-                let have = m.stock[g] as f32;
-                deficit += ((target - have) / target).clamp(0.0, 1.0);
-            }
-            (p.0, deficit)
+            let deficits: Vec<f32> = (0..m.stock.len())
+                .map(|g| {
+                    let target = reg.good(g).target_stock.max(1) as f32;
+                    ((target - m.stock[g] as f32) / target).clamp(0.0, 1.0)
+                })
+                .collect();
+            (p.0, deficits)
         })
         .collect();
-    for (c, deficit) in deposits {
-        if deficit > 0.0 {
-            substrate.0.deposit(DEMAND, c, cfg.demand_gain * deficit);
+    for (c, deficits) in deposits {
+        for (g, deficit) in deficits.into_iter().enumerate() {
+            if deficit > 0.0 {
+                substrate
+                    .0
+                    .deposit(demand_layer(g), c, cfg.demand_gain * deficit);
+            }
         }
     }
 }
@@ -206,9 +226,15 @@ pub(crate) fn drift(
         }
         let here = pos.0;
         let hungry = needs.sustenance < cfg.hunger_threshold;
-        // Surplus = a non-food good held to sell (food is kept to eat). Only chase demand when fed.
-        let has_surplus = !hungry
-            && (0..inv.stock.len()).any(|g| inv.stock[g] > 0 && reg.good(g).nutrition == 0.0);
+        // The surplus good to sell = the non-food good held most (food is kept to eat). A fed drifter
+        // chases the demand gradient for *that specific good*, routing it to where it's short.
+        let surplus_good = if hungry {
+            None
+        } else {
+            (0..inv.stock.len())
+                .filter(|&g| inv.stock[g] > 0 && reg.good(g).nutrition == 0.0)
+                .max_by_key(|&g| inv.stock[g])
+        };
 
         // --- 1. Move one tile up the weighted gradient (staying put is allowed). ---
         // A starving drifter weights food more heavily, so the scent overrides everything else.
@@ -218,14 +244,19 @@ pub(crate) fn drift(
         } else {
             0.0
         };
-        let w_demand = if has_surplus { cfg.w_demand } else { 0.0 };
+        let w_demand = if surplus_good.is_some() {
+            cfg.w_demand
+        } else {
+            0.0
+        };
+        let demand_l = surplus_good.map(demand_layer);
         let w_danger = cfg.w_danger;
         let dest = {
             let sub = &substrate.0;
             let hi = sub.topology().index_of(here);
             let neighbors = move_graph.neighbors(hi);
             let score = |c: Coord| -> f32 {
-                w_food * sub.stig(FOOD, c) + w_demand * sub.stig(DEMAND, c)
+                w_food * sub.stig(FOOD, c) + demand_l.map_or(0.0, |l| w_demand * sub.stig(l, c))
                     - w_danger * sub.stig(DANGER, c)
             };
             let mut best = here;
