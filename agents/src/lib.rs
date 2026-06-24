@@ -2648,7 +2648,10 @@ impl Simulation {
                 mix(&mut h, c.seat.col as u64);
                 mix(&mut h, c.seat.row as u64);
                 mix(&mut h, c.pool as u64);
-                mix(&mut h, q(c.sustenance));
+                // sustenance is fixed-point now — fold its exact i128 bits (no float quantization).
+                let sus = c.sustenance.to_bits();
+                mix(&mut h, sus as u64);
+                mix(&mut h, (sus >> 64) as u64);
                 mix(&mut h, u64::from(c.crystallized));
                 for &n in &c.pop {
                     mix(&mut h, u64::from(n));

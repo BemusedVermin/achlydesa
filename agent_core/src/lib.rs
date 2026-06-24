@@ -39,6 +39,7 @@ pub mod observe;
 pub mod people;
 pub mod plan;
 pub mod player;
+pub mod scalar;
 pub mod sift;
 
 pub use ai::{Consideration, Curve, Input};
@@ -70,6 +71,7 @@ pub use goals::{Goal, Goals};
 pub use player::{
     Player, PlayerKnowledge, PlayerState, PlayerView, Rumor, SearchOutcome, Terrain, TileInfo,
 };
+pub use scalar::Fx;
 pub use sift::{
     Axis, InterestAxis, Sift, SiftBook, SiftPattern, SiftPatternId, SiftStatus, ThreadCandidate,
 };

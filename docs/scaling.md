@@ -354,20 +354,24 @@ Continuous + tiering is the right pairing.
 - **Benchmark first.** *(Done — `examples/bench_scaling.rs`.)* It confirmed the central
   claim: per-agent A\* planning is ~98% of the tick and the rest is <2%, so the work is a
   complexity-class problem (Track 2), not a constant-factor one.
-- **Deferred: fixed-point arithmetic everywhere (determinism hardening).** **All gameplay-affecting
-  floating-point arithmetic must, in the future, be replaced by fixed-point.** Two review findings on
-  PR #10 motivate this. (1) *Precision:* `total as f32` loses precision above 2^24 (~16.7M), biasing
-  per-capita flows at scale — now fixed for the cohort economy with an integer `scale()`, but the same
-  hazard lurks wherever a count or coin value meets a float. (2) *Associativity:* f32 addition is not
-  associative, so accumulating `sustenance` in ECS/archetype order made the fingerprint fragile to
-  layout changes (worked around by sorting on entity id, but the fragility is intrinsic to float
-  sums). Floats are also not guaranteed bit-identical across platforms or compiler/LLVM versions,
-  which directly threatens the determinism invariant in `CLAUDE.md`. The migration is large and
-  cross-cutting — `Needs`/`Mood`/`Personality`/`Skills`, market `price_basis`, cohort `sustenance`,
-  the IAUS/appraisal scoring, and ultimately the substrate's climate/ecology fields are all `f32`
-  today — so it is staged future work, but the direction is settled: **gameplay state and everything
-  the fingerprint folds should be exact integer / fixed-point**, with floats confined (if anywhere)
-  to cosmetic-only quantities that never feed back into simulation state.
+- **Fixed-point arithmetic (determinism hardening) — started.** **All gameplay-affecting
+  floating-point arithmetic should be replaced by fixed-point.** Two review findings on PR #10 motivate
+  it. (1) *Precision:* `total as f32` loses precision above 2^24 (~16.7M), biasing per-capita flows at
+  scale. (2) *Associativity:* f32 addition is not associative, so accumulating `sustenance` in
+  ECS/archetype order made the fingerprint fragile to layout changes. Floats are also not guaranteed
+  bit-identical across platforms or compiler/LLVM versions, which directly threatens the determinism
+  invariant in `CLAUDE.md`. The chosen type is the [`fixed`](https://docs.rs/fixed) crate's `I64F64`,
+  aliased as `agent_core::Fx` (`scalar.rs`).
+  - *Done:* the **cohort layer** (`cohorts.rs`) — `Cohort.sustenance`, every `CohortConfig` rate, and
+    all the economy/crystallization arithmetic are now `Fx`; the fingerprint folds the exact bits.
+    Floats survive only at the boundaries with code still on `f32` (the substrate's `carrying_capacity`
+    read in, `Needs`/`Skills` written out), converted explicitly.
+  - *Remaining:* `Needs`/`Mood`/`Personality`/`Skills`, market `price_basis`, the IAUS/appraisal
+    scoring, survival vitals, and ultimately the substrate's climate/ecology fields (these use
+    transcendentals — `sqrt`/`exp`/trig — so they need a fixed-point math lib, not just a type swap).
+    The direction is settled: **gameplay state and everything the fingerprint folds should be exact
+    integer / fixed-point**, with floats confined to cosmetic quantities that never feed back into
+    simulation state (e.g. the renderer in `app`).
 
 ## Relationship to existing docs
 
