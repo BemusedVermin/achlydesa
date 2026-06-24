@@ -12,6 +12,12 @@
 //!    show up as the economy baseline (planning dominates it — that is the whole reason
 //!    Track 2 exists).
 //!
+//!  * **The Tier-1 collapse (Track 2).** A final `fields(T1)` row runs the same economy with
+//!    the stigmergic-fields layer and a tight LOD radius around a spawned avatar, so the distant
+//!    majority runs the O(1) gradient brain instead of GOAP A*. Its annotation is the µs/agent
+//!    ratio vs the all-full-brain `economy` baseline — the complexity-class drop, not a constant
+//!    factor, which is the whole reason Track 2 exists.
+//!
 //! A fingerprint per config is printed too, so a determinism regression is obvious at a
 //! glance (the same N+layers must print the same fingerprint every run).
 //!
@@ -43,8 +49,12 @@ unsafe impl GlobalAlloc for Counting {
 #[global_allocator]
 static GLOBAL: Counting = Counting;
 
+/// Radius (hexes from the avatar) kept at full GOAP detail in the Tier-1 config — small, so the
+/// distant majority falls into the cheap gradient brain and the cost collapse is visible.
+const FIELDS_RADIUS: i32 = 8;
+
 /// The optional layers a config wakes — the attribution knobs.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 enum Layers {
     /// Bare economy: planning, trade, factions, metabolism. Planning dominates.
     Economy,
@@ -52,6 +62,11 @@ enum Layers {
     Dialogue,
     /// + the narrative director and a handful of feuds (grievance planning + casting).
     Director,
+    /// **Track 2.** Economy + the stigmergic-fields layer with an avatar and a tight
+    /// [`FIELDS_RADIUS`]: the local cast stays full-brain (Tier 0) while everyone beyond runs the
+    /// O(1) gradient brain (Tier 1). The point of this row is the µs/agent vs the `economy`
+    /// baseline — that delta is the complexity-class drop GOAP can't get from `par_iter`.
+    Fields,
 }
 
 impl Layers {
@@ -60,6 +75,7 @@ impl Layers {
             Layers::Economy => "economy",
             Layers::Dialogue => "+dialogue",
             Layers::Director => "+director",
+            Layers::Fields => "fields(T1)",
         }
     }
 }
@@ -97,6 +113,12 @@ fn build(width: i32, height: i32, npcs: usize, layers: Layers) -> Simulation {
                 ..Default::default()
             };
         }
+        // Tier-1: wake the fields layer and a tight LOD radius. The avatar (spawned in `measure`)
+        // is what `lod_dormancy` measures distance from, so it must exist for anyone to be demoted.
+        Layers::Fields => {
+            setup.fields = true;
+            setup.sim_radius = Some(FIELDS_RADIUS);
+        }
     }
     Simulation::new(setup)
 }
@@ -111,6 +133,11 @@ fn measure(
     ticks: u64,
 ) -> (Duration, usize, usize, u64) {
     let mut sim = build(width, height, npcs, layers);
+    // The Tier-1 config needs an avatar for the LOD to demote anyone (it measures distance from
+    // the avatar). Spawn it before timing so the steady state — local cast Tier 0, the rest Tier 1.
+    if layers == Layers::Fields {
+        sim.spawn_player(None);
+    }
     sim.run(1); // prime: first-touch allocations (pools, lazy statics) out of the window
 
     let allocs_before = ALLOCS.load(Ordering::Relaxed);
@@ -147,18 +174,35 @@ fn main() {
             "layers", "ticks/s", "us/tick", "us/agent", "alloc/tk", "fingerprint"
         );
         let mut prev: Option<Duration> = None;
-        for layers in [Layers::Economy, Layers::Dialogue, Layers::Director] {
+        let mut econ: Option<(Duration, usize)> = None;
+        // The attribution chain (each row adds a layer), then the Tier-1 row on its own — it is
+        // economy + fields, *not* + director, so it is annotated against the economy baseline.
+        for layers in [
+            Layers::Economy,
+            Layers::Dialogue,
+            Layers::Director,
+            Layers::Fields,
+        ] {
             let (wall, allocs, alive, fp) = measure(width, height, n, layers, ticks);
             let per_tick = wall.as_secs_f64() / ticks as f64;
             let tps = 1.0 / per_tick;
             let us_tick = per_tick * 1e6;
             let us_agent = us_tick / alive.max(1) as f64;
-            let delta = prev
-                .map(|p| {
+            // Most rows compare to the previous row (the layer they add); the Tier-1 row compares
+            // its *per-agent* cost to the all-full-brain economy — that ratio is the headline.
+            let delta = if layers == Layers::Fields {
+                econ.map(|(ew, ea)| {
+                    let base = ew.as_secs_f64() * 1e6 / ticks as f64 / ea.max(1) as f64;
+                    format!("  ({:.1}x us/agent vs economy)", base / us_agent.max(1e-9))
+                })
+                .unwrap_or_default()
+            } else {
+                prev.map(|p| {
                     let d = (wall.as_secs_f64() - p.as_secs_f64()) * 1e6 / ticks as f64;
                     format!("  ({d:+.0}us/tick vs prev)")
                 })
-                .unwrap_or_default();
+                .unwrap_or_default()
+            };
             println!(
                 "  {:<10} {:>9.0} {:>11.0} {:>11.2} {:>9} 0x{:016X}{}",
                 layers.label(),
@@ -169,6 +213,9 @@ fn main() {
                 fp,
                 delta,
             );
+            if layers == Layers::Economy {
+                econ = Some((wall, alive));
+            }
             prev = Some(wall);
         }
         println!();
