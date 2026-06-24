@@ -256,14 +256,15 @@ pub(crate) fn cohort_step(
         if cohort.sustenance >= cfg.birth_sustenance {
             let births = (total as f32 * cfg.birth_rate).round() as u32;
             if births > 0 {
-                // New mouths land round-robin across callings; they bring no coin (pool unchanged).
-                let mut left = births;
-                let nc = cohort.pop.len();
-                let mut i = 0;
-                while left > 0 {
-                    cohort.pop[i % nc] += 1;
-                    i += 1;
-                    left -= 1;
+                // New mouths spread evenly across callings, bringing no coin (pool unchanged).
+                // Computed in O(callings), not a per-mouth loop — a round-robin of `births` over
+                // `nc` bins is exactly `births / nc` each plus one to the first `births % nc`, so
+                // this is identical to that loop but keeps the step O(regions·callings) at any scale.
+                let nc = cohort.pop.len() as u32;
+                let base = births / nc;
+                let extra = births % nc;
+                for (i, c) in cohort.pop.iter_mut().enumerate() {
+                    *c += base + u32::from((i as u32) < extra);
                 }
             }
         } else if cohort.sustenance <= cfg.death_sustenance {
@@ -460,6 +461,10 @@ pub(crate) fn cohort_crystallize(
             }
             // Dissolve: fold the survivors back into the count and despawn them.
             (false, true) => {
+                // The un-crystallized remainder kept evolving its own sustenance while the cast was
+                // away; capture its headcount before folding the cast back, so we *blend* rather than
+                // overwrite — a small cast must not clobber the whole region's evolved wellbeing.
+                let remainder = cohort.total();
                 let mut sustenance_sum = 0.0;
                 let mut folded = 0u64;
                 for &(e, calling, money, ref stock, sustenance) in &cast[ri] {
@@ -477,8 +482,13 @@ pub(crate) fn cohort_crystallize(
                     folded += 1;
                     commands.entity(e).despawn();
                 }
-                if folded > 0 {
-                    cohort.sustenance = sustenance_sum / folded as f32;
+                // Headcount-weighted blend: the remainder keeps its evolved sustenance, the returning
+                // cast contributes weighted by its size. When the whole cohort was crystallized
+                // (remainder == 0) this collapses to the cast average; when nobody returns, unchanged.
+                let total_after = remainder + folded;
+                if total_after > 0 {
+                    cohort.sustenance = (cohort.sustenance * remainder as f32 + sustenance_sum)
+                        / total_after as f32;
                 }
                 cohort.crystallized = false;
             }
