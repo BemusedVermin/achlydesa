@@ -27,7 +27,7 @@
 //! `O(regions)`, dwarfed by the crystallized cast's GOAP), but the structure is shard-ready.
 
 use crate::people::{
-    EconRes, Inventory, Market, Needs, Npc, Patron, Personality, Plan, Skills, price,
+    Bond, EconRes, Inventory, Liege, Market, Needs, Npc, Patron, Personality, Plan, Skills, price,
 };
 use crate::{Position, Registry, Substrate};
 use bevy_ecs::prelude::*;
@@ -96,6 +96,12 @@ pub struct CohortConfig {
     /// market (so goods are conserved), scaled by the region's wellbeing. A member no longer pops in
     /// empty-handed.
     pub crystallize_larder: u32,
+    /// Fraction of a crystallized cast that arrives with a **bond** to another member — the existing
+    /// friendships of a settled community (which the director can later strain). `0` = none.
+    pub crystallize_bond_frac: f32,
+    /// Fraction of a crystallized cast that arrives as a **vassal** of another member — the local
+    /// hierarchy (so a lord's death sends a grudge down the chain). `0` = none.
+    pub crystallize_vassal_frac: f32,
     /// Goods produced per person per tick, by their calling (sold into the regional market).
     pub productivity: f32,
     /// Food units one person consumes per tick (bought from the regional market).
@@ -122,6 +128,8 @@ impl Default for CohortConfig {
             crystallize_skill: 0.5,
             crystallize_skill_spread: 0.3,
             crystallize_larder: 4,
+            crystallize_bond_frac: 0.2,
+            crystallize_vassal_frac: 0.15,
             productivity: 1.0,
             consume_per_capita: 0.9,
             feed_rate: 6.0,
@@ -492,6 +500,7 @@ pub(crate) fn cohort_crystallize(
                 let moved_pool = (cohort.pool as i128 * k as i128 / total as i128) as i64;
                 let mut purse_left = moved_pool;
                 let mut spawned = 0u64;
+                let mut cast_ids: Vec<Entity> = Vec::with_capacity(k as usize);
                 let skill_count = cohort.pop.len();
                 // Each member is provisioned from the regional market (so goods are conserved, not
                 // minted), scaled by how well-fed the region is. Integer math, no new float.
@@ -523,27 +532,63 @@ pub(crate) fn cohort_crystallize(
                             m.stock[g] -= got;
                             stock[g] = got;
                         }
-                        commands.spawn((
-                            Npc,
-                            Position(cohort.seat),
-                            Needs {
-                                sustenance: cohort.sustenance,
-                                rest: 100.0,
-                            },
-                            Skills(skills),
-                            Inventory {
-                                money: share,
-                                stock,
-                            },
-                            Plan::default(),
-                            Patron(cohort.market),
-                            Personality(roll_personality(&reg, &mut crng.0)),
-                            crate::people::Mood(vec![0.0; reg.mood_count()]),
-                            crate::people::Known::default(),
-                            crate::factions::Allegiance::default(),
-                            crate::factions::Opinion::default(),
-                            CohortMember(ri),
-                        ));
+                        let id = commands
+                            .spawn((
+                                Npc,
+                                Position(cohort.seat),
+                                Needs {
+                                    sustenance: cohort.sustenance,
+                                    rest: 100.0,
+                                },
+                                Skills(skills),
+                                Inventory {
+                                    money: share,
+                                    stock,
+                                },
+                                Plan::default(),
+                                Patron(cohort.market),
+                                Personality(roll_personality(&reg, &mut crng.0)),
+                                crate::people::Mood(vec![0.0; reg.mood_count()]),
+                                crate::people::Known::default(),
+                                crate::factions::Allegiance::default(),
+                                crate::factions::Opinion::default(),
+                                CohortMember(ri),
+                            ))
+                            .id();
+                        cast_ids.push(id);
+                    }
+                }
+                // The community's existing social fabric: some friendships (`Bond`) and a little
+                // vassalage (`Liege`), seeded among the cast from the cohort's own RNG. Plausible
+                // invention, not reconstructed history (the aggregate holds no social graph) — but it
+                // gives the director something to strain, and lets a lord's death send a grudge down
+                // the chain. Grievances are *not* seeded: the cast shares a tile, so an avenge goal
+                // would trigger an instant spawn-bloodbath — manufacturing feuds is the director's job.
+                if cast_ids.len() >= 2 {
+                    let pick_other = |rng: &mut SplitMix64, self_i: usize, n: usize| -> Entity {
+                        // A uniform other member: draw in [0, n-1) and skip past self.
+                        let mut j = rng.gen_range(n - 1);
+                        if j >= self_i {
+                            j += 1;
+                        }
+                        cast_ids[j]
+                    };
+                    let n = cast_ids.len();
+                    for (i, &member) in cast_ids.iter().enumerate() {
+                        if crng
+                            .0
+                            .gen_bool(cfg.crystallize_bond_frac.clamp(0.0, 1.0) as f64)
+                        {
+                            let other = pick_other(&mut crng.0, i, n);
+                            commands.entity(member).insert(Bond(other));
+                        }
+                        if crng
+                            .0
+                            .gen_bool(cfg.crystallize_vassal_frac.clamp(0.0, 1.0) as f64)
+                        {
+                            let lord = pick_other(&mut crng.0, i, n);
+                            commands.entity(member).insert(Liege(lord));
+                        }
                     }
                 }
                 cohort.pool -= moved_pool;
