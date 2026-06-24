@@ -64,6 +64,11 @@ impl Layers {
     }
 }
 
+/// The A* planning budget from the `BUDGET` env var (`None` = the default 600-node search).
+fn budget_env() -> Option<usize> {
+    std::env::var("BUDGET").ok().and_then(|s| s.parse().ok())
+}
+
 /// Build a run with `npcs` people on a `width`x`height` world, waking `layers`.
 fn build(width: i32, height: i32, npcs: usize, layers: Layers) -> Simulation {
     // Markets scale gently with the population so trade stays reachable as the crowd grows.
@@ -75,6 +80,9 @@ fn build(width: i32, height: i32, npcs: usize, layers: Layers) -> Simulation {
         npcs,
         markets: (npcs / 200).max(3),
         feuds: 0,
+        // The A* planning budget lever: `BUDGET=n` lowers it (cheaper, shorter-horizon
+        // plans); unset is the default 600-node search.
+        plan_budget: budget_env(),
         ..Default::default()
     };
     match layers {
@@ -128,7 +136,10 @@ fn main() {
         })
         .unwrap_or((96, 72));
 
-    println!("scaling bench — {width}x{height} world, {ticks} ticks/config\n");
+    let budget = budget_env().map_or("600 (default)".to_string(), |b| b.to_string());
+    println!(
+        "scaling bench — {width}x{height} world, {ticks} ticks/config, plan budget {budget}\n"
+    );
     for &n in &ns {
         println!("N = {n}");
         println!(
