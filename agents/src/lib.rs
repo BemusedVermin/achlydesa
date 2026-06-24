@@ -364,6 +364,17 @@ pub struct Setup {
     pub combat: bool,
     /// Combat tunables (HP derivation, party/elite Tempo, and the engine's knob surface).
     pub combat_cfg: combat::CombatConfig,
+    /// Wake the **stigmergic-fields / Tier-1 layer** (`docs/scaling.md`, Track 2 / 2b): install
+    /// the food/danger/demand stigmergy layers on the substrate, deposit into and diffuse them
+    /// each tick, and — paired with [`Setup::sim_radius`] and a spawned avatar — let NPCs beyond
+    /// the radius live as cheap **drifters** that follow the gradient instead of running GOAP A\*.
+    /// Off by default → no layers, no drifters, byte-identical. With it on but `sim_radius = None`
+    /// (or no avatar) the fields still run but every soul stays full-brain, so nothing that the
+    /// fingerprint sees changes — you need the radius + an avatar to actually demote the masses.
+    pub fields: bool,
+    /// Stigmergy transport + drift-behaviour knobs (layer diffuse/decay, deposit rates, gradient
+    /// weights, the hunger threshold). Only consulted when [`Setup::fields`] is on.
+    pub fields_cfg: FieldsConfig,
 }
 
 impl Default for Setup {
@@ -418,6 +429,8 @@ impl Default for Setup {
             plan_budget: None,
             combat: false,
             combat_cfg: combat::CombatConfig::default(),
+            fields: false,
+            fields_cfg: FieldsConfig::default(),
         }
     }
 }
@@ -458,6 +471,15 @@ impl Simulation {
         let mut rng = SplitMix64::new(setup.seed ^ 0x9E37_79B9_7F4A_7C15);
         for _ in 0..setup.warmup {
             substrate.evolve(&mut rng);
+        }
+
+        // Wake the stigmergic-fields layer, if asked: install the food/danger/demand stigmergy
+        // layers on the warmed substrate so the deposit/diffuse/drift systems have somewhere to
+        // write. Done after warm-up (the layers start empty, so spinning them through warm-up would
+        // be a no-op anyway). Off → no layers installed and the `FieldsConfig` resource absent, so
+        // every `fields` system early-returns and the world is byte-identical.
+        if setup.fields {
+            substrate.install_stigmergy(&setup.fields_cfg.layers());
         }
 
         // Layer the world's features onto the warmed substrate, from a dedicated RNG
@@ -748,6 +770,12 @@ impl Simulation {
                 .map(|node_budget| people::PlanConfig { node_budget })
                 .unwrap_or_default(),
         );
+        // The stigmergic-fields config (`docs/scaling.md`, Track 2). Present only when the layer is
+        // woken; its presence is the switch every `fields` system reads — absent ⇒ each one
+        // early-returns and no NPC is demoted to a drifter ⇒ byte-identical to before this layer.
+        if setup.fields {
+            world.insert_resource(setup.fields_cfg);
+        }
 
         // The fixed-order, single-threaded per-step schedule is owned by `agent_core`; the
         // survival layer (when on) adds its per-day drain just before the core metabolism.
@@ -2738,6 +2766,61 @@ mod tests {
             ..Default::default()
         });
         assert!(!sim.combat_enabled(), "combat layer is off by default");
+    }
+
+    #[test]
+    fn fields_layer_demotes_distant_npcs_and_conserves_money() {
+        let build = || {
+            let mut sim = Simulation::new(Setup {
+                seed: 99,
+                npcs: 60,
+                markets: 4,
+                warmup: 60,
+                // A tight radius around the avatar so most of the populace falls into Tier 1.
+                sim_radius: Some(2),
+                fields: true,
+                ..Default::default()
+            });
+            sim.spawn_player(None);
+            sim
+        };
+
+        let mut sim = build();
+        let money_before = sim.total_money();
+        sim.run(40);
+
+        // The fields layer + a radius should demote the distant majority to the cheap brain.
+        let drifters = {
+            let mut q = sim.world.query_filtered::<(), With<agent_core::Drifter>>();
+            q.iter(&sim.world).count()
+        };
+        assert!(
+            drifters > 0,
+            "fields + sim_radius should demote distant NPCs to drifters"
+        );
+
+        // Drifters must *live*, not just exist: the gradient brain feeds them as well as the full
+        // brain would, so the population doesn't quietly starve out (the regression that hid the
+        // real cost collapse behind mass death). Started at 60.
+        assert!(
+            sim.npc_count() >= 50,
+            "drifters starved en masse (only {} of 60 left)",
+            sim.npc_count()
+        );
+
+        // The integer economy still holds: trade (including drifter trade) mints no coins — only
+        // death (the one sink) can lower the total, so it can never rise.
+        assert!(
+            sim.total_money() <= money_before,
+            "money created from nothing (before {money_before}, after {})",
+            sim.total_money()
+        );
+
+        // Deterministic: a second identical run lands on the very same fingerprint.
+        let fp = sim.fingerprint();
+        let mut sim2 = build();
+        sim2.run(40);
+        assert_eq!(fp, sim2.fingerprint(), "a fields run must be reproducible");
     }
 
     #[test]
