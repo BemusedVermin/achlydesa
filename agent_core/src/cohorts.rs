@@ -86,9 +86,16 @@ pub struct CohortConfig {
     /// Most entities to spawn from one region on promotion — the live cast stays bounded however
     /// large the cohort.
     pub crystallize_cap: u32,
-    /// Skill level a crystallized member is reconstructed with in its calling (its history is lost
-    /// to the aggregate — the "pop-in" the design flags; a prototype reconstructs plausibly).
+    /// Mean skill level a crystallized member is reconstructed with in its calling (its history is
+    /// lost to the aggregate — the "pop-in" the design flags; a prototype reconstructs plausibly).
     pub crystallize_skill: f32,
+    /// Spread of crystallized members' calling skill around [`Self::crystallize_skill`] (`±spread`,
+    /// clamped to the skill's cap), so a promoted cast has novices and veterans rather than clones.
+    pub crystallize_skill_spread: f32,
+    /// Units of the staple food a crystallized member is provisioned with — drawn from the regional
+    /// market (so goods are conserved), scaled by the region's wellbeing. A member no longer pops in
+    /// empty-handed.
+    pub crystallize_larder: u32,
     /// Goods produced per person per tick, by their calling (sold into the regional market).
     pub productivity: f32,
     /// Food units one person consumes per tick (bought from the regional market).
@@ -113,6 +120,8 @@ impl Default for CohortConfig {
             promote_radius: 6,
             crystallize_cap: 24,
             crystallize_skill: 0.5,
+            crystallize_skill_spread: 0.3,
+            crystallize_larder: 4,
             productivity: 1.0,
             consume_per_capita: 0.9,
             feed_rate: 6.0,
@@ -438,6 +447,7 @@ pub(crate) fn cohort_crystallize(
     regions: Option<ResMut<Regions>>,
     cfg: Option<Res<CohortConfig>>,
     crng: Option<ResMut<CohortRng>>,
+    maps: Option<Res<EconomyMaps>>,
     player: Res<crate::player::PlayerState>,
     substrate: Res<Substrate>,
     reg: Res<Registry>,
@@ -445,7 +455,8 @@ pub(crate) fn cohort_crystallize(
     members: Query<(Entity, &CohortMember, &Skills, &Inventory, &Needs)>,
     mut markets: Query<&mut Market, Without<Npc>>,
 ) {
-    let (Some(mut regions), Some(cfg), Some(mut crng)) = (regions, cfg, crng) else {
+    let (Some(mut regions), Some(cfg), Some(mut crng), Some(maps)) = (regions, cfg, crng, maps)
+    else {
         return;
     };
     let Some(avatar) = player.avatar() else {
@@ -482,7 +493,13 @@ pub(crate) fn cohort_crystallize(
                 let mut purse_left = moved_pool;
                 let mut spawned = 0u64;
                 let skill_count = cohort.pop.len();
+                // Each member is provisioned from the regional market (so goods are conserved, not
+                // minted), scaled by how well-fed the region is. Integer math, no new float.
+                let mut market = markets.get_mut(cohort.market).ok();
+                let sust = cohort.sustenance.round().clamp(0.0, 100.0) as u64;
+                let larder = (cfg.crystallize_larder as u64 * sust / 100) as u32;
                 for (calling, cnt) in take.iter().enumerate() {
+                    let cap = reg.skill(calling).cap;
                     for _ in 0..*cnt {
                         cohort.pop[calling] -= 1;
                         // Even split of the moved pool, remainder to the earliest spawned.
@@ -490,8 +507,22 @@ pub(crate) fn cohort_crystallize(
                         let share = purse_left / remaining as i64;
                         purse_left -= share;
                         spawned += 1;
+                        // Varied proficiency: a cast has novices and veterans, not clones — jittered
+                        // from the cohort's own RNG, so it stays deterministic and perturbs no other
+                        // stream. (Skills are f32 throughout the codebase; see the fixed-point note.)
+                        let jitter = crng.0.gen_range(2001) as f32 / 1000.0 - 1.0;
                         let mut skills = vec![0.0f32; skill_count];
-                        skills[calling] = cfg.crystallize_skill;
+                        skills[calling] = (cfg.crystallize_skill
+                            + jitter * cfg.crystallize_skill_spread)
+                            .clamp(0.0, cap);
+                        // Draw the member's larder of the staple food from the market, capped by what
+                        // it holds — so a promoted soul arrives provisioned, and goods are conserved.
+                        let mut stock = vec![0u32; reg.good_count()];
+                        if let (Some(g), Some(m)) = (maps.food, market.as_deref_mut()) {
+                            let got = larder.min(m.stock[g]);
+                            m.stock[g] -= got;
+                            stock[g] = got;
+                        }
                         commands.spawn((
                             Npc,
                             Position(cohort.seat),
@@ -502,7 +533,7 @@ pub(crate) fn cohort_crystallize(
                             Skills(skills),
                             Inventory {
                                 money: share,
-                                stock: vec![0u32; reg.good_count()],
+                                stock,
                             },
                             Plan::default(),
                             Patron(cohort.market),
