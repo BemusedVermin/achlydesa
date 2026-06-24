@@ -29,6 +29,7 @@
 use crate::people::{
     Bond, EconRes, Inventory, Liege, Market, Needs, Npc, Patron, Personality, Plan, Skills, price,
 };
+use crate::scalar::Fx;
 use crate::{Position, Registry, Substrate};
 use bevy_ecs::prelude::*;
 use game_sim::{Coord, SplitMix64, World as GameWorld};
@@ -52,7 +53,7 @@ pub struct Cohort {
     /// Coins held by the un-crystallized population (its share of the world's money).
     pub pool: i64,
     /// Aggregate wellbeing, `0` (starving) to `100` (sated).
-    pub sustenance: f32,
+    pub sustenance: Fx,
     /// Whether this region currently has a crystallized cast of real entities near the avatar.
     pub crystallized: bool,
 }
@@ -88,10 +89,10 @@ pub struct CohortConfig {
     pub crystallize_cap: u32,
     /// Mean skill level a crystallized member is reconstructed with in its calling (its history is
     /// lost to the aggregate — the "pop-in" the design flags; a prototype reconstructs plausibly).
-    pub crystallize_skill: f32,
+    pub crystallize_skill: Fx,
     /// Spread of crystallized members' calling skill around [`Self::crystallize_skill`] (`±spread`,
     /// clamped to the skill's cap), so a promoted cast has novices and veterans rather than clones.
-    pub crystallize_skill_spread: f32,
+    pub crystallize_skill_spread: Fx,
     /// Units of the staple food a crystallized member is provisioned with — drawn from the regional
     /// market (so goods are conserved), scaled by the region's wellbeing. A member no longer pops in
     /// empty-handed.
@@ -99,26 +100,26 @@ pub struct CohortConfig {
     /// Fraction of a crystallized cast that arrives with a **bond** to another member — the existing
     /// friendships of a settled community (which the director can later strain). `0` disables it and
     /// draws no RNG (so disabling stays byte-identical, not merely silent).
-    pub crystallize_bond_frac: f32,
+    pub crystallize_bond_frac: Fx,
     /// Fraction of a crystallized cast that arrives as a **vassal** of another member — the local
     /// hierarchy (so a lord's death sends a grudge down the chain). `0` disables it and draws no RNG.
-    pub crystallize_vassal_frac: f32,
+    pub crystallize_vassal_frac: Fx,
     /// Goods produced per person per tick, by their calling (sold into the regional market).
-    pub productivity: f32,
+    pub productivity: Fx,
     /// Food units one person consumes per tick (bought from the regional market).
-    pub consume_per_capita: f32,
+    pub consume_per_capita: Fx,
     /// Sustenance gained per tick when fully fed (and the symmetric drain when starving).
-    pub feed_rate: f32,
+    pub feed_rate: Fx,
     /// Above this sustenance the population grows; at/below `100 - birth_band` from full it starves.
-    pub birth_sustenance: f32,
+    pub birth_sustenance: Fx,
     /// At/below this sustenance the population shrinks.
-    pub death_sustenance: f32,
+    pub death_sustenance: Fx,
     /// Fraction of the population added per tick when well-fed.
-    pub birth_rate: f32,
+    pub birth_rate: Fx,
     /// Fraction removed per tick when starving (their coins are a sink — deaths only).
-    pub death_rate: f32,
+    pub death_rate: Fx,
     /// Fraction that migrates per tick toward the best-fed reachable region.
-    pub migrate_rate: f32,
+    pub migrate_rate: Fx,
 }
 
 impl Default for CohortConfig {
@@ -126,19 +127,19 @@ impl Default for CohortConfig {
         Self {
             promote_radius: 6,
             crystallize_cap: 24,
-            crystallize_skill: 0.5,
-            crystallize_skill_spread: 0.3,
+            crystallize_skill: Fx::from_num(0.5),
+            crystallize_skill_spread: Fx::from_num(0.3),
             crystallize_larder: 4,
-            crystallize_bond_frac: 0.2,
-            crystallize_vassal_frac: 0.15,
-            productivity: 1.0,
-            consume_per_capita: 0.9,
-            feed_rate: 6.0,
-            birth_sustenance: 70.0,
-            death_sustenance: 20.0,
-            birth_rate: 0.01,
-            death_rate: 0.02,
-            migrate_rate: 0.02,
+            crystallize_bond_frac: Fx::from_num(0.2),
+            crystallize_vassal_frac: Fx::from_num(0.15),
+            productivity: Fx::from_num(1.0),
+            consume_per_capita: Fx::from_num(0.9),
+            feed_rate: Fx::from_num(6.0),
+            birth_sustenance: Fx::from_num(70.0),
+            death_sustenance: Fx::from_num(20.0),
+            birth_rate: Fx::from_num(0.01),
+            death_rate: Fx::from_num(0.02),
+            migrate_rate: Fx::from_num(0.02),
         }
     }
 }
@@ -158,17 +159,22 @@ pub fn seed_regions(
     if markets.is_empty() || skill_count == 0 {
         return Regions::default();
     }
-    let fert: Vec<f32> = markets
+    // Fertility comes from the substrate's f32 climate field; convert it to fixed at the boundary.
+    let fert: Vec<Fx> = markets
         .iter()
-        .map(|&(_, seat)| substrate.carrying_capacity(seat).max(0.0))
+        .map(|&(_, seat)| Fx::from_num(substrate.carrying_capacity(seat).max(0.0)))
         .collect();
-    let total_fert: f32 = fert.iter().sum();
+    let total_fert: Fx = fert.iter().copied().fold(Fx::ZERO, |a, b| a + b);
     let cohorts = markets
         .iter()
         .enumerate()
         .map(|(r, &(market, seat))| {
-            let capacity = if total_fert > 0.0 {
-                (population as f64 * (fert[r] / total_fert) as f64).round() as u32
+            let capacity = if total_fert > Fx::ZERO {
+                // capacity = (fert[r] / total_fert) · population, in fixed point. The fraction (≤ 1)
+                // is taken first so the product can't overflow the scalar's integer range.
+                ((fert[r] / total_fert) * Fx::from_num(population as i64))
+                    .round()
+                    .to_num::<i64>() as u32
             } else {
                 (population / markets.len() as u64) as u32
             };
@@ -187,7 +193,7 @@ pub fn seed_regions(
                 pop,
                 capacity,
                 pool: pool_each,
-                sustenance: 50.0, // neutral — inside the birth/death dead-band, so a fed cohort holds
+                sustenance: Fx::from_num(50.0), // neutral — in the dead-band, so a fed cohort holds
                 crystallized: false,
             }
         })
@@ -225,12 +231,14 @@ impl EconomyMaps {
     }
 }
 
-/// Integer `round(count · rate)` via fixed-point (millionths), so it stays exact for populations
-/// above f32's 2^24 (≈16.7M) — where `count as f32` would round to the nearest few and bias the
-/// per-capita flows. `count` and the result fit `u64`; the product is held in `u128`.
-fn scale(count: u64, rate: f32) -> u64 {
-    let micros = (rate as f64 * 1_000_000.0).round() as u128;
-    ((count as u128 * micros + 500_000) / 1_000_000) as u64
+/// Integer `round(count · rate)` in fixed point — exact for any population (no `f32` precision loss
+/// above 2^24). `rate` is a small fixed-point factor (a per-capita rate), so `count · rate` stays
+/// within the scalar's range for the populations the cohort layer carries.
+fn scale(count: u64, rate: Fx) -> u64 {
+    (Fx::from_num(count as i64) * rate)
+        .round()
+        .to_num::<i64>()
+        .max(0) as u64
 }
 
 /// **The Tier-2 economy.** Advance every region's cohort one tick as integer flows: production sells
@@ -325,9 +333,10 @@ pub(crate) fn cohort_step(
         // --- Wellbeing tracks land pressure: supply (the land's capacity) over demand (headcount).
         // Below capacity → surplus → wellbeing climbs (births); above → deficit → it falls (deaths);
         // at capacity → neutral, so the population settles there. A bounded step damps the swing. ---
-        let ratio = cohort.capacity as f32 / total as f32;
+        let ratio = Fx::from_num(cohort.capacity as i64) / Fx::from_num(total as i64);
+        let nudge = (ratio - Fx::ONE).clamp(-Fx::ONE, Fx::ONE);
         cohort.sustenance =
-            (cohort.sustenance + cfg.feed_rate * (ratio - 1.0).clamp(-1.0, 1.0)).clamp(0.0, 100.0);
+            (cohort.sustenance + cfg.feed_rate * nudge).clamp(Fx::ZERO, Fx::from_num(100));
 
         // --- Births / deaths: the population tracks how well it is fed (deaths are a money sink). ---
         if cohort.sustenance >= cfg.birth_sustenance {
@@ -395,13 +404,13 @@ fn remove_people(pop: &mut [u32], count: u64) -> u64 {
 /// Move a `rate` slice of each region's population (and its proportional pool share) toward the
 /// best-fed *other* region. Computed from a start-of-tick snapshot and applied as deltas, so it is
 /// order-independent and conserves both headcount and coins exactly.
-fn migrate(regions: &mut [Cohort], rate: f32) {
+fn migrate(regions: &mut [Cohort], rate: Fx) {
     let n = regions.len();
-    if n < 2 || rate <= 0.0 {
+    if n < 2 || rate <= Fx::ZERO {
         return;
     }
     // Snapshot the pull (sustenance) of each region before anyone moves.
-    let pull: Vec<f32> = regions.iter().map(|c| c.sustenance).collect();
+    let pull: Vec<Fx> = regions.iter().map(|c| c.sustenance).collect();
     // For each source, pick the best-pull destination that beats it.
     let mut moves: Vec<(usize, usize, Vec<u32>, i64)> = Vec::new();
     for (src, cohort) in regions.iter().enumerate() {
@@ -411,11 +420,11 @@ fn migrate(regions: &mut [Cohort], rate: f32) {
         }
         let Some(dst) = (0..n)
             .filter(|&d| d != src && pull[d] > pull[src])
-            .max_by(|&a, &b| pull[a].total_cmp(&pull[b]))
+            .max_by(|&a, &b| pull[a].cmp(&pull[b]))
         else {
             continue;
         };
-        let movers = (total as f32 * rate) as u64;
+        let movers = scale(total, rate);
         if movers == 0 {
             continue;
         }
@@ -476,12 +485,19 @@ pub(crate) fn cohort_crystallize(
     };
     let width = substrate.0.topology().width();
 
-    // Gather the live cast per region, so a dissolving region can fold its survivors back.
-    let mut cast: Vec<Vec<(Entity, usize, i64, Vec<u32>, f32)>> = vec![Vec::new(); regions.0.len()];
+    // Gather the live cast per region, so a dissolving region can fold its survivors back. The
+    // member's f32 `Needs.sustenance` is converted to the fixed-point scalar at this boundary.
+    let mut cast: Vec<Vec<(Entity, usize, i64, Vec<u32>, Fx)>> = vec![Vec::new(); regions.0.len()];
     for (e, m, skills, inv, needs) in &members {
         if let Some(slot) = cast.get_mut(m.0) {
             let calling = primary_calling(&skills.0);
-            slot.push((e, calling, inv.money, inv.stock.clone(), needs.sustenance));
+            slot.push((
+                e,
+                calling,
+                inv.money,
+                inv.stock.clone(),
+                Fx::from_num(needs.sustenance),
+            ));
         }
     }
 
@@ -506,7 +522,7 @@ pub(crate) fn cohort_crystallize(
                 // Each member is provisioned from the regional market (so goods are conserved, not
                 // minted), scaled by how well-fed the region is. Integer math, no new float.
                 let mut market = markets.get_mut(cohort.market).ok();
-                let sust = cohort.sustenance.round().clamp(0.0, 100.0) as u64;
+                let sust = cohort.sustenance.round().to_num::<i64>().clamp(0, 100) as u64;
                 let larder = (cfg.crystallize_larder as u64 * sust / 100) as u32;
                 for (calling, cnt) in take.iter().enumerate() {
                     let cap = reg.skill(calling).cap;
@@ -519,12 +535,13 @@ pub(crate) fn cohort_crystallize(
                         spawned += 1;
                         // Varied proficiency: a cast has novices and veterans, not clones — jittered
                         // from the cohort's own RNG, so it stays deterministic and perturbs no other
-                        // stream. (Skills are f32 throughout the codebase; see the fixed-point note.)
+                        // stream. `Skills` is still f32 in the wider agent layer, so the fixed-point
+                        // config is converted to f32 here at the boundary.
                         let jitter = crng.0.gen_range(2001) as f32 / 1000.0 - 1.0;
+                        let mean = cfg.crystallize_skill.to_num::<f32>();
+                        let spread = cfg.crystallize_skill_spread.to_num::<f32>();
                         let mut skills = vec![0.0f32; skill_count];
-                        skills[calling] = (cfg.crystallize_skill
-                            + jitter * cfg.crystallize_skill_spread)
-                            .clamp(0.0, cap);
+                        skills[calling] = (mean + jitter * spread).clamp(0.0, cap);
                         // Draw the member's larder of the staple food from the market, capped by what
                         // it holds — so a promoted soul arrives provisioned, and goods are conserved.
                         let mut stock = vec![0u32; reg.good_count()];
@@ -538,7 +555,7 @@ pub(crate) fn cohort_crystallize(
                                 Npc,
                                 Position(cohort.seat),
                                 Needs {
-                                    sustenance: cohort.sustenance,
+                                    sustenance: cohort.sustenance.to_num::<f32>(),
                                     rest: 100.0,
                                 },
                                 Skills(skills),
@@ -580,18 +597,22 @@ pub(crate) fn cohort_crystallize(
                         // `gen_bool` draw entirely when a tie is disabled, so zeroing a frac consumes
                         // *no* RNG — disabling the social fabric stays byte-identical, not merely
                         // silent.
-                        if cfg.crystallize_bond_frac > 0.0
-                            && crng
-                                .0
-                                .gen_bool(cfg.crystallize_bond_frac.clamp(0.0, 1.0) as f64)
+                        if cfg.crystallize_bond_frac > Fx::ZERO
+                            && crng.0.gen_bool(
+                                cfg.crystallize_bond_frac
+                                    .clamp(Fx::ZERO, Fx::ONE)
+                                    .to_num::<f64>(),
+                            )
                         {
                             let other = pick_other(&mut crng.0, i, n);
                             commands.entity(member).insert(Bond(other));
                         }
-                        if cfg.crystallize_vassal_frac > 0.0
-                            && crng
-                                .0
-                                .gen_bool(cfg.crystallize_vassal_frac.clamp(0.0, 1.0) as f64)
+                        if cfg.crystallize_vassal_frac > Fx::ZERO
+                            && crng.0.gen_bool(
+                                cfg.crystallize_vassal_frac
+                                    .clamp(Fx::ZERO, Fx::ONE)
+                                    .to_num::<f64>(),
+                            )
                         {
                             let lord = pick_other(&mut crng.0, i, n);
                             commands.entity(member).insert(Liege(lord));
@@ -612,7 +633,7 @@ pub(crate) fn cohort_crystallize(
                 // away; capture its headcount before folding the cast back, so we *blend* rather than
                 // overwrite — a small cast must not clobber the whole region's evolved wellbeing.
                 let remainder = cohort.total();
-                let mut sustenance_sum = 0.0;
+                let mut sustenance_sum = Fx::ZERO;
                 let mut folded = 0u64;
                 for &(e, calling, money, ref stock, sustenance) in &cast[ri] {
                     if calling < cohort.pop.len() {
@@ -634,8 +655,9 @@ pub(crate) fn cohort_crystallize(
                 // (remainder == 0) this collapses to the cast average; when nobody returns, unchanged.
                 let total_after = remainder + folded;
                 if total_after > 0 {
-                    cohort.sustenance = (cohort.sustenance * remainder as f32 + sustenance_sum)
-                        / total_after as f32;
+                    cohort.sustenance = (cohort.sustenance * Fx::from_num(remainder as i64)
+                        + sustenance_sum)
+                        / Fx::from_num(total_after as i64);
                 }
                 cohort.crystallized = false;
             }
