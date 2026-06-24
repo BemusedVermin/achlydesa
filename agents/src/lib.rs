@@ -498,7 +498,9 @@ impl Simulation {
         // be a no-op anyway). Off → no layers installed and the `FieldsConfig` resource absent, so
         // every `fields` system early-returns and the world is byte-identical.
         if setup.fields {
-            substrate.install_stigmergy(&setup.fields_cfg.layers());
+            // food + danger + one demand layer per good (per-good demand, so drifters route the
+            // specific good they carry).
+            substrate.install_stigmergy(&setup.fields_cfg.layers(setup.registry.good_count()));
         }
 
         // Layer the world's features onto the warmed substrate, from a dedicated RNG
@@ -3009,6 +3011,37 @@ mod tests {
         let mut sim2 = build();
         sim2.run(40);
         assert_eq!(fp, sim2.fingerprint(), "a fields run must be reproducible");
+    }
+
+    #[test]
+    fn demand_is_tracked_per_good() {
+        let mut sim = Simulation::new(Setup {
+            seed: 3,
+            npcs: 40,
+            markets: 4,
+            warmup: 60,
+            fields: true,
+            sim_radius: Some(2),
+            ..Default::default()
+        });
+        sim.spawn_player(None);
+        sim.run(30);
+
+        // Several *distinct* goods should each register their own demand gradient — proof the field
+        // is per-good (a drifter can route the specific good it carries), not one aggregate scalar.
+        let good_count = sim.world.resource::<Registry>().good_count();
+        let sub = sim.substrate();
+        let topo = sub.topology();
+        let goods_with_demand = (0..good_count)
+            .filter(|&g| {
+                let layer = agent_core::fields::demand_layer(g);
+                topo.indices().any(|i| sub.stig(layer, topo.coord(i)) > 0.0)
+            })
+            .count();
+        assert!(
+            goods_with_demand >= 2,
+            "expected several goods to register distinct demand, got {goods_with_demand}"
+        );
     }
 
     #[test]
