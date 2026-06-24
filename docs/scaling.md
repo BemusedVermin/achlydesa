@@ -268,21 +268,26 @@ avatar — the lens — moves.
 - **Measured: the millions are nearly free.** `bench_scaling`'s `Tier-2 cohorts` section, 96×72, 12
   regions, an avatar present, sweeping the stated population up by orders of magnitude:
 
-  | souls | µs/tick | ns/soul | live cast |
-  |---|---|---|---|
-  | 468 k | 46,000 | 98 | 24 |
-  | 4.7 M | 49,000 | 10 | 24 |
-  | 42 M | 51,000 | **1.2** | 24 |
+  | stated | sustained souls | µs/tick | ns/soul | live cast |
+  |---|---|---|---|---|
+  | 1 M | 0.97 M | 30,000 | 31 | 24 |
+  | 10 M | 9.7 M | 53,000 | 5.5 | 24 |
+  | 100 M | 97 M | 58,000 | **0.6** | 24 |
 
-  µs/tick stays ~flat while souls grow 100×, so ns/soul collapses toward zero — **~42 million souls at
-  ~50 ms/tick**. (The tick is dominated by the bounded 24-agent crystallized cast's GOAP; the cohort
+  µs/tick stays ~flat while souls grow 100×, so ns/soul collapses toward zero — **~97 million souls at
+  ~58 ms/tick**. (The tick is dominated by the bounded 24-agent crystallized cast's GOAP; the cohort
   economy itself is ~0.6 ms with no cast — `O(regions)`, not `O(souls)`.) That is the only thing that
   reaches millions: not faster brains, but *fewer* of them, with the mass carried as flows.
 
-What is **still** deferred (honest scope): the per-region step is shard-ready but kept serial;
-cohort demand is one aggregate "wants stock" scalar, not per-good; promotion fidelity reconstructs a
-member's skills/personality from aggregates (plausible, but not its true lost history); and the
-fields/economy tunings that keep cohort populations stable under stress are first-cut, not balanced.
+  The population now **holds** at the stated level (≈97% sustained) rather than collapsing — the
+  earlier model's population-scaled food gave a constant ratio and ran away; a fixed land **carrying
+  capacity** per region (fertility-weighted) anchors it. Demand is tracked **per good**, so a drifter
+  routes the specific good it carries to where that good is short. Both landed in the follow-up below.
+
+What is **still** deferred (honest scope): the per-region step is shard-ready but kept serial (it is
+cheap next to the crystallized cast, so threading it buys little today); and **promotion fidelity** —
+a crystallized member's skills/personality are reconstructed from aggregates (plausible, but not its
+true lost history; relationships are not reconstructed at all). This is the remaining open risk.
 
 ## Continuous / background simulation
 
@@ -322,8 +327,9 @@ Continuous + tiering is the right pairing.
    Tier-1 drifter brain on a two-tier LOD; measured to decouple per-tick cost from N.)*
 3. **Then 2a/2c** -- cohorts + regional economy for the actual millions *(Done — see "Track 2 — what
    shipped": statistical cohorts per region, an integer regional economy, and crystallization to/from
-   a bounded live cast; measured at ~42M souls / ~50ms tick. Remaining: shard the region step across
-   threads, per-good demand, and higher-fidelity promotion.)*
+   a bounded live cast; measured at ~97M souls / ~58ms tick. Follow-up added a land carrying capacity
+   (population now holds, doesn't collapse) and per-good demand. Remaining: shard the region step
+   across threads, and higher-fidelity promotion.)*
 
 ## Open questions / risks
 
