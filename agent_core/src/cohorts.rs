@@ -177,22 +177,42 @@ pub fn seed_regions(
     Regions(cohorts)
 }
 
-/// The good a calling produces (the primary output of its first recipe), and the world's staple food
-/// (the most nutritious good). Recomputed each tick — cheap (recipes are few), and keeps no state.
-fn economy_maps(reg: &Registry) -> (Vec<Option<usize>>, Option<usize>) {
-    let mut output = vec![None; reg.skill_count()];
-    for r in reg.recipes() {
-        if r.skill < output.len()
-            && output[r.skill].is_none()
-            && let Some(&(g, _)) = r.outputs.first()
-        {
-            output[r.skill] = Some(g);
+/// Per-calling output goods and the staple food good — derived **once** from the (immutable after
+/// setup) registry, so `cohort_step` doesn't re-derive (and re-allocate) them every tick. Built by
+/// the assembler alongside the other cohort resources; present only when the layer is woken.
+#[derive(Resource)]
+pub struct EconomyMaps {
+    /// `output[calling]` = the primary output good of that calling's first recipe (or `None`).
+    pub output: Vec<Option<usize>>,
+    /// The world's staple food good — the most nutritious (or `None` if the economy has no food).
+    pub food: Option<usize>,
+}
+
+impl EconomyMaps {
+    /// Derive the maps from the registry.
+    pub fn build(reg: &Registry) -> Self {
+        let mut output = vec![None; reg.skill_count()];
+        for r in reg.recipes() {
+            if r.skill < output.len()
+                && output[r.skill].is_none()
+                && let Some(&(g, _)) = r.outputs.first()
+            {
+                output[r.skill] = Some(g);
+            }
         }
+        let food = (0..reg.good_count())
+            .filter(|&g| reg.good(g).nutrition > 0.0)
+            .max_by(|&a, &b| reg.good(a).nutrition.total_cmp(&reg.good(b).nutrition));
+        Self { output, food }
     }
-    let food = (0..reg.good_count())
-        .filter(|&g| reg.good(g).nutrition > 0.0)
-        .max_by(|&a, &b| reg.good(a).nutrition.total_cmp(&reg.good(b).nutrition));
-    (output, food)
+}
+
+/// Integer `round(count · rate)` via fixed-point (millionths), so it stays exact for populations
+/// above f32's 2^24 (≈16.7M) — where `count as f32` would round to the nearest few and bias the
+/// per-capita flows. `count` and the result fit `u64`; the product is held in `u128`.
+fn scale(count: u64, rate: f32) -> u64 {
+    let micros = (rate as f64 * 1_000_000.0).round() as u128;
+    ((count as u128 * micros + 500_000) / 1_000_000) as u64
 }
 
 /// **The Tier-2 economy.** Advance every region's cohort one tick as integer flows: production sells
@@ -204,12 +224,13 @@ pub(crate) fn cohort_step(
     mut markets: Query<&mut Market, Without<Npc>>,
     reg: Res<Registry>,
     econ: Res<EconRes>,
+    maps: Option<Res<EconomyMaps>>,
     cfg: Option<Res<CohortConfig>>,
 ) {
-    let (Some(mut regions), Some(cfg)) = (regions, cfg) else {
+    let (Some(mut regions), Some(maps), Some(cfg)) = (regions, maps, cfg) else {
         return;
     };
-    let (output, food) = economy_maps(&reg);
+    let (output, food) = (&maps.output, maps.food);
 
     for cohort in &mut regions.0 {
         let total = cohort.total();
@@ -233,7 +254,7 @@ pub(crate) fn cohort_step(
             if reg.good(good).nutrition > 0.0 {
                 continue; // food is land-limited, handled below
             }
-            let made = (n as f32 * cfg.productivity).round() as u32;
+            let made = scale(n as u64, cfg.productivity).min(u32::MAX as u64) as u32;
             if made == 0 {
                 continue;
             }
@@ -256,7 +277,8 @@ pub(crate) fn cohort_step(
         // Sold into the market (so a crystallized cast can buy it, and money flows), then eaten by the
         // population below. The fixed cap is the anchor the population converges to. ---
         if let Some(g) = food {
-            let made = (cohort.capacity as f32 * cfg.consume_per_capita).round() as u32;
+            let made =
+                scale(cohort.capacity as u64, cfg.consume_per_capita).min(u32::MAX as u64) as u32;
             if made > 0 {
                 m.stock[g] = m.stock[g].saturating_add(made);
                 let p = price(&reg, &econ, g, m.price_basis[g].round().max(0.0) as u32);
@@ -268,7 +290,7 @@ pub(crate) fn cohort_step(
                 }
             }
             // Consumption: the population eats from the market's food stock (pool -> market money).
-            let need = (total as f32 * cfg.consume_per_capita).round() as i64;
+            let need = scale(total, cfg.consume_per_capita) as i64;
             if need > 0 {
                 let p = price(&reg, &econ, g, m.price_basis[g].round().max(0.0) as u32).max(1);
                 let affordable = cohort.pool / p;
@@ -291,7 +313,7 @@ pub(crate) fn cohort_step(
 
         // --- Births / deaths: the population tracks how well it is fed (deaths are a money sink). ---
         if cohort.sustenance >= cfg.birth_sustenance {
-            let births = (total as f32 * cfg.birth_rate).round() as u32;
+            let births = scale(total, cfg.birth_rate).min(u32::MAX as u64) as u32;
             if births > 0 {
                 // New mouths spread evenly across callings, bringing no coin (pool unchanged).
                 // Computed in O(callings), not a per-mouth loop — a round-robin of `births` over
@@ -305,7 +327,7 @@ pub(crate) fn cohort_step(
                 }
             }
         } else if cohort.sustenance <= cfg.death_sustenance {
-            let deaths = (total as f32 * cfg.death_rate).round() as u64;
+            let deaths = scale(total, cfg.death_rate);
             if deaths > 0 {
                 let removed = remove_people(&mut cohort.pop, deaths);
                 // The dead take their share of the pool out of the world — the one money sink.
