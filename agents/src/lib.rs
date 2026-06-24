@@ -818,7 +818,11 @@ impl Simulation {
                     sub,
                 )
             };
+            // The per-calling output / staple-food maps, derived once from the registry (immutable
+            // after setup) rather than every `cohort_step` tick.
+            let maps = agent_core::EconomyMaps::build(world.resource::<Registry>());
             world.insert_resource(regions);
+            world.insert_resource(maps);
             world.insert_resource(setup.cohort_cfg);
             world.insert_resource(agent_core::CohortRng(SplitMix64::new(
                 setup.seed ^ 0xC0_4057_0FF1_CE00,

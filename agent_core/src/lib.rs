@@ -44,7 +44,9 @@ pub mod sift;
 pub use ai::{Consideration, Curve, Input};
 pub use beats::{Beat, BeatBook, Effect, Phase, Pre, Role};
 pub use chronicle::{Chronicle, Episode, EpisodeKind};
-pub use cohorts::{Cohort, CohortConfig, CohortMember, CohortRng, Regions, seed_regions};
+pub use cohorts::{
+    Cohort, CohortConfig, CohortMember, CohortRng, EconomyMaps, Regions, seed_regions,
+};
 pub use data::{
     Casting, GoodDef, GoodId, MoodDef, MoodId, Recipe, RegisterDef, RegisterId, Registry,
     ResourceKind, SkillId, TraitDef, TraitId,
