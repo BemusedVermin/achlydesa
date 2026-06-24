@@ -105,6 +105,48 @@ interactive tick rates.
    discovery are trivially `par_iter` (own-state writes). Leave the order-coupled systems
    serial; Track 2 removes the need to parallelize them.
 
+## Track 1 -- what shipped (branch `scaling-track1`)
+
+Built and measured; SoA packing and the continuous background thread were deferred by
+decision (a follow-up pass). Everything here is **byte-identical** unless explicitly opted
+into (the plan-budget knob), guarded by a pinned state-fingerprint of three reference runs
+(`agents`'s `track1_runs_are_byte_identical_to_master`).
+
+- **Benchmark first.** `cargo run -p agents --release --example bench_scaling [ticks]
+  [n1,n2,...] [WxH]` grows N and reports ticks/s, µs/tick, **µs/agent**, **allocs/tick**, and
+  a determinism fingerprint per config. It attributes cost across layers by toggling the
+  optional ones (economy → `+dialogue` → `+director`), and reads `BUDGET=n` for the planning
+  knob below. `Simulation::fingerprint()` is the read-only, order-/toolchain-independent fold
+  the guard pins.
+- **GOAP successor prune (byte-identical).** `apply()` clones the `PlanState` *before*
+  checking preconditions, so every rejected successor pays a clone — the dominant per-tick
+  allocation. `successors()` now skips the operators `apply()` is guaranteed to reject on the
+  same checks (`Make` outside the agent's callings — most of a registry; `Eat` of un-held
+  goods; `Graze` on barren tiles), leaving the search tree identical. ~8% fewer allocs / ~8%
+  faster planning at N=200–800.
+- **`converse` tile-bucket (byte-identical).** Grouping candidates by tile once turns the
+  per-speaker co-location scan from O(N) into O(tile-occupancy) — the whole loop from O(N²)
+  to O(N) at bounded density. Measured: per-agent dialogue cost stays ~flat (7→9 µs) across a
+  4× population at constant density, where a full scan would have grown it ~4×.
+- **Configurable plan budget (off by default).** `Setup::plan_budget: Option<usize>` (a
+  `PlanConfig` resource) replaces the hard-coded `NODE_BUDGET = 600`; `None` is the unchanged
+  600-node search. This is the "lower NODE_BUDGET for the masses" lever the tiers will use.
+  Measured: at N=800, 600 → 150 cuts planning from 628 → 177 µs/agent (3.6×) and 38.4M → 10.8M
+  allocs/tick (3.5×).
+- **Parallelize the safe remainder — measured, then *not* done.** The bench is decisive:
+  planning is **~98% of the tick** (at N=800, 502 ms full vs a 9 ms floor with the budget
+  forced to 1). The whole non-planning tail (substrate `evolve` — O(tiles), fixed — plus
+  execute, factions, metabolism, discovery) is **<2%**, and those tail systems have shared
+  writes (`Throne`, `Features`, despawn order) that make parallelizing them a determinism
+  risk for sub-2% gain — and likely net-slower from `par_iter` dispatch overhead on trivial
+  bodies. Planning (`people_plan`) and the mood systems are *already* `par_iter`. So the
+  honest call is to leave the tail serial; the real lever is shrinking N for planning, which
+  is Track 2.
+
+The headline confirmed by measurement: **per-agent A\* planning is the whole cost**, and it
+is already as parallel as the model allows. No amount of tail-parallelization or constant
+factors changes the class — which is exactly why Track 2 (tiers + fields + cohorts) exists.
+
 ## Track 2 -- the model that reaches millions
 
 Three interlocking ideas. Each generalizes something we already have.
@@ -185,7 +227,9 @@ Continuous + tiering is the right pairing.
 ## Staged roadmap
 
 1. **Track 1 now** -- spatial bucket grid + SoA packing + GOAP operator pruning. Standalone
-   wins; the grid and SoA are prerequisites for tiers.
+   wins; the grid and SoA are prerequisites for tiers. *(Partly done — see "Track 1 — what
+   shipped": the bench, the GOAP successor prune, the `converse` tile-bucket, and the
+   plan-budget knob landed; SoA packing and a shared cross-system grid resource remain.)*
 2. **Prototype 2b (fields)** as new substrate layers; let Tier-1 agents follow gradients.
    Biggest conceptual lever, reuses machinery we already trust.
 3. **Then 2a/2c** -- cohorts + regional economy for the actual millions, with continuous
@@ -202,8 +246,9 @@ Continuous + tiering is the right pairing.
 - **Director reach across tiers.** The director must be able to reach into Tier 2 to stage
   drama (promote a cohort member into a face). The seam between statistical masses and the
   drama manager needs design (`docs/narrative_director_v2.md`).
-- **Benchmark first.** Before committing to numbers, a headless bench that scales N and
-  reports per-system tick cost would turn the estimates above into measurements.
+- **Benchmark first.** *(Done — `examples/bench_scaling.rs`.)* It confirmed the central
+  claim: per-agent A\* planning is ~98% of the tick and the rest is <2%, so the work is a
+  complexity-class problem (Track 2), not a constant-factor one.
 
 ## Relationship to existing docs
 
