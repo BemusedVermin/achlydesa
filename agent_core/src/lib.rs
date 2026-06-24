@@ -23,6 +23,7 @@ use sim::Substrate as SubstrateTrait;
 pub mod ai;
 pub mod beats;
 pub mod chronicle;
+pub mod cohorts;
 pub mod data;
 pub mod dialogue;
 pub mod director;
@@ -43,6 +44,7 @@ pub mod sift;
 pub use ai::{Consideration, Curve, Input};
 pub use beats::{Beat, BeatBook, Effect, Phase, Pre, Role};
 pub use chronicle::{Chronicle, Episode, EpisodeKind};
+pub use cohorts::{Cohort, CohortConfig, CohortMember, CohortRng, Regions, seed_regions};
 pub use data::{
     Casting, GoodDef, GoodId, MoodDef, MoodId, Recipe, RegisterDef, RegisterId, Registry,
     ResourceKind, SkillId, TraitDef, TraitId,
@@ -258,7 +260,11 @@ pub fn build_schedule() -> Schedule {
     schedule.add_systems(
         (
             (
-                // Level-of-detail first: settle which NPCs run a full brain vs. a cheap one this
+                // Tier 2 first: crystallize a region's cohort into real entities when the avatar
+                // arrives (and dissolve it when it leaves), so the new cast is spawned before the
+                // LOD tiers it and before anyone plans. No-op (byte-identical) when off.
+                cohorts::cohort_crystallize,
+                // Level-of-detail next: settle which NPCs run a full brain vs. a cheap one this
                 // tick (off by default — see `SimRadius`/`FieldsConfig`).
                 lod_dormancy,
                 // Refresh the stigmergic fields *before* Φ, so this tick's deposits diffuse this
@@ -276,6 +282,9 @@ pub fn build_schedule() -> Schedule {
                 // Tier-1 masses act after the full-brain cast: one cheap gradient-following turn
                 // each (move/produce/trade/eat), against the same live world. No-op when off.
                 fields::drift,
+                // Tier-2 masses advance as aggregate integer flows through their regional markets
+                // (produce/consume/migrate), O(regions) regardless of headcount. No-op when off.
+                cohorts::cohort_step,
                 people::smooth_prices,
                 people::discover_features,
                 // The player walks its route, revealing the map and finding what it passes.
