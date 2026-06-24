@@ -3018,6 +3018,8 @@ mod tests {
             },
             ..Default::default()
         });
+        // Load-bearing: crystallization only fires for cohorts within `promote_radius` of the avatar,
+        // and the 60-tick warm-up ran player-less — so the avatar must exist before this one step.
         sim.spawn_player(None);
         sim.run(1);
 

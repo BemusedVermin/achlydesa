@@ -97,10 +97,11 @@ pub struct CohortConfig {
     /// empty-handed.
     pub crystallize_larder: u32,
     /// Fraction of a crystallized cast that arrives with a **bond** to another member — the existing
-    /// friendships of a settled community (which the director can later strain). `0` = none.
+    /// friendships of a settled community (which the director can later strain). `0` disables it and
+    /// draws no RNG (so disabling stays byte-identical, not merely silent).
     pub crystallize_bond_frac: f32,
     /// Fraction of a crystallized cast that arrives as a **vassal** of another member — the local
-    /// hierarchy (so a lord's death sends a grudge down the chain). `0` = none.
+    /// hierarchy (so a lord's death sends a grudge down the chain). `0` disables it and draws no RNG.
     pub crystallize_vassal_frac: f32,
     /// Goods produced per person per tick, by their calling (sold into the regional market).
     pub productivity: f32,
@@ -575,16 +576,22 @@ pub(crate) fn cohort_crystallize(
                     };
                     let n = cast_ids.len();
                     for (i, &member) in cast_ids.iter().enumerate() {
-                        if crng
-                            .0
-                            .gen_bool(cfg.crystallize_bond_frac.clamp(0.0, 1.0) as f64)
+                        // The `frac > 0.0` short-circuit isn't just an optimization: it skips the
+                        // `gen_bool` draw entirely when a tie is disabled, so zeroing a frac consumes
+                        // *no* RNG — disabling the social fabric stays byte-identical, not merely
+                        // silent.
+                        if cfg.crystallize_bond_frac > 0.0
+                            && crng
+                                .0
+                                .gen_bool(cfg.crystallize_bond_frac.clamp(0.0, 1.0) as f64)
                         {
                             let other = pick_other(&mut crng.0, i, n);
                             commands.entity(member).insert(Bond(other));
                         }
-                        if crng
-                            .0
-                            .gen_bool(cfg.crystallize_vassal_frac.clamp(0.0, 1.0) as f64)
+                        if cfg.crystallize_vassal_frac > 0.0
+                            && crng
+                                .0
+                                .gen_bool(cfg.crystallize_vassal_frac.clamp(0.0, 1.0) as f64)
                         {
                             let lord = pick_other(&mut crng.0, i, n);
                             commands.entity(member).insert(Liege(lord));
