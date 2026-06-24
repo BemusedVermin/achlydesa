@@ -2448,7 +2448,8 @@ impl Simulation {
 
     /// A stable, read-only **fingerprint** of the run's salient state — every NPC body
     /// (position, purse, larder, needs, skills, personality, current goal), every market
-    /// (purse + stock), the whole dialogue transcript, and the director's beat count. It is
+    /// (purse + stock), the whole dialogue transcript (speaker, listener, intent and surface
+    /// of each line), and the director's beat count. It is
     /// *order-independent* (entities are folded sorted by id, so ECS iteration order can't
     /// perturb it) and *toolchain-independent* (a fixed integer fold, not `DefaultHasher`),
     /// so a value captured today can be pinned in a test to prove a later refactor is
@@ -2525,13 +2526,19 @@ impl Simulation {
             mix(&mut h, b);
         }
 
-        // The optional layers: the dialogue transcript (surface bytes + speaker) and the
-        // count of beats the director has told. Empty/absent when those layers are off, so a
-        // bare economy run still has a well-defined fingerprint.
+        // The optional layers: the dialogue transcript and the count of beats the director has
+        // told. Each utterance folds in its full identity — speaker, listener, intent, and
+        // rendered surface — so an optimisation that re-addressed a line (same words, different
+        // recipient) or swapped its intent would still trip the guard. Empty/absent when those
+        // layers are off, so a bare economy run still has a well-defined fingerprint.
         let dlg = self.world.resource::<Dialogue>();
         mix(&mut h, dlg.log.len() as u64);
         for u in &dlg.log {
             mix(&mut h, u.speaker.to_bits());
+            mix(&mut h, u.listener.to_bits());
+            for byte in u.intent.bytes() {
+                mix(&mut h, u64::from(byte));
+            }
             for byte in u.surface.bytes() {
                 mix(&mut h, u64::from(byte));
             }
@@ -2588,8 +2595,8 @@ mod tests {
     /// these unchanged — that is what makes it byte-identical rather than merely fast. A
     /// deliberate behaviour change (a *new* value) updates these with a note saying why.
     const BASELINE_ECONOMY: u64 = 0xECAB_B567_5C45_44CD;
-    const BASELINE_DIALOGUE: u64 = 0x0172_140E_90BD_22EC;
-    const BASELINE_DIRECTOR: u64 = 0xA3FE_7F37_8BB9_033C;
+    const BASELINE_DIALOGUE: u64 = 0xCDD6_B45E_78AD_2408;
+    const BASELINE_DIRECTOR: u64 = 0x02CD_6633_0816_93FD;
 
     #[test]
     fn track1_runs_are_byte_identical_to_master() {

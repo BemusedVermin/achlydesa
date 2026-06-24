@@ -467,12 +467,13 @@ pub(crate) fn people_plan(
     world_affordances: Res<WorldAffordances>,
     factions: Res<Factions>,
     throne: Option<Res<Throne>>,
-    plan_cfg: Option<Res<PlanConfig>>,
+    plan_cfg: Res<PlanConfig>,
 ) {
-    // The A* node budget for this run — the configured cap, or the default 600 (and so
-    // byte-identical) when the knob is untouched. A plain `usize`, copied into the parallel
-    // planning closure below.
-    let node_budget = plan_cfg.as_deref().map_or(NODE_BUDGET, |c| c.node_budget);
+    // The A* node budget for this run — the configured cap (default 600, so an untouched run is
+    // byte-identical). The assembler inserts `PlanConfig` unconditionally, so this is a required
+    // resource: a missing insertion fails loudly here rather than silently reverting to the
+    // constant. A plain `usize`, copied into the parallel planning closure below.
+    let node_budget = plan_cfg.node_budget;
     // One start-of-tick snapshot of every market; everyone plans against the same
     // world, and live trades in `people_execute` keep money exactly conserved.
     let snapshots: Vec<MarketSnapshot> = markets
