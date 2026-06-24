@@ -375,6 +375,21 @@ pub struct Setup {
     /// Stigmergy transport + drift-behaviour knobs (layer diffuse/decay, deposit rates, gradient
     /// weights, the hunger threshold). Only consulted when [`Setup::fields`] is on.
     pub fields_cfg: FieldsConfig,
+    /// Wake the **Tier-2 cohort / regional-economy layer** (`docs/scaling.md`, Track 2 / 2a+2c): seed
+    /// one statistical population [`Cohort`] per market and run its economy as integer flows
+    /// (`O(regions)`, *independent of headcount*), crystallizing a bounded cast into real entities
+    /// near the avatar and dissolving it when it leaves. This is what carries **millions** of souls.
+    /// Off by default → no regions, byte-identical. Needs markets and (to crystallize) an avatar.
+    pub cohorts: bool,
+    /// Total cohort population to distribute across the regions (the managed mass). Only the
+    /// crystallized cast are ever real entities; this is how many souls the world *stands for*.
+    pub cohort_pop: u64,
+    /// Starting coins held by each region's cohort pool — its share of the world's initial money
+    /// (the cohort counterpart to `initial_money`/`market_money`). Conserved thereafter (bar deaths).
+    pub cohort_pool_each: i64,
+    /// Cohort economy + crystallization knobs (promote radius, cast cap, production/consumption,
+    /// birth/death/migration rates). Only consulted when [`Setup::cohorts`] is on.
+    pub cohort_cfg: agent_core::CohortConfig,
 }
 
 impl Default for Setup {
@@ -431,6 +446,10 @@ impl Default for Setup {
             combat_cfg: combat::CombatConfig::default(),
             fields: false,
             fields_cfg: FieldsConfig::default(),
+            cohorts: false,
+            cohort_pop: 0,
+            cohort_pool_each: 10_000,
+            cohort_cfg: agent_core::CohortConfig::default(),
         }
     }
 }
@@ -520,7 +539,9 @@ impl Simulation {
             setup.carnivores,
             setup.fauna_cfg.carn_initial_energy,
         );
-        let markets = if setup.npcs == 0 {
+        // Markets are spawned for a populated economy *or* for the Tier-2 cohort layer (each region
+        // is a market), so cohorts can carry the whole populace with no individual NPCs at all.
+        let markets = if setup.npcs == 0 && !setup.cohorts {
             Vec::new()
         } else if setup.markets_on_settlements {
             // Seat one market in each settlement (community), up to `markets`.
@@ -775,6 +796,26 @@ impl Simulation {
         // early-returns and no NPC is demoted to a drifter ⇒ byte-identical to before this layer.
         if setup.fields {
             world.insert_resource(setup.fields_cfg);
+        }
+
+        // Wake the Tier-2 cohort / regional-economy layer (`docs/scaling.md`, Track 2 / 2a+2c): one
+        // statistical population per market, the world's stated millions held as counts + integer
+        // flows rather than entities. Its config's presence is the switch; absent ⇒ the cohort
+        // systems early-return and no region exists ⇒ byte-identical. Crystallization draws from its
+        // own dedicated RNG stream so it perturbs nothing else.
+        if setup.cohorts {
+            let skill_count = world.resource::<Registry>().skill_count();
+            let regions = agent_core::seed_regions(
+                &markets,
+                skill_count,
+                setup.cohort_pop,
+                setup.cohort_pool_each,
+            );
+            world.insert_resource(regions);
+            world.insert_resource(setup.cohort_cfg);
+            world.insert_resource(agent_core::CohortRng(SplitMix64::new(
+                setup.seed ^ 0xC0_4057_0FF1_CE00,
+            )));
         }
 
         // The fixed-order, single-threaded per-step schedule is owned by `agent_core`; the
@@ -2452,7 +2493,21 @@ impl Simulation {
         let npc_money: i64 = np.iter(&self.world).map(|i| i.money).sum();
         let mut mk = self.world.query::<&Market>();
         let market_money: i64 = mk.iter(&self.world).map(|m| m.money).sum();
-        npc_money + market_money
+        // Tier-2 cohort pools hold coins too (the un-crystallized masses' share), so they count
+        // toward the conserved total. Absent when the cohort layer is off.
+        let cohort_money: i64 = self
+            .world
+            .get_resource::<agent_core::Regions>()
+            .map_or(0, |r| r.0.iter().map(|c| c.pool).sum());
+        npc_money + market_money + cohort_money
+    }
+
+    /// Total population held as Tier-2 cohorts — the un-crystallized managed mass (`0` when the
+    /// cohort layer is off). The crystallized cast are real entities, counted by [`Self::npc_count`].
+    pub fn cohort_population(&self) -> u64 {
+        self.world
+            .get_resource::<agent_core::Regions>()
+            .map_or(0, |r| r.0.iter().map(|c| c.total()).sum())
     }
 
     /// Total goods stock held across all markets.
@@ -2573,6 +2628,21 @@ impl Simulation {
         }
         if let Some(d) = self.world.get_resource::<Director>() {
             mix(&mut h, d.log.len() as u64);
+        }
+        // Tier-2 cohorts (Track 2): fold each region's seat, population by calling, coin pool, and
+        // sustenance, in fixed region order. Absent when the cohort layer is off, so a non-cohort
+        // run is unchanged.
+        if let Some(regions) = self.world.get_resource::<agent_core::Regions>() {
+            for c in &regions.0 {
+                mix(&mut h, c.seat.col as u64);
+                mix(&mut h, c.seat.row as u64);
+                mix(&mut h, c.pool as u64);
+                mix(&mut h, q(c.sustenance));
+                mix(&mut h, u64::from(c.crystallized));
+                for &n in &c.pop {
+                    mix(&mut h, u64::from(n));
+                }
+            }
         }
         h
     }
@@ -2756,6 +2826,87 @@ mod tests {
         assert!(res.downed.contains(&enemy), "the enemy fell");
         assert!(!sim.npc_present(enemy), "a downed enemy leaves the world");
         assert!(!res.avatar_down, "the avatar survived");
+    }
+
+    #[test]
+    fn cohort_layer_conserves_money_crystallizes_and_is_deterministic() {
+        let build = || {
+            let mut sim = Simulation::new(Setup {
+                seed: 11,
+                npcs: 0, // the whole populace is cohorts, not entities — that is the point
+                markets: 6,
+                warmup: 60,
+                cohorts: true,
+                cohort_pop: 100_000,
+                cohort_pool_each: 50_000,
+                // Crystallize a generous radius so the stationary avatar surely lands near a seat.
+                cohort_cfg: agent_core::CohortConfig {
+                    promote_radius: 10,
+                    ..Default::default()
+                },
+                ..Default::default()
+            });
+            sim.spawn_player(None);
+            sim
+        };
+
+        let mut sim = build();
+        let money_before = sim.total_money();
+        assert!(
+            money_before > 0,
+            "the world should start with coins (pools + markets)"
+        );
+        sim.run(80);
+
+        // 100k souls are simulated as ~6 regions of integer flows; only a bounded cast is real.
+        let members = {
+            let mut q = sim
+                .world
+                .query_filtered::<(), With<agent_core::CohortMember>>();
+            q.iter(&sim.world).count()
+        };
+        assert!(
+            members > 0,
+            "a region near the avatar should have crystallized a cast"
+        );
+
+        // The integer economy holds *across the cohort pools too*: production/consumption/migration
+        // and promotion only move coins; deaths are the one sink, so the total can never rise.
+        assert!(
+            sim.total_money() <= money_before,
+            "cohort economy minted money (before {money_before}, after {})",
+            sim.total_money()
+        );
+
+        // The managed mass stays a managed mass: bounded, not exploded, not vanished.
+        let pop = sim.cohort_population();
+        assert!(
+            (1_000..50_000_000).contains(&pop),
+            "cohort population left a sane band: {pop}"
+        );
+
+        // Deterministic, including the dedicated crystallization RNG stream.
+        let fp = sim.fingerprint();
+        let mut sim2 = build();
+        sim2.run(80);
+        assert_eq!(fp, sim2.fingerprint(), "a cohort run must be reproducible");
+
+        // Round-trip: walk the avatar far away; the region it left dissolves its cast back into the
+        // count — and money is *still* conserved across the promote→demote boundary.
+        let avatar = sim.player_avatar().expect("an avatar");
+        let (col, row) = {
+            let p = sim.world.get::<agent_core::Position>(avatar).unwrap().0;
+            (p.col, p.row)
+        };
+        let height = sim.substrate().topology().height();
+        let far = agent_core::Coord::new(col, (row + height / 2) % height);
+        sim.world.get_mut::<agent_core::Position>(avatar).unwrap().0 = far;
+        sim.run(40);
+        assert!(
+            sim.total_money() <= money_before,
+            "demotion minted money (before {money_before}, after {})",
+            sim.total_money()
+        );
     }
 
     #[test]
