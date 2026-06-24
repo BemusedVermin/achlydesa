@@ -338,10 +338,13 @@ Continuous + tiering is the right pairing.
   cohort aggregates. Getting this seamless (no "pop-in" of personality) is the hard part.
   *(Improved — `cohort_crystallize` reconstructs deterministically: calling from the cohort's
   calling mix, money as the pool share, personality rolled from a dedicated stream, skill jittered
-  per member (novices and veterans, not clones), and a larder of the staple food drawn from the
-  regional market. Still approximate — it is plausible, not the member's true lost history; and
-  **relationships are not reconstructed at all** (the cohort holds no social graph, and ties need
-  authored bond/feud content to matter). That remains the open fidelity question.)*
+  per member (novices and veterans, not clones), a larder of the staple food drawn from the regional
+  market, and a **social fabric** — some friendships (`Bond`) and a little vassalage (`Liege`) seeded
+  among the cast, so a community arrives with ties for the director to strain and a hierarchy whose
+  lord's death sends a grudge down the chain. Still approximate, not the member's true lost history;
+  the ties are plausible **invention**, not reconstruction (the aggregate holds no social graph), and
+  grievances are deliberately left to the director (a shared spawn tile would make an avenge goal an
+  instant bloodbath). That remains the open fidelity question.)*
 - **Field expressiveness.** Gradient-following covers "go toward X." Goals that are not
   spatial-gradient-shaped (revenge against a specific moving foe, multi-step crafting) still
   need real planning -- those agents must be Tier 0/1, which bounds how cheap the mass can be.
