@@ -18,6 +18,7 @@ use crate::chronicle::EpisodeKind;
 use crate::data::{PredicateId, Registry};
 use crate::features::{Category, FeatureCatalog, Features};
 use crate::people::{Grievance, Inventory, Npc, Personality};
+use crate::scalar::Fx;
 use crate::{Position, Substrate};
 use bevy_ecs::prelude::*;
 use game_sim::{Coord, Topology};
@@ -92,12 +93,12 @@ pub struct Detained {
 /// *relationships* and not only power: people are drawn to leaders they like and shun
 /// those they loathe. The seed of the wider relationship graph.
 #[derive(Component, Clone, Debug, Default)]
-pub struct Opinion(pub HashMap<Entity, f32>);
+pub struct Opinion(pub HashMap<Entity, Fx>);
 
 impl Opinion {
     /// This person's opinion of `other` (0 if they have none).
-    pub fn of(&self, other: Entity) -> f32 {
-        self.0.get(&other).copied().unwrap_or(0.0)
+    pub fn of(&self, other: Entity) -> Fx {
+        self.0.get(&other).copied().unwrap_or(Fx::ZERO)
     }
 }
 
@@ -392,7 +393,7 @@ pub(crate) fn faction_turn(
             }
             // Drawn toward a court led by someone it respects, repelled from one it loathes.
             if let Some(head) = old.get(&seat).and_then(|f| f.head()) {
-                pull *= (1.0 + config.opinion_weight * opinion.of(head)).max(0.0);
+                pull *= (1.0 + config.opinion_weight * opinion.of(head).to_num::<f32>()).max(0.0);
             }
             ranked.push((si, pull));
         }
@@ -597,11 +598,13 @@ pub(crate) fn faction_turn(
             if let Some(head) = f.head()
                 && head != e
             {
-                let target = (bond.loyalty - config.loyalty_base) * 2.0;
+                // `target` derives from the (f32) loyalty; the opinion update itself is fixed-point.
+                let target = Fx::from_num((bond.loyalty - config.loyalty_base) * 2.0);
                 let cur = opinion.of(head);
                 opinion.0.insert(
                     head,
-                    (cur + config.opinion_gain * (target - cur)).clamp(-1.0, 1.0),
+                    (cur + Fx::from_num(config.opinion_gain) * (target - cur))
+                        .clamp(-Fx::ONE, Fx::ONE),
                 );
             }
             for &enemy_seat in &f.at_war {
@@ -609,15 +612,16 @@ pub(crate) fn faction_turn(
                     && eh != e
                 {
                     let cur = opinion.of(eh);
-                    opinion
-                        .0
-                        .insert(eh, (cur - config.war_enmity).clamp(-1.0, 1.0));
+                    opinion.0.insert(
+                        eh,
+                        (cur - Fx::from_num(config.war_enmity)).clamp(-Fx::ONE, Fx::ONE),
+                    );
                 }
             }
         }
         opinion.0.retain(|_, v| {
-            *v *= 1.0 - config.opinion_decay;
-            v.abs() > 0.02
+            *v *= Fx::ONE - Fx::from_num(config.opinion_decay);
+            v.abs() > Fx::from_num(0.02)
         });
         // Allegiance: keep the bonds whose faction actually formed.
         let mut bonds = bonds;
@@ -674,7 +678,6 @@ pub(crate) fn detention_countdown(
 mod tests {
     use super::*;
     use crate::features::Feature;
-    use crate::scalar::Fx;
     use game_sim::World as GameWorld;
 
     /// A **contrived realm** for the faction turn: a tiny world with hand-seated courts and members
