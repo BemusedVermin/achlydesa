@@ -1639,7 +1639,7 @@ impl Simulation {
                     && let Some(mut sks) = self.world.get_mut::<people::Skills>(avatar)
                     && let Some(v) = sks.0.get_mut(sk)
                 {
-                    *v = (*v + gain).min(cap);
+                    *v = (*v + Fx::saturating_from_num(gain)).min(Fx::saturating_from_num(cap));
                 }
                 Ok(format!("You gather {units} {good_name}."))
             }
@@ -1648,7 +1648,7 @@ impl Simulation {
                 let already = self
                     .world
                     .get::<people::Skills>(avatar)
-                    .is_some_and(|s| s.0.get(skill).is_some_and(|&v| v > 0.0));
+                    .is_some_and(|s| s.0.get(skill).is_some_and(|&v| v > Fx::ZERO));
                 if already {
                     return Err(format!("You already know the {craft}'s craft."));
                 }
@@ -1656,7 +1656,7 @@ impl Simulation {
                 if let Some(mut sks) = self.world.get_mut::<people::Skills>(avatar)
                     && let Some(v) = sks.0.get_mut(skill)
                 {
-                    *v = NOVICE_SKILL;
+                    *v = Fx::from_num(NOVICE_SKILL);
                     learned = true;
                 }
                 if learned {
@@ -1701,8 +1701,9 @@ impl Simulation {
         let reg = self.world.resource::<Registry>();
         sk.0.iter()
             .enumerate()
-            .filter(|&(_, &v)| v > 0.0)
-            .map(|(i, &v)| (reg.skill(i).name.clone(), v))
+            .filter(|&(_, &v)| v > Fx::ZERO)
+            // Proficiency is fixed-point internally; expose it as f32 for the UI (display boundary).
+            .map(|(i, &v)| (reg.skill(i).name.clone(), v.to_num::<f32>()))
             .collect()
     }
 
@@ -1780,7 +1781,7 @@ impl Simulation {
                         money: 0,
                         stock: vec![0; n_goods],
                     },
-                    people::Skills(vec![0.0; n_skills]),
+                    people::Skills(vec![Fx::ZERO; n_skills]),
                 ));
             }
         }
@@ -2585,8 +2586,11 @@ impl Simulation {
                 mix(&mut b, inv.stock.iter().map(|&s| s as u64).sum());
                 mix(&mut b, q(needs.sustenance));
                 mix(&mut b, q(needs.rest));
+                // skills are fixed-point now — fold their exact i128 bits (no float quantization).
                 for &s in &skills.0 {
-                    mix(&mut b, q(s));
+                    let bits = s.to_bits();
+                    mix(&mut b, bits as u64);
+                    mix(&mut b, (bits >> 64) as u64);
                 }
                 for &p in &pers.0 {
                     mix(&mut b, q(p));
@@ -2701,14 +2705,18 @@ mod tests {
         sim
     }
 
-    /// The pinned state-fingerprints of the three reference runs, captured on `master`
-    /// before any Track-1 optimization. Every "pure win" in `docs/scaling.md` (the
-    /// `converse` tile-bucket, the GOAP successor prune, a default plan budget) must leave
-    /// these unchanged — that is what makes it byte-identical rather than merely fast. A
-    /// deliberate behaviour change (a *new* value) updates these with a note saying why.
-    const BASELINE_ECONOMY: u64 = 0xECAB_B567_5C45_44CD;
-    const BASELINE_DIALOGUE: u64 = 0xCDD6_B45E_78AD_2408;
-    const BASELINE_DIRECTOR: u64 = 0x02CD_6633_0816_93FD;
+    /// The pinned state-fingerprints of the three reference runs. Every "pure win" in
+    /// `docs/scaling.md` (the `converse` tile-bucket, the GOAP successor prune, a default plan
+    /// budget) must leave these unchanged — that is what makes it byte-identical rather than merely
+    /// fast. A deliberate behaviour change (a *new* value) updates these with a note saying why.
+    ///
+    /// **Re-captured** when `Skills` moved from `f32` to fixed-point (`Fx`): recipe yield and skill
+    /// growth round on integer-backed arithmetic now, so the economy run differs from the old f32
+    /// baselines. This was an intentional type change (determinism hardening), not a regression — the
+    /// run is still deterministic and reproducible, which the second half of the test still checks.
+    const BASELINE_ECONOMY: u64 = 0x03BD_39D6_39F6_263D;
+    const BASELINE_DIALOGUE: u64 = 0x8D95_7846_2009_8E1F;
+    const BASELINE_DIRECTOR: u64 = 0x21DE_8ECA_2F78_CADE;
 
     #[test]
     fn track1_runs_are_byte_identical_to_master() {
@@ -2981,8 +2989,8 @@ mod tests {
                 .query_filtered::<(&Skills, &Inventory), With<agent_core::CohortMember>>();
             q.iter(&sim.world)
                 .map(|(s, inv)| {
-                    let prof = s.0.iter().cloned().fold(0.0f32, f32::max);
-                    (prof, inv.stock.iter().sum::<u32>())
+                    let prof = s.0.iter().copied().fold(Fx::ZERO, |a, b| a.max(b));
+                    (prof.to_num::<f32>(), inv.stock.iter().sum::<u32>())
                 })
                 .collect()
         };

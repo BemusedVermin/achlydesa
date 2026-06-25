@@ -33,6 +33,7 @@ use crate::plan::{
     AffordEffect, Affordance, Deed, Facts, MarketSnapshot, Need, PlanCtx, PlanState, Step, Stock,
     plan,
 };
+use crate::scalar::Fx;
 use crate::{Position, Substrate};
 use bevy_ecs::prelude::*;
 use game_sim::{Coord, SplitMix64, Topology, World as GameWorld};
@@ -60,7 +61,7 @@ pub struct Needs {
 /// then grows by doing — so production splits across people and trade for what you
 /// cannot make yourself becomes a necessity, not a convenience.
 #[derive(Component, Clone, Debug, Default)]
-pub struct Skills(pub Vec<f32>);
+pub struct Skills(pub Vec<Fx>);
 
 /// Coins plus a whole-unit count of every good (indexed by [`GoodId`]).
 #[derive(Component, Clone, Debug)]
@@ -786,10 +787,15 @@ pub(crate) fn people_execute(
                     }
                     let skill = skills.0[r.skill];
                     for &(g, qty) in &r.outputs {
-                        inv.stock[g] += (qty as f32 * (1.0 + skill) * scale).round() as u32;
+                        inv.stock[g] += (Fx::saturating_from_num(qty)
+                            * (Fx::ONE + skill)
+                            * Fx::saturating_from_num(scale))
+                        .round()
+                        .saturating_to_num::<u32>();
                     }
                     let sd = reg.skill(r.skill);
-                    skills.0[r.skill] = (skill + sd.gain).min(sd.cap);
+                    skills.0[r.skill] = (skill + Fx::saturating_from_num(sd.gain))
+                        .min(Fx::saturating_from_num(sd.cap));
                     if let Some(kind) = r.resource
                         && r.deplete > 0.0
                     {
@@ -980,7 +986,9 @@ pub(crate) fn people_execute(
                                 inv.stock[good] += units;
                                 if let Some(sk) = skill {
                                     let sd = reg.skill(sk);
-                                    skills.0[sk] = (skills.0[sk] + sd.gain).min(sd.cap);
+                                    skills.0[sk] = (skills.0[sk]
+                                        + Fx::saturating_from_num(sd.gain))
+                                    .min(Fx::saturating_from_num(sd.cap));
                                 }
                                 true
                             }
@@ -988,8 +996,8 @@ pub(crate) fn people_execute(
                         AffordEffect::Teach { skill } => match skills.0.get_mut(skill) {
                             // Learn the trade: lift the calling above zero (a novice),
                             // so its recipes become runnable from here on.
-                            Some(s) if *s <= 0.0 => {
-                                *s = LEARNED_SKILL;
+                            Some(s) if *s <= Fx::ZERO => {
+                                *s = Fx::from_num(LEARNED_SKILL);
                                 true
                             }
                             _ => false, // already has it, or no such skill
@@ -1108,20 +1116,21 @@ fn birth_skills(
     n: usize,
     initial: f32,
     rng: &mut SplitMix64,
-) -> Vec<f32> {
+) -> Vec<Fx> {
+    let initial = Fx::saturating_from_num(initial);
     if skill_count == 0 {
         return Vec::new();
     }
     if per_agent == 0 || per_agent >= skill_count {
         return vec![initial; skill_count];
     }
-    let mut sk = vec![0.0; skill_count];
+    let mut sk = vec![Fx::ZERO; skill_count];
     sk[n % skill_count] = initial;
     let mut have = 1;
     let mut guard = 0;
     while have < per_agent && guard < skill_count * 4 {
         let s = rng.gen_range(skill_count);
-        if sk[s] == 0.0 {
+        if sk[s] == Fx::ZERO {
             sk[s] = initial;
             have += 1;
         }

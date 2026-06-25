@@ -22,6 +22,7 @@ use crate::people::{
     EconRes, Inventory, Market, MoveGraph, Needs, NeedsRes, Npc, Skills, deplete_resource, price,
     read_resources,
 };
+use crate::scalar::Fx;
 use crate::{Position, Registry, Substrate};
 use bevy_ecs::prelude::*;
 use game_sim::{Coord, StigConfig};
@@ -281,7 +282,7 @@ pub(crate) fn drift(
 
         // --- 2. Produce: run the first calling-recipe this tile + larder supports (one/tick). ---
         for r in reg.recipes() {
-            if !skills.0.get(r.skill).is_some_and(|&s| s > 0.0) {
+            if skills.0.get(r.skill).is_none_or(|&s| s <= Fx::ZERO) {
                 continue;
             }
             let level = r
@@ -296,10 +297,15 @@ pub(crate) fn drift(
                 }
                 let skill = skills.0[r.skill];
                 for &(g, qty) in &r.outputs {
-                    inv.stock[g] += (qty as f32 * (1.0 + skill) * scale).round() as u32;
+                    inv.stock[g] += (Fx::saturating_from_num(qty)
+                        * (Fx::ONE + skill)
+                        * Fx::saturating_from_num(scale))
+                    .round()
+                    .saturating_to_num::<u32>();
                 }
                 let sd = reg.skill(r.skill);
-                skills.0[r.skill] = (skill + sd.gain).min(sd.cap);
+                skills.0[r.skill] =
+                    (skill + Fx::saturating_from_num(sd.gain)).min(Fx::saturating_from_num(sd.cap));
                 if let Some(kind) = r.resource
                     && r.deplete > 0.0
                 {

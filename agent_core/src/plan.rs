@@ -37,6 +37,7 @@
 
 use crate::data::{GoodId, Recipe, Registry, ResourceKind};
 use crate::people::{EconConfig, NeedsConfig, price};
+use crate::scalar::Fx;
 use game_sim::Coord;
 use pathfinding::directed::astar::astar;
 use smallvec::SmallVec;
@@ -161,7 +162,7 @@ pub struct PlanCtx<'a> {
     /// one it was never taught and cannot practise (a baker has `farming == 0`), so
     /// the recipes it can run are gated by where it has any proficiency. The same
     /// number then scales the yield of the recipes it *can* run.
-    pub skills: &'a [f32],
+    pub skills: &'a [Fx],
     /// Markets the agent can trade at (by physical proximity); indexed by [`Step`].
     pub markets: &'a [MarketSnapshot],
     /// Place-based fact-setting operators available (usually empty).
@@ -193,7 +194,7 @@ impl PlanCtx<'_> {
     /// May this agent practise `skill`? Yes if it has any proficiency in it — its
     /// calling. Untaught skills sit at `0` and gate out the recipes that need them.
     fn can_practise(&self, skill: usize) -> bool {
-        self.skills.get(skill).is_some_and(|&s| s > 0.0)
+        self.skills.get(skill).is_some_and(|&s| s > Fx::ZERO)
     }
 }
 
@@ -482,7 +483,7 @@ fn resource_scale(s: &PlanState, ctx: &PlanCtx, r: &Recipe) -> Option<f32> {
 /// far in this plan? The state-aware companion to [`PlanCtx::can_practise`] (which
 /// knows only the born callings, for the heuristics that have no plan state to hand).
 fn practises(ctx: &PlanCtx, s: &PlanState, skill: usize) -> bool {
-    ctx.skills.get(skill).is_some_and(|&v| v > 0.0)
+    ctx.skills.get(skill).is_some_and(|&v| v > Fx::ZERO)
         || s.learned.get(skill).copied().unwrap_or(0) > 0
 }
 
@@ -525,9 +526,13 @@ fn apply(step: Step, s: &PlanState, ctx: &PlanCtx) -> Option<(PlanState, f32)> {
             for &(g, qty) in &r.inputs {
                 next.stock[g] -= qty;
             }
-            let skill = ctx.skills.get(r.skill).copied().unwrap_or(0.0);
+            let skill = ctx.skills.get(r.skill).copied().unwrap_or(Fx::ZERO);
             for &(g, qty) in &r.outputs {
-                next.stock[g] += (qty as f32 * (1.0 + skill) * scale).round() as u32;
+                next.stock[g] += (Fx::saturating_from_num(qty)
+                    * (Fx::ONE + skill)
+                    * Fx::saturating_from_num(scale))
+                .round()
+                .saturating_to_num::<u32>();
             }
             cost = r.effort;
         }
@@ -827,7 +832,7 @@ mod tests {
         /// Per-skill proficiency; `0` means the agent can't practise that skill.
         /// Defaults to an all-`1.0` generalist so a test that doesn't care about
         /// callings can still make anything.
-        skills: Vec<f32>,
+        skills: Vec<Fx>,
         /// resources per col index.
         resources: Vec<[f32; ResourceKind::COUNT]>,
         markets: Vec<MarketSnapshot>,
@@ -845,7 +850,7 @@ mod tests {
         }
 
         fn with_reg(reg: Registry) -> Self {
-            let skills = vec![1.0; reg.skill_count()];
+            let skills = vec![Fx::ONE; reg.skill_count()];
             Self {
                 reg,
                 econ: EconConfig::default(),
@@ -1320,8 +1325,8 @@ mod tests {
             100_000,
         )];
 
-        w.skills = vec![0.0; w.reg.skill_count()];
-        w.skills[farming] = 1.0;
+        w.skills = vec![Fx::ZERO; w.reg.skill_count()];
+        w.skills[farming] = Fx::ONE;
         let farmer = w.plan(
             Condition::Money { at_least: 30 },
             w.state(100, 0, w.empty_stock(), 0),
@@ -1331,8 +1336,8 @@ mod tests {
             "a farmer should farm: {farmer:?}"
         );
 
-        w.skills = vec![0.0; w.reg.skill_count()];
-        w.skills[baking] = 1.0;
+        w.skills = vec![Fx::ZERO; w.reg.skill_count()];
+        w.skills[baking] = Fx::ONE;
         let baker = w.plan(
             Condition::Money { at_least: 30 },
             w.state(100, 0, w.empty_stock(), 0),
@@ -1362,8 +1367,8 @@ mod tests {
             .iter()
             .position(|r| r.name == "bake")
             .unwrap();
-        w.skills = vec![0.0; w.reg.skill_count()];
-        w.skills[farming] = 1.0; // a farmer — cannot bake
+        w.skills = vec![Fx::ZERO; w.reg.skill_count()];
+        w.skills[farming] = Fx::ONE; // a farmer — cannot bake
         w.affordances = vec![Affordance {
             at: TestWorld::at(1),
             tile: 1,
