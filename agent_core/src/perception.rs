@@ -275,6 +275,63 @@ fn charge_word(kind: TellKind) -> &'static str {
     }
 }
 
+/// How a place reads on the **drama-map** (S5.2): a charged-or-quiet POI conveyed *through its
+/// fiction*, never a gauge. The app shows `fiction` (a gathering, a hush, watchful eyes) so the
+/// player routes toward where things are happening — navigation becomes reading. `charge` and
+/// `provenance` are dev-overlay inputs; no player surface renders them as a number.
+#[derive(Clone, Debug)]
+pub struct PlaceMood {
+    pub place: Coord,
+    /// A diegetic one-line of what the place feels like. Never a number.
+    pub fiction: String,
+    /// The underlying salience — a **dev-surface** input only.
+    pub charge: f32,
+    /// Grown or authored — a dev-surface / deep-read input.
+    pub provenance: Provenance,
+}
+
+/// The **drama-map** Realizer (S5.2): render a placed `Tell` as a POI's `PlaceMood` — the charge read
+/// as atmosphere (a gathering, a hush, watchful eyes), reaching for the register's noun where it has
+/// one. The surface rule is *fiction, never a gauge* (`narrative_surfacing.md` S2): no kind-tinted,
+/// magnitude-sized glyph reaches the player — that belongs to the dev overlay.
+pub struct PlaceRealizer;
+
+impl Realizer for PlaceRealizer {
+    type Out = PlaceMood;
+
+    fn realize(&self, tell: &Tell, ctx: &RealizeCtx) -> PlaceMood {
+        let noun = tell
+            .hints
+            .register
+            .map(|r| ctx.registry.register_def(r).noun.clone());
+        PlaceMood {
+            place: tell.anchor.place.unwrap_or(Coord::new(0, 0)),
+            fiction: place_fiction(tell.kind, noun.as_deref()),
+            charge: tell.salience,
+            provenance: tell.provenance,
+        }
+    }
+}
+
+/// A diegetic one-line for a charged place — the place's atmosphere, conveyed without a gauge, naming
+/// the register's `noun` ("the betrayal", "the calamity") where the `Tell` carries one.
+fn place_fiction(kind: TellKind, noun: Option<&str>) -> String {
+    match (kind, noun) {
+        (TellKind::Tension, Some(n)) => format!("A knot of folk, voices low — talk of {n}."),
+        (TellKind::Tension, None) => "A knot of folk, their voices low.".into(),
+        (TellKind::Threat, _) => {
+            "The place is taut; they go watchful, hands near their belts.".into()
+        }
+        (TellKind::Aftermath, Some(n)) => {
+            format!("A hush hangs over the place; they still speak of the {n}, low.")
+        }
+        (TellKind::Aftermath, None) => "A hush hangs here, and the marks of what passed.".into(),
+        (TellKind::Mystery, _) => "Something here does not sit right.".into(),
+        (TellKind::Opportunity, _) => "There is an opening here, for one who would take it.".into(),
+        (TellKind::Recurrence, _) => "You have met the like of this before, elsewhere.".into(),
+    }
+}
+
 /// A player channel: a filter + a [`Realizer`] + a budget over the shared `Tell` set. The budget is
 /// not incidental — a surface that shows everything is as illegible as one that shows nothing, so the
 /// budget is what makes salience do real work and creates restraint.
@@ -908,6 +965,53 @@ mod tests {
             deep.authored.is_none(),
             "a grown charge confesses nothing under a Deep read"
         );
+    }
+
+    #[test]
+    fn the_place_realizer_reads_a_poi_through_its_fiction() {
+        let reg = Registry::bundled();
+        let betrayal = reg
+            .register_id("betrayal")
+            .expect("betrayal register ships");
+        let mut w = World::new();
+        let subj = w.spawn_empty().id();
+        let at = Coord::new(7, 9);
+        let tell = Tell {
+            subject: subj,
+            kind: TellKind::Aftermath,
+            salience: 0.9,
+            provenance: Provenance::Director,
+            anchor: Anchor {
+                place: Some(at),
+                when: When::Past(3),
+            },
+            source: [0u64].into_iter().collect(),
+            hints: RealizeHints {
+                actors: [subj].into_iter().collect(),
+                register: Some(betrayal),
+                magnitude: 0.9,
+                tier_gate: ReadTier::Deep,
+            },
+        };
+        let names = |_e: Entity| "x".to_string();
+        let ctx = RealizeCtx {
+            registry: &reg,
+            name: &names,
+        };
+        let mood = PlaceRealizer.realize(&tell, &ctx);
+        assert_eq!(mood.place, at, "anchored at the Tell's place");
+        assert!(
+            mood.fiction.contains("betrayal"),
+            "reaches for the register noun: {}",
+            mood.fiction
+        );
+        // Fiction, never a gauge: no number and no template slot leaks to the player.
+        assert!(
+            !mood.fiction.chars().any(|c| c.is_ascii_digit()),
+            "no number leaks into the place fiction: {}",
+            mood.fiction
+        );
+        assert!(!mood.fiction.contains('{'));
     }
 
     #[test]
