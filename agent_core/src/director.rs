@@ -888,7 +888,7 @@ pub(crate) fn director_step(
                 ambition: t(amb),
                 sociability: t(soc),
                 piety: t(pie),
-                op_of_proto: proto.map_or(0.0, |p| op.of(p)),
+                op_of_proto: proto.map_or(0.0, |p| op.of(p).to_num::<f32>()),
                 need: needs.sustenance.min(needs.rest).to_num::<f32>(),
                 seats: alleg.0.iter().map(|b| b.seat).collect(),
                 traits: pers.0.iter().map(|v| v.to_num::<f32>()).collect(),
@@ -1397,9 +1397,9 @@ pub(crate) fn director_step(
                     && w != tw
                     && let Ok((.., mut op, _, _, _)) = people.get_mut(w)
                 {
-                    let e = op.0.entry(tw).or_insert(0.0);
-                    *e = (*e + delta).clamp(-1.0, 1.0);
-                    let crossed = *e;
+                    let e = op.0.entry(tw).or_insert(Fx::ZERO);
+                    *e = (*e + Fx::from_num(*delta)).clamp(-Fx::ONE, Fx::ONE);
+                    let crossed = e.to_num::<f32>();
                     if *delta < 0.0 {
                         suffering += -delta * 3.0;
                     } else {
@@ -1903,7 +1903,7 @@ mod tests {
                 .get_mut::<Opinion>()
                 .unwrap()
                 .0
-                .insert(of, v);
+                .insert(of, Fx::from_num(v));
         }
 
         /// Enrol `who` in the faction seated at `seat` (so the director reads it as `InFaction`).

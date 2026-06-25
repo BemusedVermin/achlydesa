@@ -766,7 +766,11 @@ fn assemble_reads<'a>(
             *grudge_convergence.entry(g.0).or_insert(0) += 1;
         }
         if !op.0.is_empty() {
-            opinion.insert(e, op.0.clone());
+            // Opinion is fixed-point now; the Sifter's f32 read of it converts at this boundary.
+            opinion.insert(
+                e,
+                op.0.iter().map(|(&k, v)| (k, v.to_num::<f32>())).collect(),
+            );
         }
         // The Story Sifter's pattern scoring stays `f32` (its axes are raw narrative signals, not
         // the IAUS appraisal); mood/vengeance are converted out of fixed-point at this read boundary.

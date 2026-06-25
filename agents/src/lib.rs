@@ -2227,7 +2227,7 @@ impl Simulation {
         let opinion = self
             .world
             .get::<Opinion>(listener)
-            .map(|o| o.of(avatar))
+            .map(|o| o.of(avatar).to_num::<f32>())
             .unwrap_or(0.0);
         let difficulty = party::disposition_difficulty(&cfg, opinion);
         let joined = rpg::check(cha_mod, social, 0, difficulty).succeeded();
@@ -2370,7 +2370,9 @@ impl Simulation {
         who: bevy_ecs::entity::Entity,
         toward: bevy_ecs::entity::Entity,
     ) -> Option<f32> {
-        self.world.get::<Opinion>(who).map(|o| o.of(toward))
+        self.world
+            .get::<Opinion>(who)
+            .map(|o| o.of(toward).to_num::<f32>())
     }
 
     /// Does `who` bear a standing grudge against `toward`? (Read-only counterpart to [`Self::grudges`].)

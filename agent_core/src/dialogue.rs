@@ -466,7 +466,7 @@ struct Cand {
     pos: Coord,
     traits: Vec<Fx>,
     moods: Vec<Fx>,
-    op: HashMap<Entity, f32>,
+    op: HashMap<Entity, Fx>,
     grudge: Option<Entity>,
 }
 
@@ -571,7 +571,7 @@ pub(crate) fn converse(
             }
             let listener = cands[cj].e;
             // Opinion stays `f32` for now (its own migration slice); converted at this boundary.
-            let op = cands[ci].op.get(&listener).copied().unwrap_or(0.0);
+            let op = cands[ci].op.get(&listener).copied().unwrap_or(Fx::ZERO);
             let grudge = if cands[ci].grudge == Some(listener) {
                 Fx::ONE
             } else {
@@ -588,7 +588,7 @@ pub(crate) fn converse(
                     Input::Trait(t) => cands[ci].traits.get(t).copied().unwrap_or(Fx::ZERO),
                     Input::Mood(m) => cands[ci].moods.get(m).copied().unwrap_or(Fx::ZERO),
                     Input::Sanction => Fx::ZERO,
-                    Input::OpinionOf => (Fx::from_num(op) + Fx::ONE) * Fx::from_num(0.5),
+                    Input::OpinionOf => (op + Fx::ONE) * Fx::from_num(0.5),
                     Input::GrievanceAgainst => grudge,
                     Input::SharedHistory => shared,
                     Input::Prominence => prom,
@@ -643,8 +643,8 @@ pub(crate) fn converse(
                     if w != t
                         && let Ok((.., mut op, _, _)) = people.get_mut(w)
                     {
-                        let e = op.0.entry(t).or_insert(0.0);
-                        *e = (*e + delta).clamp(-1.0, 1.0);
+                        let e = op.0.entry(t).or_insert(Fx::ZERO);
+                        *e = (*e + Fx::from_num(*delta)).clamp(-Fx::ONE, Fx::ONE);
                     }
                 }
                 Move::Stir { who, mood, delta } => {
@@ -693,7 +693,7 @@ pub(crate) fn converse(
         }
 
         // Assemble the card (numbers → words) and choose a referent from memory.
-        let op_sl = cands[si].op.get(&listener).copied().unwrap_or(0.0);
+        let op_sl = cands[si].op.get(&listener).copied().unwrap_or(Fx::ZERO);
         let affect = moods_w.dominant(&cands[si].moods);
         let register = intent
             .tags
@@ -752,7 +752,7 @@ pub(crate) fn converse(
             listener_name,
             motive,
             mood_word: affect.word,
-            relation_word: relation_word(op_sl),
+            relation_word: relation_word(op_sl.to_num::<f32>()),
             referent,
             surface,
             forced,
@@ -1040,7 +1040,7 @@ pub fn available(world: &World, speaker: Entity, listener: Entity) -> Vec<(Strin
     let op = world
         .get::<Opinion>(speaker)
         .map(|o| o.of(listener))
-        .unwrap_or(0.0);
+        .unwrap_or(Fx::ZERO);
     let grudge = if world
         .get::<Grievance>(speaker)
         .is_some_and(|g| g.0 == listener)
@@ -1069,7 +1069,7 @@ pub fn available(world: &World, speaker: Entity, listener: Entity) -> Vec<(Strin
                 Input::Deficit | Input::Sanction => Fx::ZERO,
                 Input::Trait(t) => traits.get(t).copied().unwrap_or(Fx::ZERO),
                 Input::Mood(m) => moods.get(m).copied().unwrap_or(Fx::ZERO),
-                Input::OpinionOf => (Fx::from_num(op) + Fx::ONE) * Fx::from_num(0.5),
+                Input::OpinionOf => (op + Fx::ONE) * Fx::from_num(0.5),
                 Input::GrievanceAgainst => grudge,
                 Input::SharedHistory => shared,
                 Input::Prominence => prom,
@@ -1145,8 +1145,8 @@ pub fn apply_moves_scaled(
                 if w != t
                     && let Some(mut op) = world.get_mut::<Opinion>(w)
                 {
-                    let e = op.0.entry(t).or_insert(0.0);
-                    *e = (*e + delta * scale).clamp(-1.0, 1.0);
+                    let e = op.0.entry(t).or_insert(Fx::ZERO);
+                    *e = (*e + Fx::from_num(delta * scale)).clamp(-Fx::ONE, Fx::ONE);
                 }
             }
             Move::Stir { who, mood, delta } => {
@@ -1255,7 +1255,7 @@ pub fn perform_scaled(
     let op_sl = world
         .get::<Opinion>(speaker)
         .map(|o| o.of(listener))
-        .unwrap_or(0.0);
+        .unwrap_or(Fx::ZERO);
     let has_grudge = world
         .get::<Grievance>(speaker)
         .is_some_and(|g| g.0 == listener);
@@ -1325,7 +1325,7 @@ pub fn perform_scaled(
             listener_name: listener_name.clone(),
             motive: motive.clone(),
             mood_word: affect_word,
-            relation_word: relation_word(op_sl),
+            relation_word: relation_word(op_sl.to_num::<f32>()),
             referent: referent.clone(),
             surface,
             forced: false,
@@ -1373,19 +1373,37 @@ mod tests {
 
         apply_moves_scaled(&mut w, speaker, listener, &mv, 0.5);
         assert!(
-            (w.get::<Opinion>(listener).unwrap().of(speaker) - 0.2).abs() < 1e-6,
+            (w.get::<Opinion>(listener)
+                .unwrap()
+                .of(speaker)
+                .to_num::<f32>()
+                - 0.2)
+                .abs()
+                < 1e-6,
             "0.4 × 0.5"
         );
         // A failed persuasion (scale 0) moves nothing further.
         apply_moves_scaled(&mut w, speaker, listener, &mv, 0.0);
         assert!(
-            (w.get::<Opinion>(listener).unwrap().of(speaker) - 0.2).abs() < 1e-6,
+            (w.get::<Opinion>(listener)
+                .unwrap()
+                .of(speaker)
+                .to_num::<f32>()
+                - 0.2)
+                .abs()
+                < 1e-6,
             "no change at scale 0"
         );
         // Full strength is the unscaled canon, identical to `apply_moves`.
         apply_moves_scaled(&mut w, speaker, listener, &mv, 1.0);
         assert!(
-            (w.get::<Opinion>(listener).unwrap().of(speaker) - 0.6).abs() < 1e-6,
+            (w.get::<Opinion>(listener)
+                .unwrap()
+                .of(speaker)
+                .to_num::<f32>()
+                - 0.6)
+                .abs()
+                < 1e-6,
             "0.2 + 0.4"
         );
     }
