@@ -476,11 +476,26 @@ pub(crate) fn perception_step(
         None => HashSet::new(),
     };
     let by_id: HashMap<u64, &Episode> = chronicle.recent().map(|e| (e.id, e)).collect();
+    // Recurrence (S7 apophenia): how many *distinct places* a soul's name turns up at across the
+    // Chronicle. A figure who recurs across POIs rises, so "the same name keeps appearing" surfaces
+    // of itself in the budgeted views — no authored meaning, just legible breadcrumbs.
+    let mut places_of: HashMap<Entity, HashSet<Coord>> = HashMap::new();
+    for ep in chronicle.recent() {
+        for party in ep.parties.iter().flatten() {
+            places_of.entry(*party).or_default().insert(ep.place);
+        }
+    }
+    let recur: HashMap<Entity, usize> = places_of
+        .into_iter()
+        .map(|(e, places)| (e, places.len()))
+        .collect();
 
     let mut tells: Vec<Tell> = sift
         .candidates()
         .iter()
-        .filter_map(|cand| tell_from_candidate(cand, &by_id, avatar_pos, &bonded, width, &cfg))
+        .filter_map(|cand| {
+            tell_from_candidate(cand, &by_id, avatar_pos, &bonded, &recur, width, &cfg)
+        })
         .collect();
     // Highest salience first; deterministic tiebreak by the leading source episode, then subject — a
     // total order so the ranking is reproducible run to run.
@@ -501,6 +516,7 @@ fn tell_from_candidate(
     by_id: &HashMap<u64, &Episode>,
     avatar_pos: Option<Coord>,
     bonded: &HashSet<Entity>,
+    recur: &HashMap<Entity, usize>,
     width: i32,
     cfg: &PerceptionCfg,
 ) -> Option<Tell> {
@@ -519,10 +535,17 @@ fn tell_from_candidate(
     } else {
         0.0
     };
+    // Recurrence: the loudest-recurring cast member's spread across distinct places (apophenia).
+    let recurrence = cand
+        .cast
+        .iter()
+        .map(|e| recur_term(recur.get(e).copied().unwrap_or(0)))
+        .fold(0.0f32, f32::max);
     let salience = cfg.w_dissonance * cand.interest
         + cfg.w_proximity * proximity
         + cfg.w_authorship * authorship
-        + cfg.w_bond * bond;
+        + cfg.w_bond * bond
+        + cfg.w_recurrence * recurrence;
     if salience < cfg.min_salience {
         return None;
     }
@@ -625,6 +648,17 @@ fn proximity_term(avatar: Coord, place: Coord, width: i32, reach: i32) -> f32 {
     } else {
         1.0 - d as f32 / (reach.max(1) + 1) as f32
     }
+}
+
+/// How many distinct places a recurring soul saturates at — appearing at this many POIs reads as
+/// fully recurring ("the same name, everywhere").
+const RECUR_SAT: f32 = 3.0;
+
+/// A `0..1` recurrence weight from a soul's spread across distinct places. A single place is not
+/// recurrence — that is just where its story sits; each *additional* distinct POI lifts it toward
+/// saturation.
+fn recur_term(distinct_places: usize) -> f32 {
+    (distinct_places.saturating_sub(1) as f32 / RECUR_SAT).clamp(0.0, 1.0)
 }
 
 #[cfg(test)]
@@ -760,6 +794,7 @@ mod tests {
             &id_map(&eps),
             None,
             &HashSet::new(),
+            &HashMap::new(),
             64,
             &PerceptionCfg::default(),
         )
@@ -790,11 +825,13 @@ mod tests {
         let map = id_map(&eps);
         let cfg = PerceptionCfg::default();
         let none = HashSet::new();
+        let no_recur = HashMap::new();
         let low = tell_from_candidate(
             &cand(&[a, b], SiftStatus::Active, 0.2, &[0]),
             &map,
             None,
             &none,
+            &no_recur,
             64,
             &cfg,
         )
@@ -804,6 +841,7 @@ mod tests {
             &map,
             None,
             &none,
+            &no_recur,
             64,
             &cfg,
         )
@@ -826,10 +864,11 @@ mod tests {
         let c = cand(&[a, b], SiftStatus::Active, 0.3, &[0]);
 
         let none = HashSet::new();
-        let bare = tell_from_candidate(&c, &map, None, &none, 64, &cfg).unwrap();
+        let no_recur = HashMap::new();
+        let bare = tell_from_candidate(&c, &map, None, &none, &no_recur, 64, &cfg).unwrap();
 
         let bonded: HashSet<Entity> = [a].into_iter().collect();
-        let dear = tell_from_candidate(&c, &map, None, &bonded, 64, &cfg).unwrap();
+        let dear = tell_from_candidate(&c, &map, None, &bonded, &no_recur, 64, &cfg).unwrap();
 
         assert!(
             (dear.salience - bare.salience - cfg.w_bond).abs() < 1e-6,
@@ -837,6 +876,48 @@ mod tests {
             cfg.w_bond
         );
         assert!(dear.salience > bare.salience, "your people rise");
+    }
+
+    #[test]
+    fn recurrence_needs_more_than_one_place() {
+        assert_eq!(recur_term(0), 0.0);
+        assert_eq!(
+            recur_term(1),
+            0.0,
+            "a single place is just where the story sits"
+        );
+        assert!(
+            recur_term(2) > 0.0 && recur_term(2) < 1.0,
+            "two POIs: partial"
+        );
+        assert_eq!(recur_term(4), 1.0, "saturates past the spread");
+    }
+
+    #[test]
+    fn a_recurring_name_raises_salience() {
+        // Apophenia: a soul whose name turns up across several distinct places rises, so "the same
+        // name keeps appearing" surfaces in the budgeted views.
+        let mut w = World::new();
+        let (a, b) = (w.spawn_empty().id(), w.spawn_empty().id());
+        let eps = [ep(0, EpisodeKind::GrievanceFormed, Provenance::Sim)];
+        let map = id_map(&eps);
+        let cfg = PerceptionCfg::default();
+        let none = HashSet::new();
+        let c = cand(&[a, b], SiftStatus::Active, 0.3, &[0]);
+
+        let no_recur = HashMap::new();
+        let bare = tell_from_candidate(&c, &map, None, &none, &no_recur, 64, &cfg).unwrap();
+
+        // Subject `a` turns up at enough distinct places to saturate; `b` at one.
+        let recur: HashMap<Entity, usize> = [(a, 4), (b, 1)].into_iter().collect();
+        let recurring = tell_from_candidate(&c, &map, None, &none, &recur, 64, &cfg).unwrap();
+
+        assert!(
+            (recurring.salience - bare.salience - cfg.w_recurrence).abs() < 1e-6,
+            "a fully-recurring subject adds exactly w_recurrence ({})",
+            cfg.w_recurrence
+        );
+        assert!(recurring.salience > bare.salience, "a recurring name rises");
     }
 
     #[test]
@@ -1034,6 +1115,7 @@ mod tests {
                 &id_map(&eps),
                 None,
                 &HashSet::new(),
+                &HashMap::new(),
                 64,
                 &PerceptionCfg::default()
             )
