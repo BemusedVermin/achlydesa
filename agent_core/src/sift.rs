@@ -911,6 +911,7 @@ pub fn paths_agree(world: &mut World) -> Option<bool> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::chronicle::Provenance;
 
     #[test]
     fn bundled_sift_patterns_load_and_validate() {
@@ -979,6 +980,7 @@ mod tests {
                 id,
                 tick,
                 kind,
+                provenance: Provenance::Sim,
                 parties: [Some(p0), Some(p1), None],
                 place: at,
                 register: None,
@@ -1044,6 +1046,7 @@ mod tests {
             id,
             tick,
             kind,
+            provenance: Provenance::Sim,
             parties: [Some(p0), p1, None],
             place: at,
             register: None,

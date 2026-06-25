@@ -19,7 +19,7 @@
 //! component), variety comes from a dedicated seeded [`SplitMix64`].
 
 use crate::ai::{self, Consideration, Curve, Input};
-use crate::chronicle::{Chronicle, EpisodeKind};
+use crate::chronicle::{Chronicle, EpisodeKind, Provenance};
 use crate::data::Registry;
 use crate::factions::Opinion;
 use crate::people::{Grievance, Mood, Needs, Npc, Personality};
@@ -680,6 +680,7 @@ pub(crate) fn converse(
                             c.record(
                                 tick,
                                 EpisodeKind::GrievanceFormed,
+                                Provenance::Sim,
                                 [Some(w), Some(a), None],
                                 cands[si].pos,
                                 None,
@@ -1195,6 +1196,7 @@ pub fn apply_moves_scaled(
                         chron.record(
                             tick,
                             EpisodeKind::GrievanceFormed,
+                            Provenance::Sim,
                             [Some(w), Some(a), None],
                             at,
                             None,

@@ -22,7 +22,7 @@
 
 // coupling-lint:allow string_ids: the throne/feud machinery refers to named traits/predicates
 // (ambition, vengeance, enthroned, alive) — necessary semantic references, not an instance table.
-use crate::chronicle::EpisodeKind;
+use crate::chronicle::{EpisodeKind, Provenance};
 use crate::data::{GoodId, PredicateId, ROLE_COUNT, Registry, ResourceKind, fact_slot};
 use crate::events::{AgentEvent, EventQueue};
 use crate::factions::{Allegiance, Detained, Factions, Law, Opinion};
@@ -891,6 +891,7 @@ pub(crate) fn people_execute(
                             c.record(
                                 tick,
                                 EpisodeKind::Deposed,
+                                Provenance::Sim,
                                 [Some(prev), Some(entity), None],
                                 pos.0,
                                 None,
@@ -904,6 +905,7 @@ pub(crate) fn people_execute(
                         c.record(
                             tick,
                             EpisodeKind::Crowned,
+                            Provenance::Sim,
                             [Some(entity), None, None],
                             pos.0,
                             None,
@@ -925,6 +927,7 @@ pub(crate) fn people_execute(
                         c.record(
                             tick,
                             EpisodeKind::Killed,
+                            Provenance::Agent(entity),
                             [Some(entity), Some(foe), None],
                             pos.0,
                             None,
@@ -940,6 +943,7 @@ pub(crate) fn people_execute(
                             c.record(
                                 tick,
                                 EpisodeKind::Transgressed,
+                                Provenance::Agent(entity),
                                 [Some(entity), None, None],
                                 pos.0,
                                 None,
@@ -957,6 +961,7 @@ pub(crate) fn people_execute(
                                     c.record(
                                         tick,
                                         EpisodeKind::GrievanceFormed,
+                                        Provenance::Sim,
                                         [Some(v), Some(entity), None],
                                         pos.0,
                                         None,
@@ -1105,6 +1110,7 @@ pub fn people_metabolism(
                 c.record(
                     tick,
                     EpisodeKind::Death,
+                    Provenance::Sim,
                     [Some(entity), None, None],
                     pos.0,
                     None,

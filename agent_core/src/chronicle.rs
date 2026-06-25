@@ -17,6 +17,20 @@ use bevy_ecs::prelude::*;
 use game_sim::Coord;
 use std::collections::VecDeque;
 
+/// **Who authored the state an episode reports** — the thematic hook the Perception Layer reads
+/// (`docs/perception_layer.md` S6). Most of the world is `Sim`/`Agent`; the deepest reads surface
+/// the `Director` writes as *the demiurge's seams*. Tagging it at the emit site costs ~nothing (the
+/// data is half-present already: a `BeatFired` episode is recorded at the same tap Γ pushes a beat).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Provenance {
+    /// Emergent from ordinary system rules (a war declared, a starvation, a witness's grudge).
+    Sim,
+    /// A normal soul's own deliberate deed (an avenger's kill, a transgression).
+    Agent(Entity),
+    /// Γ's privileged write — a beat or one of its effects. The authorship the endgame reveals.
+    Director,
+}
+
 /// What kind of thing happened — the structured handle the sifter pattern-matches over. Prose-free;
 /// the surface layer renders it. The violent core (`Killed`/`Death`) is first-class: a killing is
 /// the apex narratable event. (Combat is a planned subsystem; until then a `Slay` beat records
@@ -49,6 +63,8 @@ pub struct Episode {
     pub id: u64,
     pub tick: u64,
     pub kind: EpisodeKind,
+    /// Who authored what this episode reports — `Sim`/`Agent`/`Director` (the Perception theme hook).
+    pub provenance: Provenance,
     /// actor, target, third — the cast a pattern binds (any may be absent).
     pub parties: [Option<Entity>; 3],
     pub place: Coord,
@@ -79,10 +95,14 @@ impl Chronicle {
 
     /// Append an episode at `tick`. Called from the guarded emit taps; records intent (the
     /// entities are passed in, captured before any despawn), so it never races component state.
+    // The episode's fields, passed positionally at each terse one-line emit tap — a parameter object
+    // would only push the noise to the call sites.
+    #[allow(clippy::too_many_arguments)]
     pub fn record(
         &mut self,
         tick: u64,
         kind: EpisodeKind,
+        provenance: Provenance,
         parties: [Option<Entity>; 3],
         place: Coord,
         register: Option<RegisterId>,
@@ -94,6 +114,7 @@ impl Chronicle {
             id,
             tick,
             kind,
+            provenance,
             parties,
             place,
             register,
@@ -129,7 +150,15 @@ mod tests {
         let mut c = Chronicle::new(3);
         let at = Coord::new(0, 0);
         for _ in 0..5 {
-            c.record(1, EpisodeKind::Death, [None; 3], at, None, 0);
+            c.record(
+                1,
+                EpisodeKind::Death,
+                Provenance::Sim,
+                [None; 3],
+                at,
+                None,
+                0,
+            );
         }
         // Capped to the loudest few (here, the most recent), oldest dropped.
         assert_eq!(c.len(), 3);
