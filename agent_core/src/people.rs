@@ -100,7 +100,7 @@ pub struct Market {
     /// whipsaw the price within a tick and the cobweb boom-bust is damped. Agents
     /// plan and trade against the same lagged price, so a plan's expected payoff
     /// matches what it actually gets.
-    pub price_basis: Vec<f32>,
+    pub price_basis: Vec<Fx>,
 }
 
 /// The tiles a person has personally **discovered** — the topology indices whose
@@ -488,7 +488,7 @@ pub(crate) fn people_plan(
             price_basis: m
                 .price_basis
                 .iter()
-                .map(|&x| x.round().max(0.0) as u32)
+                .map(|&x| x.round().max(Fx::ZERO).saturating_to_num::<u32>())
                 .collect(),
             money: m.money,
         })
@@ -823,7 +823,10 @@ pub(crate) fn people_execute(
                         &reg,
                         &econ,
                         good,
-                        m.price_basis[good].round().max(0.0) as u32,
+                        m.price_basis[good]
+                            .round()
+                            .max(Fx::ZERO)
+                            .saturating_to_num::<u32>(),
                     );
                     let bought = units.min(m.stock[good]).min((inv.money / p.max(1)) as u32);
                     if bought > 0 {
@@ -851,7 +854,10 @@ pub(crate) fn people_execute(
                         &reg,
                         &econ,
                         good,
-                        m.price_basis[good].round().max(0.0) as u32,
+                        m.price_basis[good]
+                            .round()
+                            .max(Fx::ZERO)
+                            .saturating_to_num::<u32>(),
                     );
                     let sold = units.min((m.money / p.max(1)) as u32).min(inv.stock[good]);
                     if sold > 0 {
@@ -1193,7 +1199,7 @@ pub fn spawn_markets(
                     Market {
                         stock: vec![stock; reg.good_count()],
                         money,
-                        price_basis: vec![stock as f32; reg.good_count()],
+                        price_basis: vec![Fx::from_num(stock); reg.good_count()],
                     },
                 ))
                 .id();
@@ -1207,13 +1213,13 @@ pub fn spawn_markets(
 /// whipsaw, damping the synchronized boom-bust (cobweb) the price-from-stock rule
 /// is otherwise prone to. Runs after trades settle, so next tick prices the new stock.
 pub(crate) fn smooth_prices(mut markets: Query<&mut Market, Without<Npc>>, econ: Res<EconRes>) {
-    let alpha = econ.price_smoothing.clamp(0.0, 1.0);
+    let alpha = Fx::from_num(econ.price_smoothing.clamp(0.0, 1.0));
     for mut m in &mut markets {
         let Market {
             stock, price_basis, ..
         } = &mut *m;
         for (basis, &s) in price_basis.iter_mut().zip(stock.iter()) {
-            *basis += alpha * (s as f32 - *basis);
+            *basis += alpha * (Fx::from_num(s) - *basis);
         }
     }
 }
@@ -1238,7 +1244,7 @@ pub fn spawn_markets_at(
                     Market {
                         stock: vec![stock; reg.good_count()],
                         money,
-                        price_basis: vec![stock as f32; reg.good_count()],
+                        price_basis: vec![Fx::from_num(stock); reg.good_count()],
                     },
                 ))
                 .id();
@@ -1413,7 +1419,7 @@ mod tests {
             .spawn(Market {
                 stock: vec![100],
                 money: 0,
-                price_basis: vec![0.0],
+                price_basis: vec![Fx::ZERO],
             })
             .id();
         let mut sched = Schedule::default();
@@ -1422,7 +1428,7 @@ mod tests {
         sched.run(&mut world);
         let basis = world.get::<Market>(e).unwrap().price_basis[0];
         assert!(
-            (basis - 15.0).abs() < 1e-3,
+            (basis - Fx::from_num(15)).abs() < Fx::from_num(1e-3),
             "0.15 of the way from 0 to 100 is 15, got {basis}"
         );
 
@@ -1431,7 +1437,7 @@ mod tests {
         }
         let basis = world.get::<Market>(e).unwrap().price_basis[0];
         assert!(
-            basis <= 100.0 && (basis - 100.0).abs() < 0.5,
+            basis <= Fx::from_num(100) && (basis - Fx::from_num(100)).abs() < Fx::from_num(0.5),
             "should converge to stock without overshoot, got {basis}"
         );
     }

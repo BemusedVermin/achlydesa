@@ -291,7 +291,10 @@ pub(crate) fn cohort_step(
                 &reg,
                 &econ,
                 good,
-                m.price_basis[good].round().max(0.0) as u32,
+                m.price_basis[good]
+                    .round()
+                    .max(Fx::ZERO)
+                    .saturating_to_num::<u32>(),
             );
             let revenue = (made as i64).saturating_mul(p);
             let paid = revenue.min(m.money); // the market can only pay what it holds
@@ -309,7 +312,15 @@ pub(crate) fn cohort_step(
                 scale(cohort.capacity as u64, cfg.consume_per_capita).min(u32::MAX as u64) as u32;
             if made > 0 {
                 m.stock[g] = m.stock[g].saturating_add(made);
-                let p = price(&reg, &econ, g, m.price_basis[g].round().max(0.0) as u32);
+                let p = price(
+                    &reg,
+                    &econ,
+                    g,
+                    m.price_basis[g]
+                        .round()
+                        .max(Fx::ZERO)
+                        .saturating_to_num::<u32>(),
+                );
                 let revenue = (made as i64).saturating_mul(p);
                 let paid = revenue.min(m.money);
                 if paid > 0 {
@@ -320,7 +331,16 @@ pub(crate) fn cohort_step(
             // Consumption: the population eats from the market's food stock (pool -> market money).
             let need = scale(total, cfg.consume_per_capita) as i64;
             if need > 0 {
-                let p = price(&reg, &econ, g, m.price_basis[g].round().max(0.0) as u32).max(1);
+                let p = price(
+                    &reg,
+                    &econ,
+                    g,
+                    m.price_basis[g]
+                        .round()
+                        .max(Fx::ZERO)
+                        .saturating_to_num::<u32>(),
+                )
+                .max(1);
                 let affordable = cohort.pool / p;
                 let units = need.min(m.stock[g] as i64).min(affordable).max(0);
                 if units > 0 {
