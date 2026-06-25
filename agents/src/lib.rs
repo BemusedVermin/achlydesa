@@ -1593,14 +1593,16 @@ impl Simulation {
         match effect {
             AffordEffect::Relieve { need, .. } => {
                 if let Some(mut v) = self.world.get_mut::<Vitals>(avatar) {
+                    use agent_core::Fx;
+                    let full = Fx::from_num(100);
                     match need {
                         Need::Rest => {
-                            v.stamina = (v.stamina + 35.0).min(100.0);
-                            v.warmth = (v.warmth + 15.0).min(100.0);
+                            v.stamina = (v.stamina + Fx::from_num(35)).min(full);
+                            v.warmth = (v.warmth + Fx::from_num(15)).min(full);
                         }
                         Need::Sustenance => {
-                            v.thirst = (v.thirst + 30.0).min(100.0);
-                            v.stamina = (v.stamina + 10.0).min(100.0);
+                            v.thirst = (v.thirst + Fx::from_num(30)).min(full);
+                            v.stamina = (v.stamina + Fx::from_num(10)).min(full);
                         }
                     }
                 }
@@ -3639,7 +3641,7 @@ mod tests {
         let npc = sim.any_npc().unwrap();
         assert_eq!(
             sim.vitals_of(npc).unwrap().thirst,
-            100.0,
+            agent_core::Fx::from_num(100),
             "vitals start full"
         );
         let avatar = sim.spawn_player(None);
@@ -3650,8 +3652,10 @@ mod tests {
         // The per-day system runs every tick and keeps every meter in range (no NaN/overflow).
         sim.run(20);
         if let Some(v) = sim.vitals_of(npc) {
+            let zero = agent_core::Fx::ZERO;
+            let full = agent_core::Fx::from_num(100);
             for m in [v.thirst, v.warmth, v.stamina] {
-                assert!((0.0..=100.0).contains(&m), "a vital left its range: {m}");
+                assert!((zero..=full).contains(&m), "a vital left its range: {m}");
             }
         }
     }
