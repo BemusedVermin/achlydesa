@@ -109,9 +109,10 @@ pub enum ActionKind {
     Wait,
     Talk,
     Recruit,
+    Scan,
 }
 // coupling-lint:allow const_all ACTIONS: the tray order for the closed ActionKind verb set (see its allow).
-const ACTIONS: [ActionKind; 7] = [
+const ACTIONS: [ActionKind; 8] = [
     ActionKind::Inspect,
     ActionKind::Travel,
     ActionKind::Search,
@@ -119,6 +120,7 @@ const ACTIONS: [ActionKind; 7] = [
     ActionKind::Wait,
     ActionKind::Talk,
     ActionKind::Recruit,
+    ActionKind::Scan,
 ];
 impl ActionKind {
     fn label(self) -> &'static str {
@@ -130,6 +132,7 @@ impl ActionKind {
             ActionKind::Wait => "Wait",
             ActionKind::Talk => "Talk",
             ActionKind::Recruit => "Recruit",
+            ActionKind::Scan => "Read the room",
         }
     }
 }
@@ -642,6 +645,9 @@ fn enabled(c: &ActionCtx, a: ActionKind) -> bool {
         // deterministic; only the free-text line needs the model.
         ActionKind::Talk => c.soul_near && !c.traveling,
         ActionKind::Recruit => c.soul_near && !c.traveling,
+        // Read the room: assess the charged souls underfoot (no talking). Available wherever souls
+        // are near; the readout is empty if none here carries a story.
+        ActionKind::Scan => c.soul_near && !c.traveling,
     }
 }
 
@@ -722,6 +728,7 @@ pub fn action_button_click(
         ActionKind::Wait => crate::do_wait(g),
         ActionKind::Talk => crate::start_talk(g),
         ActionKind::Recruit => crate::do_recruit(g),
+        ActionKind::Scan => crate::do_scan(g),
     }
 }
 
