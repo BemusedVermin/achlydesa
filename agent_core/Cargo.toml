@@ -13,3 +13,6 @@ pathfinding = "4.15"
 serde = { version = "1.0.228", features = ["derive"] }
 sim = { path = "../sim" }
 smallvec = "1"
+
+[dev-dependencies]
+cordic = "0.1.5"

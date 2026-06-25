@@ -63,6 +63,13 @@ pub mod fx_math {
 
     /// `e^x`. Range-reduces `x = k·ln2 + r` with `|r| ≤ ln2/2`, evaluates `e^r` by Taylor, then
     /// scales by `2^k` with an exact shift.
+    ///
+    /// Saturates instead of wrapping at the ends of `Fx`'s range: `sum << k` delegates to
+    /// `i128::wrapping_shl`, so `sum ≈ 1` shifted past `Fx`'s 63 integer bits (`k ≥ 63`, i.e.
+    /// `x ≳ 43.7`) would wrap to a garbage value rather than overflow — a `Logistic`/`Power` curve
+    /// with large authored steepness could reach that and silently return a wrong score. We clamp to
+    /// `Fx::MAX` on overflow and `Fx::ZERO` on underflow, which is also what `logistic`/`powf` want
+    /// at the saturating ends (`1/(1+MAX) → 0`, `1/(1+0) → 1`).
     pub fn exp(x: Fx) -> Fx {
         let l2 = LN2;
         let kf = (x / l2).round();
@@ -76,9 +83,15 @@ pub mod fx_math {
             sum += term;
         }
         if k >= 0 {
-            sum << (k as u32)
+            // sum ∈ [√½, √2); `sum << 63` already exceeds Fx::MAX (≈2^63), so guard at k ≥ 63.
+            if k >= 63 { Fx::MAX } else { sum << (k as u32) }
         } else {
-            sum >> ((-k) as u32)
+            // Shifting a value ≈1 right by ≥64 drops every fractional bit → 0 (and ≥128 would wrap).
+            if -k >= 64 {
+                Fx::ZERO
+            } else {
+                sum >> ((-k) as u32)
+            }
         }
     }
 
@@ -93,8 +106,10 @@ pub mod fx_math {
     }
 
     /// Logistic `1 / (1 + e^{-k·(x - mid)})` — the soft threshold the `Logistic` curve uses.
+    /// `saturating_add` because `exp` saturates to `Fx::MAX` for large negative `x-mid`, and a plain
+    /// `Fx::ONE + Fx::MAX` would overflow the add before the divide drives the result to ~0.
     pub fn logistic(x: Fx, mid: Fx, k: Fx) -> Fx {
-        Fx::ONE / (Fx::ONE + exp(-k * (x - mid)))
+        Fx::ONE / Fx::ONE.saturating_add(exp(-k * (x - mid)))
     }
 
     #[cfg(test)]
@@ -121,6 +136,19 @@ pub mod fx_math {
             let got: f64 =
                 logistic(Fx::from_num(0.8), Fx::from_num(0.5), Fx::from_num(8.0)).to_num();
             assert!((got - 1.0 / (1.0 + (-8.0 * 0.3_f64).exp())).abs() < 1e-9);
+        }
+
+        #[test]
+        fn exp_saturates_instead_of_wrapping() {
+            // Past ~43.7 the 2^k shift would overflow Fx; exp must saturate, not wrap.
+            assert_eq!(exp(Fx::from_num(50)), Fx::MAX);
+            assert_eq!(exp(Fx::from_num(1000)), Fx::MAX);
+            // Deep underflow collapses to 0 rather than wrapping the shift amount.
+            assert_eq!(exp(Fx::from_num(-50)), Fx::ZERO);
+            assert_eq!(exp(Fx::from_num(-1000)), Fx::ZERO);
+            // A steep logistic far below its midpoint stays a valid 0..1 score (no garbage).
+            let y = logistic(Fx::from_num(-5), Fx::from_num(0.5), Fx::from_num(50));
+            assert!(y >= Fx::ZERO && y <= Fx::ONE, "logistic saturated to {y}");
         }
 
         #[test]
