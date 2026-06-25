@@ -1068,6 +1068,34 @@ impl Simulation {
             .collect()
     }
 
+    /// The deepest tier the avatar can read the room to right now — the scan's **cost model** (S5.3):
+    /// an active scan always reaches `Read` (what souls are living through), but piercing to `Deep` —
+    /// seeing whether a charge was *grown or placed* — takes a keen **Notice** (the same skill that
+    /// widens the avatar's sight and spots Secrets). `Glance` only when there is no avatar to do the
+    /// reading. Deterministic (a no-dice skill read), so it draws no RNG and changes no state. Compose
+    /// with [`read_the_room`](Self::read_the_room): `let rows = sim.read_the_room(sim.scan_depth())`.
+    pub fn scan_depth(&self) -> agent_core::ReadTier {
+        let Some(avatar) = self.player_avatar() else {
+            return agent_core::ReadTier::Glance;
+        };
+        Self::scan_tier_for(self.proficiency_of(avatar, "Notice"))
+    }
+
+    /// The tier a `Notice` proficiency unlocks: `Deep` for a keen observer (≥ `DEEP_NOTICE`), else the
+    /// `Read` an active scan always grants (a missing skill / no RPG layer reads as unskilled). Pure
+    /// and split out so the gate is unit-testable without rolling a specific stat.
+    fn scan_tier_for(notice: Option<i8>) -> agent_core::ReadTier {
+        /// Notice rank at which the avatar can see the demiurge's seams (a step past the `≥ 2` that
+        /// spots mundane Secrets — piercing the veil is harder).
+        const DEEP_NOTICE: i32 = 3;
+        let n = notice.unwrap_or(rpg::PROF_UNSKILLED) as i32;
+        if n >= DEEP_NOTICE {
+            agent_core::ReadTier::Deep
+        } else {
+            agent_core::ReadTier::Read
+        }
+    }
+
     /// Whether the **incremental** sifter (fed the ring episode-by-episode) and the **retrospective**
     /// oracle agree candidate-for-candidate over this run's Chronicle — the S8.2 acceptance check.
     /// `true` vacuously when the sift layer is off. Dev/test only; changes no sim state.
@@ -4353,6 +4381,35 @@ mod tests {
             off.fingerprint(),
             "the Perception pass is a pure observer: the sim runs identically with it on or off",
         );
+    }
+
+    #[test]
+    fn the_scan_depth_gate_keys_on_notice() {
+        use agent_core::ReadTier;
+        // An active scan always reaches Read; only a keen Notice pierces to Deep; a missing skill
+        // (no RPG layer) reads as unskilled and stops at Read.
+        assert_eq!(Simulation::scan_tier_for(None), ReadTier::Read);
+        assert_eq!(Simulation::scan_tier_for(Some(0)), ReadTier::Read);
+        assert_eq!(
+            Simulation::scan_tier_for(Some(2)),
+            ReadTier::Read,
+            "spotting Secrets is not yet Deep"
+        );
+        assert_eq!(
+            Simulation::scan_tier_for(Some(3)),
+            ReadTier::Deep,
+            "a keen Notice sees the seams"
+        );
+        assert_eq!(Simulation::scan_tier_for(Some(6)), ReadTier::Deep);
+    }
+
+    #[test]
+    fn scan_depth_without_an_avatar_is_a_bare_glance() {
+        let sim = Simulation::new(Setup {
+            perception: true,
+            ..Default::default()
+        });
+        assert_eq!(sim.scan_depth(), agent_core::ReadTier::Glance);
     }
 
     #[test]
