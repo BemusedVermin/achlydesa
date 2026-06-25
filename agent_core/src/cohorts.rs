@@ -162,7 +162,9 @@ pub fn seed_regions(
     // Fertility comes from the substrate's f32 climate field; convert it to fixed at the boundary.
     let fert: Vec<Fx> = markets
         .iter()
-        .map(|&(_, seat)| Fx::from_num(substrate.carrying_capacity(seat).max(0.0)))
+        // `saturating_from_num` because `from_num` panics on overflow and `.max(0.0)` doesn't filter
+        // a `+inf` the terrain generator could produce on an unusual config.
+        .map(|&(_, seat)| Fx::saturating_from_num(substrate.carrying_capacity(seat).max(0.0)))
         .collect();
     let total_fert: Fx = fert.iter().copied().fold(Fx::ZERO, |a, b| a + b);
     let cohorts = markets
@@ -172,7 +174,7 @@ pub fn seed_regions(
             let capacity = if total_fert > Fx::ZERO {
                 // capacity = (fert[r] / total_fert) · population, in fixed point. The fraction (≤ 1)
                 // is taken first so the product can't overflow the scalar's integer range.
-                ((fert[r] / total_fert) * Fx::from_num(population as i64))
+                ((fert[r] / total_fert) * Fx::from_num(population))
                     .round()
                     .to_num::<i64>() as u32
             } else {
@@ -235,10 +237,7 @@ impl EconomyMaps {
 /// above 2^24). `rate` is a small fixed-point factor (a per-capita rate), so `count · rate` stays
 /// within the scalar's range for the populations the cohort layer carries.
 fn scale(count: u64, rate: Fx) -> u64 {
-    (Fx::from_num(count as i64) * rate)
-        .round()
-        .to_num::<i64>()
-        .max(0) as u64
+    (Fx::from_num(count) * rate).round().to_num::<i64>().max(0) as u64
 }
 
 /// **The Tier-2 economy.** Advance every region's cohort one tick as integer flows: production sells
@@ -333,7 +332,7 @@ pub(crate) fn cohort_step(
         // --- Wellbeing tracks land pressure: supply (the land's capacity) over demand (headcount).
         // Below capacity → surplus → wellbeing climbs (births); above → deficit → it falls (deaths);
         // at capacity → neutral, so the population settles there. A bounded step damps the swing. ---
-        let ratio = Fx::from_num(cohort.capacity as i64) / Fx::from_num(total as i64);
+        let ratio = Fx::from_num(cohort.capacity) / Fx::from_num(total);
         let nudge = (ratio - Fx::ONE).clamp(-Fx::ONE, Fx::ONE);
         cohort.sustenance =
             (cohort.sustenance + cfg.feed_rate * nudge).clamp(Fx::ZERO, Fx::from_num(100));
@@ -655,9 +654,9 @@ pub(crate) fn cohort_crystallize(
                 // (remainder == 0) this collapses to the cast average; when nobody returns, unchanged.
                 let total_after = remainder + folded;
                 if total_after > 0 {
-                    cohort.sustenance = (cohort.sustenance * Fx::from_num(remainder as i64)
+                    cohort.sustenance = (cohort.sustenance * Fx::from_num(remainder)
                         + sustenance_sum)
-                        / Fx::from_num(total_after as i64);
+                        / Fx::from_num(total_after);
                 }
                 cohort.crystallized = false;
             }
