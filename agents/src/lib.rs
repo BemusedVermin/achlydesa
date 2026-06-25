@@ -304,6 +304,14 @@ pub struct Setup {
     pub sift: bool,
     /// Knobs for the sift layer (the Chronicle ring size; later, the sifter/graft tunables).
     pub sift_cfg: config::SiftConfig,
+    /// Wake the **Perception Layer** (`docs/perception_layer.md`): each tick, derive a salience-ranked
+    /// set of legible `Tell`s from the Chronicle + Sifter — the substrate the player surfaces (prose
+    /// log, drama-map, scan, combat timeline) filter. It reads the Chronicle + Sifter, so enabling it
+    /// **implies the sift layer**. Off by default → byte-identical (the resource is absent and the
+    /// pass early-returns). Its `enabled` is OR'd with [`Setup::perception_cfg`].
+    pub perception: bool,
+    /// Knobs for the Perception Layer (the salience weights and thresholds).
+    pub perception_cfg: config::PerceptionConfig,
     /// Wake the **emergent dialogue** layer (`docs/dialogue.md`): co-located NPCs speak
     /// when they have something worth saying, the words composed from their state. Off by
     /// default, so a dialogue-free world is byte-identical. Knobs live in
@@ -429,6 +437,8 @@ impl Default for Setup {
             director_cfg: config::tunables::director(),
             sift: false,
             sift_cfg: config::tunables::sift(),
+            perception: false,
+            perception_cfg: config::tunables::perception(),
             dialogue: false,
             dialogue_cfg: config::tunables::dialogue(),
             rpg: false,
@@ -715,7 +725,10 @@ impl Simulation {
         // read it; the director and other systems tap it). Off by default -> the resource is
         // absent and every Chronicle tap is a no-op, so a sift-free world is byte-identical.
         let mut sift_cfg = setup.sift_cfg;
-        sift_cfg.enabled = setup.sift || sift_cfg.enabled;
+        let mut perception_cfg = setup.perception_cfg.clone();
+        perception_cfg.enabled = setup.perception || perception_cfg.enabled;
+        // The Perception Layer reads the Chronicle + Sifter, so waking it implies the sift layer.
+        sift_cfg.enabled = setup.sift || sift_cfg.enabled || perception_cfg.enabled;
         if sift_cfg.enabled {
             world.insert_resource(agent_core::chronicle::Chronicle::new(sift_cfg.ring_cap));
             // The pattern book (authored RON) and the sifter's output/base-rate memory. The live
@@ -726,6 +739,14 @@ impl Simulation {
             let mut sift = agent_core::Sift::default();
             sift.set_graft(&sift_cfg);
             world.insert_resource(sift);
+        }
+        // Wake the Perception Layer, if asked: insert the (initially empty) `Perception` resource the
+        // `perception_step` pass fills each tick from the Chronicle + Sifter. Off by default -> the
+        // resource is absent and the pass early-returns, so a perception-free world is byte-identical.
+        if perception_cfg.enabled {
+            world.insert_resource(agent_core::perception::Perception::from_config(
+                &perception_cfg,
+            ));
         }
 
         // Wake the dialogue layer, if asked. Like the director, its `enabled` is the OR of
@@ -967,6 +988,36 @@ impl Simulation {
     /// layer is off) — for the eval harness and tests.
     pub fn sift_candidate_count(&mut self) -> usize {
         agent_core::sift::run_retrospective(&mut self.world).map_or(0, |s| s.candidates().len())
+    }
+
+    /// How many legible [`Tell`](agent_core::Tell)s the Perception Layer currently holds (0 if the
+    /// layer is off) — what the player surfaces filter, and a test/eval handle on the pass.
+    pub fn perception_tell_count(&self) -> usize {
+        self.world
+            .get_resource::<agent_core::Perception>()
+            .map_or(0, |p| p.tells().len())
+    }
+
+    /// The **prose log** (`docs/perception_layer.md` S5.1): the player's recent history as a
+    /// salience-ranked, budgeted handful of one-line recollections, each rendered from a `Tell` by the
+    /// `GrammarRealizer` in the register's own authored phrasing — so it arrives as recollection, not
+    /// a wall of text. Empty when the Perception Layer is off. Read-only & deterministic: it surfaces
+    /// only what the legibility pass already ranked, and renders no sim state.
+    pub fn prose_log(&self, budget: usize) -> Vec<String> {
+        let Some(perception) = self.world.get_resource::<agent_core::Perception>() else {
+            return Vec::new();
+        };
+        let registry = self.world.resource::<Registry>();
+        let name = |e: bevy_ecs::entity::Entity| self.display_name(e);
+        let ctx = agent_core::RealizeCtx {
+            registry,
+            name: &name,
+        };
+        let realizer = agent_core::GrammarRealizer;
+        perception
+            .top(budget)
+            .map(|t| realizer.realize(t, &ctx))
+            .collect()
     }
 
     /// Whether the **incremental** sifter (fed the ring episode-by-episode) and the **retrospective**
@@ -4193,6 +4244,66 @@ mod tests {
             on.director_beats_fired(),
             off.director_beats_fired(),
             "the Chronicle is a pure observer: the sim runs identically with it on or off",
+        );
+    }
+
+    #[test]
+    fn the_perception_layer_is_a_pure_observer_that_surfaces_tells() {
+        // A seeded, dramatic run. With perception on, the layer should derive legible Tells from the
+        // Chronicle + Sifter — and, because the pass writes only its own resource, the sim must run
+        // byte-identically to one with the layer off (the fingerprint, which hashes sim state, is
+        // unchanged whether the layer observes or not).
+        let build = |perception: bool| {
+            let mut s = Simulation::new(Setup {
+                width: 32,
+                height: 24,
+                seed: 42,
+                warmup: 60,
+                npcs: 40,
+                markets: 4,
+                feuds: 8,
+                director: true,
+                dialogue: true,
+                director_cfg: DirectorConfig {
+                    beat_interval: 7,
+                    ..Default::default()
+                },
+                perception,
+                ..Default::default()
+            });
+            s.run(150);
+            s
+        };
+
+        let mut on = build(true);
+        assert!(
+            on.perception_tell_count() > 0,
+            "a woken Perception Layer should surface Tells from the staged drama"
+        );
+        // The prose log renders those Tells into budgeted, non-empty one-line recollections.
+        let log = on.prose_log(8);
+        assert!(!log.is_empty(), "the prose log surfaces the recent history");
+        assert!(log.len() <= 8, "the budget caps the log");
+        assert!(
+            log.iter()
+                .all(|line| !line.trim().is_empty() && !line.contains('{')),
+            "every line is rendered prose with no unfilled template slots: {log:?}"
+        );
+
+        let mut off = build(false);
+        assert!(
+            off.prose_log(8).is_empty(),
+            "no prose log when the Perception Layer is off"
+        );
+        assert_eq!(
+            off.perception_tell_count(),
+            0,
+            "no Perception resource when the layer is off"
+        );
+        assert_eq!(
+            on.fingerprint(),
+            off.fingerprint(),
+            "the Perception pass is a pure observer: the sim runs identically with it on or off",
         );
     }
 
