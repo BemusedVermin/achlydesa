@@ -37,6 +37,7 @@ pub mod gossip;
 pub mod norms;
 pub mod observe;
 pub mod people;
+pub mod perception;
 pub mod plan;
 pub mod player;
 pub mod scalar;
@@ -44,7 +45,7 @@ pub mod sift;
 
 pub use ai::{Consideration, Curve, Input};
 pub use beats::{Beat, BeatBook, Effect, Phase, Pre, Role};
-pub use chronicle::{Chronicle, Episode, EpisodeKind};
+pub use chronicle::{Chronicle, Episode, EpisodeKind, Provenance};
 pub use cohorts::{
     Cohort, CohortConfig, CohortMember, CohortRng, EconomyMaps, Regions, seed_regions,
 };
@@ -83,6 +84,10 @@ pub use observe::{Census, Retelling, RetoldThread, Violation, check};
 pub use people::{
     AffordanceSite, EconConfig, Grievance, Inventory, Known, Liege, Market, Mood, Needs,
     NeedsConfig, Npc, Patron, Personality, Plan, Skills, Throne, WorldAffordances, price,
+};
+pub use perception::{
+    Anchor, GrammarRealizer, Perception, ReadTier, RealizeCtx, RealizeHints, Realizer, Surface,
+    Tell, TellKind, When,
 };
 pub use plan::{
     AffordEffect, Affordance, Condition, Deed, GoodSel, MarketSnapshot, Need, PlanCtx, PlanState,
@@ -316,6 +321,10 @@ pub fn build_schedule() -> Schedule {
                 // Gossip spreads after the talk: rumours of Γ's beats pass between co-located souls,
                 // decaying each hop. A no-op (byte-identical) until the director seeds the first one.
                 gossip::gossip_spread,
+                // The Perception pass runs last, reading the freshest Chronicle + Sifter into ranked
+                // `Tell`s the player surfaces filter. Writes only its own resource; a no-op (the
+                // resource absent) when the layer is off, so off => byte-identical.
+                perception::perception_step,
             )
                 .chain(),
         )
