@@ -430,6 +430,7 @@ fn main() {
             fauna_art::animate_fauna,
             recruit_input,
             sheet_input,
+            scan_input,
         )
             .chain(),
     )
@@ -1067,6 +1068,42 @@ fn do_use(g: &mut Game) {
         Some(outcome) => outcome,
         None => format!("You move to {verb}, but the moment passes."),
     };
+}
+
+/// **Read the room** — press **V** to assess the charged souls on your tile without speaking: who
+/// carries a story, what weighs on them, and — with a keen Notice — whether their grief *grew here
+/// or was placed* (the demiurge's seam). A look, not a deed: time does not pass. The depth you reach
+/// is set by your Notice ([`Simulation::scan_depth`](agents::Simulation::scan_depth)).
+fn scan_input(keys: Res<ButtonInput<KeyCode>>, mut game: NonSendMut<Game>) {
+    if game.convo.is_some() || game.paused || !keys.just_pressed(KeyCode::KeyV) {
+        return;
+    }
+    do_scan(&mut game);
+}
+
+/// Read the souls underfoot (shared by V and the Read-the-room button).
+fn do_scan(g: &mut Game) {
+    if g.sim.player_traveling() || g.combat.is_some() {
+        return;
+    }
+    let tier = g.sim.scan_depth();
+    let rows = g.sim.read_the_room(tier);
+    if rows.is_empty() {
+        g.status =
+            "You read the room \u{2014} but no one here carries a story worth the reading.".into();
+        return;
+    }
+    let mut s = String::from("You read the room:");
+    for r in rows {
+        s.push_str(&format!("\n  \u{2022} {} \u{2014} {}", r.name, r.demeanour));
+        if let Some(p) = &r.pursuit {
+            s.push_str(&format!("; {p}"));
+        }
+        if let Some(a) = &r.authored {
+            s.push_str(&format!("\n      {a}"));
+        }
+    }
+    g.status = s;
 }
 
 /// **Journal** — press **J** to open or close the discoveries journal (what you've found and the
