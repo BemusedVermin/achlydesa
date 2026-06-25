@@ -527,7 +527,7 @@ pub(crate) fn cohort_crystallize(
                 let sust = cohort.sustenance.round().to_num::<i64>().clamp(0, 100) as u64;
                 let larder = (cfg.crystallize_larder as u64 * sust / 100) as u32;
                 for (calling, cnt) in take.iter().enumerate() {
-                    let cap = reg.skill(calling).cap;
+                    let cap = Fx::saturating_from_num(reg.skill(calling).cap);
                     for _ in 0..*cnt {
                         cohort.pop[calling] -= 1;
                         // Even split of the moved pool, remainder to the earliest spawned.
@@ -537,13 +537,12 @@ pub(crate) fn cohort_crystallize(
                         spawned += 1;
                         // Varied proficiency: a cast has novices and veterans, not clones — jittered
                         // from the cohort's own RNG, so it stays deterministic and perturbs no other
-                        // stream. `Skills` is still f32 in the wider agent layer, so the fixed-point
-                        // config is converted to f32 here at the boundary.
-                        let jitter = crng.0.gen_range(2001) as f32 / 1000.0 - 1.0;
-                        let mean = cfg.crystallize_skill.to_num::<f32>();
-                        let spread = cfg.crystallize_skill_spread.to_num::<f32>();
-                        let mut skills = vec![0.0f32; skill_count];
-                        skills[calling] = (mean + jitter * spread).clamp(0.0, cap);
+                        // stream. All fixed-point now that `Skills` is `Fx` (only the RNG draw is f32).
+                        let jitter = Fx::from_num(crng.0.gen_range(2001) as f32 / 1000.0 - 1.0);
+                        let mut skills = vec![Fx::ZERO; skill_count];
+                        skills[calling] = (cfg.crystallize_skill
+                            + jitter * cfg.crystallize_skill_spread)
+                            .clamp(Fx::ZERO, cap);
                         // Draw the member's larder of the staple food from the market, capped by what
                         // it holds — so a promoted soul arrives provisioned, and goods are conserved.
                         let mut stock = vec![0u32; reg.good_count()];
@@ -669,11 +668,11 @@ pub(crate) fn cohort_crystallize(
 }
 
 /// The calling an entity most embodies — the skill it is most proficient in (its primary trade).
-fn primary_calling(skills: &[f32]) -> usize {
+fn primary_calling(skills: &[Fx]) -> usize {
     skills
         .iter()
         .enumerate()
-        .max_by(|a, b| a.1.total_cmp(b.1))
+        .max_by(|a, b| a.1.cmp(b.1))
         .map(|(i, _)| i)
         .unwrap_or(0)
 }

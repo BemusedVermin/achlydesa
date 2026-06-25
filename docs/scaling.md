@@ -363,15 +363,18 @@ Continuous + tiering is the right pairing.
   invariant in `CLAUDE.md`. The chosen type is the [`fixed`](https://docs.rs/fixed) crate's `I64F64`,
   aliased as `agent_core::Fx` (`scalar.rs`).
   - *Done:* the **cohort layer** (`cohorts.rs`) — `Cohort.sustenance`, every `CohortConfig` rate, and
-    all the economy/crystallization arithmetic are now `Fx`; the fingerprint folds the exact bits.
-    Floats survive only at the boundaries with code still on `f32` (the substrate's `carrying_capacity`
-    read in, `Needs`/`Skills` written out), converted explicitly.
-  - *Remaining:* `Needs`/`Mood`/`Personality`/`Skills`, market `price_basis`, the IAUS/appraisal
-    scoring, survival vitals, and ultimately the substrate's climate/ecology fields (these use
-    transcendentals — `sqrt`/`exp`/trig — so they need a fixed-point math lib, not just a type swap).
-    The direction is settled: **gameplay state and everything the fingerprint folds should be exact
-    integer / fixed-point**, with floats confined to cosmetic quantities that never feed back into
-    simulation state (e.g. the renderer in `app`).
+    all the economy/crystallization arithmetic; and **`Skills`** (`Skills(Vec<Fx>)`) — proficiency,
+    recipe-yield scaling, skill growth/caps, and the calling gates, across `people`/`plan`/`fields`/
+    `cohorts`. The fingerprint folds their exact bits. The byte-identical guard was **re-baselined**
+    when `Skills` flipped (yield/growth round on integer arithmetic now — an intentional change, still
+    deterministic). Floats survive only at boundaries with code still on `f32` (config `gain`/`cap`,
+    resource `scale`, the substrate read-in, UI display), converted explicitly.
+  - *Remaining:* `Needs`/`Mood`/`Personality` and the **IAUS/appraisal** scoring (the response curves
+    use `powf`/`exp`, so this pulls in a fixed-point math lib — `cordic`), market `price_basis`,
+    survival vitals, and ultimately the substrate's climate/ecology fields (`sqrt`/`exp`/trig — also
+    `cordic`). The direction is settled: **gameplay state and everything the fingerprint folds should
+    be exact integer / fixed-point**, with floats confined to cosmetic quantities that never feed back
+    into simulation state (e.g. the renderer in `app`).
 
 ## Relationship to existing docs
 
