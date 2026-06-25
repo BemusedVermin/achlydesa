@@ -354,7 +354,7 @@ Continuous + tiering is the right pairing.
 - **Benchmark first.** *(Done — `examples/bench_scaling.rs`.)* It confirmed the central
   claim: per-agent A\* planning is ~98% of the tick and the rest is <2%, so the work is a
   complexity-class problem (Track 2), not a constant-factor one.
-- **Fixed-point arithmetic (determinism hardening) — started.** **All gameplay-affecting
+- **Fixed-point arithmetic (determinism hardening) — agent layer complete.** **All gameplay-affecting
   floating-point arithmetic should be replaced by fixed-point.** Two review findings on PR #10 motivate
   it. (1) *Precision:* `total as f32` loses precision above 2^24 (~16.7M), biasing per-capita flows at
   scale. (2) *Associativity:* f32 addition is not associative, so accumulating `sustenance` in
@@ -362,19 +362,35 @@ Continuous + tiering is the right pairing.
   bit-identical across platforms or compiler/LLVM versions, which directly threatens the determinism
   invariant in `CLAUDE.md`. The chosen type is the [`fixed`](https://docs.rs/fixed) crate's `I64F64`,
   aliased as `agent_core::Fx` (`scalar.rs`).
-  - *Done:* the **cohort layer** (`cohorts.rs`) — `Cohort.sustenance`, every `CohortConfig` rate, and
-    all the economy/crystallization arithmetic; and **`Skills`** (`Skills(Vec<Fx>)`) — proficiency,
-    recipe-yield scaling, skill growth/caps, and the calling gates, across `people`/`plan`/`fields`/
-    `cohorts`. The fingerprint folds their exact bits. The byte-identical guard was **re-baselined**
-    when `Skills` flipped (yield/growth round on integer arithmetic now — an intentional change, still
-    deterministic). Floats survive only at boundaries with code still on `f32` (config `gain`/`cap`,
-    resource `scale`, the substrate read-in, UI display), converted explicitly.
-  - *Remaining:* `Needs`/`Mood`/`Personality` and the **IAUS/appraisal** scoring (the response curves
-    use `powf`/`exp`, so this pulls in a fixed-point math lib — `cordic`), market `price_basis`,
-    survival vitals, and ultimately the substrate's climate/ecology fields (`sqrt`/`exp`/trig — also
-    `cordic`). The direction is settled: **gameplay state and everything the fingerprint folds should
-    be exact integer / fixed-point**, with floats confined to cosmetic quantities that never feed back
-    into simulation state (e.g. the renderer in `app`).
+  - *Done:* the **cohort layer** (`cohorts.rs`); **`Skills`** (`Skills(Vec<Fx>)`); the **IAUS/appraisal**
+    scoring (`ai.rs` — `Curve::eval_fx` + `score` in `Fx`, the response curves' transcendentals via the
+    self-contained `fx_math` `exp`/`ln`/`powf`/`logistic` on `Fx`; the appeal pipeline across
+    `goals`/`plan`'s `deficit`/`norms::sanction`); **`Needs`** (sustenance/rest, metabolism + every
+    restore); **`Mood`**/**`Personality`** (`Vec<Fx>`, with appraisal/decay/drift and the birth jitter
+    on a pure integer→`Fx` path); **`Opinion`** (`HashMap<Entity, Fx>`, the faction/dialogue/director
+    updates); market **`price_basis`** (the smoothed-price EMA); and **survival `Vitals`**. The
+    fingerprint folds the exact i128 bits of every folded scalar (skills, needs, personality, cohort
+    sustenance) — the old f32 milli-unit quantizer is gone. The byte-identical guard was re-baselined at
+    each behaviour-shifting flip (integer-backed rounding differs from f32 — intentional, still
+    deterministic and reproducible).
+  - *Why not `cordic`:* the usual fixed-point math lib implements its `CordicNumber` only for the
+    ≤64-bit `fixed` types (`FixedI64`/`32`/`16`/`8`), **not** our 128-bit `I64F64`, and ships no `ln`.
+    So the transcendentals are a tiny hand-rolled module (`scalar::fx_math`) evaluated directly on `Fx`
+    by range-reduction + a fixed series — pure integer arithmetic, matching `f64` to ~1e-15.
+  - *Boundaries kept on `f32` (converted explicitly):* authored config literals (`gain`/`cap`, norm
+    `weight`, curve params), the **director casting** and **faction politics** heuristics (selection
+    math, like the UI — they read personality/mood/opinion out to `f32`), the **Story Sifter**'s pattern
+    scoring, and all UI/readouts.
+  - *Remaining — the substrate (`game_sim`).* The climate/ecology/terrain fields (temperature, surface
+    water, biomass, elevation, fertility, …) and worldgen are still `f32`, with heavy `sqrt`/`exp`/trig.
+    Everything downstream that still reads them — feature placement (`features.rs` keeps the `f32`
+    `Curve::eval`), the stigmergic field-following weights (`fields.rs`), the survival per-day *drain*
+    magnitude — converts at the boundary, so those are the explicit seams to close once the substrate
+    flips. This is a large, separate undertaking (it needs a fixed-point `sqrt`/trig and touches
+    worldgen), framed as its own slice. The direction is settled: **gameplay state and everything the
+    fingerprint folds is now exact integer / fixed-point**, with floats confined to the substrate (its
+    own pending slice) and to cosmetic quantities that never feed back into simulation state (e.g. the
+    renderer in `app`).
 
 ## Relationship to existing docs
 
