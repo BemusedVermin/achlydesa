@@ -194,6 +194,87 @@ fn generic_line(kind: TellKind, lead: &str, other: Option<&str>) -> String {
     }
 }
 
+/// One soul's readout in a **read-the-room** scan (S5.3): what the player learns about a charged soul
+/// in the current cell, disclosed only as deep as the scan reached. The app renders these rows; the
+/// fields fill in tier by tier, so a `Glance` row carries demeanour alone and a `Deep` row may carry
+/// the authorship reveal.
+#[derive(Clone, Debug)]
+pub struct ScanLine {
+    pub subject: Entity,
+    /// The soul's name.
+    pub name: String,
+    /// `Glance`: the charge read as demeanour / an earned epithet — no number.
+    pub demeanour: String,
+    /// `Read`: what the soul is living through (its register situation). `None` below `Read`.
+    pub pursuit: Option<String>,
+    /// `Deep`: the authorship reveal — `Some` only for a Γ-authored charge read at the `Deep` tier.
+    /// *This is the recognition beat:* the player learns the grief was placed, not grown.
+    pub authored: Option<String>,
+    /// The tier this row was disclosed at.
+    pub tier: ReadTier,
+}
+
+/// The **scan** Realizer (S5.3): render a `Tell` as one soul's read-the-room row, disclosed to the
+/// configured [`ReadTier`]. `Glance` gives demeanour; `Read` adds what the soul is living through;
+/// `Deep` — and only `Deep` — surfaces a Γ-authored charge as *placed, not grown*. Reuses the
+/// register's authored epithet / situation / noun, so it bakes no new prose. The tier is held on the
+/// realizer (the scan configures it from the verb's cost / a skill check), keeping the one-arg
+/// `Realizer::realize` shape.
+pub struct ScanRowRealizer {
+    pub tier: ReadTier,
+}
+
+impl Realizer for ScanRowRealizer {
+    type Out = ScanLine;
+
+    fn realize(&self, tell: &Tell, ctx: &RealizeCtx) -> ScanLine {
+        let name = (ctx.name)(tell.subject);
+        let def = tell.hints.register.map(|r| ctx.registry.register_def(r));
+        // Glance: the earned epithet conveys the charge as demeanour; a register-less Tell falls back
+        // to a bare charge word.
+        let demeanour = match def {
+            Some(d) if !d.epithet_lead.is_empty() => d.epithet_lead.clone(),
+            _ => charge_word(tell.kind).to_string(),
+        };
+        // Read: what the soul is living through (its register situation).
+        let pursuit = if self.tier >= ReadTier::Read {
+            def.map(|d| d.situation_lead.clone())
+                .filter(|s| !s.is_empty())
+        } else {
+            None
+        };
+        // Deep — and only at/above the Tell's gate — reveals Γ's hand, and only when there *is* a
+        // hand: a grown (Sim/Agent) charge has nothing to confess, so a Deep read finds nothing.
+        let authored =
+            if self.tier >= tell.hints.tier_gate && tell.provenance == Provenance::Director {
+                let noun = def.map(|d| d.noun.as_str()).unwrap_or("charge");
+                Some(format!("This {noun} did not grow here — it was placed."))
+            } else {
+                None
+            };
+        ScanLine {
+            subject: tell.subject,
+            name,
+            demeanour,
+            pursuit,
+            authored,
+            tier: self.tier,
+        }
+    }
+}
+
+/// A bare demeanour word for a register-less `Tell` (the rare fallback) — terse, structural.
+fn charge_word(kind: TellKind) -> &'static str {
+    match kind {
+        TellKind::Threat => "dangerous",
+        TellKind::Aftermath => "haunted",
+        TellKind::Tension => "uneasy",
+        TellKind::Mystery => "unreadable",
+        TellKind::Opportunity => "unguarded",
+        TellKind::Recurrence => "strangely familiar",
+    }
+}
+
 /// A player channel: a filter + a [`Realizer`] + a budget over the shared `Tell` set. The budget is
 /// not incidental — a surface that shows everything is as illegible as one that shows nothing, so the
 /// budget is what makes salience do real work and creates restraint.
@@ -736,6 +817,96 @@ mod tests {
         assert!(
             !line.contains('{'),
             "every template slot was filled: {line}"
+        );
+    }
+
+    /// Build a one-soul `Tell` over the betrayal register with the given provenance, for scan tests.
+    fn scan_tell(subject: Entity, provenance: Provenance, reg: &Registry) -> Tell {
+        let betrayal = reg
+            .register_id("betrayal")
+            .expect("betrayal register ships");
+        let gate = if provenance == Provenance::Director {
+            ReadTier::Deep
+        } else {
+            ReadTier::Glance
+        };
+        Tell {
+            subject,
+            kind: TellKind::Aftermath,
+            salience: 1.0,
+            provenance,
+            anchor: Anchor {
+                place: None,
+                when: When::Now,
+            },
+            source: [0u64].into_iter().collect(),
+            hints: RealizeHints {
+                actors: [subject].into_iter().collect(),
+                register: Some(betrayal),
+                magnitude: 1.0,
+                tier_gate: gate,
+            },
+        }
+    }
+
+    #[test]
+    fn the_scan_discloses_progressively_by_tier() {
+        let reg = Registry::bundled();
+        let mut w = World::new();
+        let subj = w.spawn_empty().id();
+        let tell = scan_tell(subj, Provenance::Director, &reg);
+        let names = |_e: Entity| "Aldric".to_string();
+        let ctx = RealizeCtx {
+            registry: &reg,
+            name: &names,
+        };
+
+        let glance = ScanRowRealizer {
+            tier: ReadTier::Glance,
+        }
+        .realize(&tell, &ctx);
+        assert_eq!(glance.name, "Aldric");
+        assert!(!glance.demeanour.is_empty(), "Glance shows demeanour");
+        assert!(glance.pursuit.is_none(), "Glance hides what they pursue");
+        assert!(glance.authored.is_none(), "Glance never reveals Γ's hand");
+
+        let read = ScanRowRealizer {
+            tier: ReadTier::Read,
+        }
+        .realize(&tell, &ctx);
+        assert!(read.pursuit.is_some(), "Read surfaces the situation");
+        assert!(read.authored.is_none(), "Read still hides authorship");
+
+        let deep = ScanRowRealizer {
+            tier: ReadTier::Deep,
+        }
+        .realize(&tell, &ctx);
+        let revealed = deep.authored.expect("Deep reveals a Γ-authored charge");
+        assert!(
+            revealed.contains("placed"),
+            "the recognition beat: {revealed}"
+        );
+    }
+
+    #[test]
+    fn a_deep_scan_invents_no_authorship_for_a_grown_charge() {
+        let reg = Registry::bundled();
+        let mut w = World::new();
+        let subj = w.spawn_empty().id();
+        // A wholly grown (Sim) charge — there is no demiurge's hand to find, even at Deep.
+        let tell = scan_tell(subj, Provenance::Sim, &reg);
+        let names = |_e: Entity| "Mara".to_string();
+        let ctx = RealizeCtx {
+            registry: &reg,
+            name: &names,
+        };
+        let deep = ScanRowRealizer {
+            tier: ReadTier::Deep,
+        }
+        .realize(&tell, &ctx);
+        assert!(
+            deep.authored.is_none(),
+            "a grown charge confesses nothing under a Deep read"
         );
     }
 
