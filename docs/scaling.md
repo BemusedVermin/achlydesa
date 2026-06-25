@@ -108,16 +108,18 @@ interactive tick rates.
 ## Track 1 -- what shipped (branch `scaling-track1`)
 
 Built and measured; SoA packing and the continuous background thread were deferred by
-decision (a follow-up pass). Everything here is **byte-identical** unless explicitly opted
-into (the plan-budget knob), guarded by a pinned state-fingerprint of three reference runs
-(`agents`'s `track1_runs_are_byte_identical_to_master`).
+decision (a follow-up pass). The Track-1 optimizations were byte-identical when they landed; that
+property was originally pinned by a fingerprint guard, but the pinned baselines were **dropped** once
+the fixed-point migration began intentionally changing behaviour (this is an unreleased project — a
+no-regression pin is just friction). What remains is a **determinism** check
+(`agents`'s `reference_runs_are_deterministic`): same seed + build → identical run.
 
 - **Benchmark first.** `cargo run -p agents --release --example bench_scaling [ticks]
   [n1,n2,...] [WxH]` grows N and reports ticks/s, µs/tick, **µs/agent**, **allocs/tick**, and
   a determinism fingerprint per config. It attributes cost across layers by toggling the
   optional ones (economy → `+dialogue` → `+director`), and reads `BUDGET=n` for the planning
-  knob below. `Simulation::fingerprint()` is the read-only, order-/toolchain-independent fold
-  the guard pins.
+  knob below. `Simulation::fingerprint()` is the read-only, order-/toolchain-independent fold the
+  determinism check compares run-to-run.
 - **GOAP successor prune (byte-identical).** `apply()` clones the `PlanState` *before*
   checking preconditions, so every rejected successor pays a clone — the dominant per-tick
   allocation. `successors()` now skips the operators `apply()` is guaranteed to reject on the
@@ -204,7 +206,8 @@ now.)**
 ## Track 2 -- what shipped (2a + 2b + 2c: tiers, fields, and the regional economy)
 
 Built and measured on branch `scaling-track2-fields`. Everything here is **off by default and
-byte-identical** when off (the Track-1 fingerprint guard still passes). All three Track-2 ideas
+byte-identical** when off (the optional systems early-return / never run, so the world is unchanged).
+All three Track-2 ideas
 landed as a three-tier spectrum: **Tier 0** (full GOAP brain, near the avatar), **Tier 1**
 (gradient-following "drifters", the fields prototype, 2b), and **Tier 2** (statistical cohorts whose
 economy runs as integer regional flows, 2a+2c). Promotion/demotion moves souls between tiers as the
@@ -370,9 +373,10 @@ Continuous + tiering is the right pairing.
     on a pure integer→`Fx` path); **`Opinion`** (`HashMap<Entity, Fx>`, the faction/dialogue/director
     updates); market **`price_basis`** (the smoothed-price EMA); and **survival `Vitals`**. The
     fingerprint folds the exact i128 bits of every folded scalar (skills, needs, personality, cohort
-    sustenance) — the old f32 milli-unit quantizer is gone. The byte-identical guard was re-baselined at
-    each behaviour-shifting flip (integer-backed rounding differs from f32 — intentional, still
-    deterministic and reproducible).
+    sustenance) — the old f32 milli-unit quantizer is gone. The **pinned byte-identical guard has been
+    dropped** in favour of a plain determinism check (`reference_runs_are_deterministic`): for an
+    unreleased project a no-regression pin just forced a baseline re-capture on every intentional flip,
+    so it was pure friction. Reproducibility (same seed + build → identical run) is still enforced.
   - *Why not `cordic`:* the usual fixed-point math lib implements its `CordicNumber` only for the
     ≤64-bit `fixed` types (`FixedI64`/`32`/`16`/`8`), **not** our 128-bit `I64F64`, and ships no `ln`.
     So the transcendentals are a tiny hand-rolled module (`scalar::fx_math`) evaluated directly on `Fx`
