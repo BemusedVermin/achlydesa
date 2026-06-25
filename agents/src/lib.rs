@@ -2577,9 +2577,6 @@ impl Simulation {
                 .wrapping_add(*h << 6)
                 .wrapping_add(*h >> 2);
         }
-        // Quantize a continuous meter to milli-units so float noise below the sim's own
-        // resolution never flips the fingerprint.
-        let q = |f: f32| -> u64 { (f as f64 * 1000.0).round() as i64 as u64 };
         let mut h: u64 = 0;
 
         // NPC bodies, folded sorted by entity id.
@@ -2600,8 +2597,12 @@ impl Simulation {
                 mix(&mut b, pos.0.row as u64);
                 mix(&mut b, inv.money as u64);
                 mix(&mut b, inv.stock.iter().map(|&s| s as u64).sum());
-                mix(&mut b, q(needs.sustenance));
-                mix(&mut b, q(needs.rest));
+                // needs are fixed-point now — fold their exact i128 bits, like skills/personality.
+                for n in [needs.sustenance, needs.rest] {
+                    let bits = n.to_bits();
+                    mix(&mut b, bits as u64);
+                    mix(&mut b, (bits >> 64) as u64);
+                }
                 // skills are fixed-point now — fold their exact i128 bits (no float quantization).
                 for &s in &skills.0 {
                     let bits = s.to_bits();
@@ -2734,14 +2735,18 @@ mod tests {
     /// baselines. This was an intentional type change (determinism hardening), not a regression — the
     /// run is still deterministic and reproducible, which the second half of the test still checks.
     ///
-    /// **Re-captured again** when the **IAUS appraisal** plus `Needs`/`Mood`/`Personality` moved to
+    /// **Re-captured again** when the **IAUS appraisal** plus `Mood`/`Personality` moved to
     /// fixed-point: goal/intent scoring (the response curves, now exact `Fx` transcendentals),
     /// personality jitter, mood decay, and the deficit/sanction inputs all round on integer-backed
     /// arithmetic, so goal selection — and thus the whole run — shifts. Intentional, still
     /// deterministic.
-    const BASELINE_ECONOMY: u64 = 0x75AC_29B8_EEB7_78DE;
-    const BASELINE_DIALOGUE: u64 = 0xCBA1_E478_EF28_0A43;
-    const BASELINE_DIRECTOR: u64 = 0x4BB8_B8C0_76D3_845F;
+    ///
+    /// **Re-captured once more** when `Needs.sustenance/rest` flipped to fixed-point: hunger/fatigue
+    /// drain accumulates in `Fx` now (not f32), so the meter — and the tick a soul starves, and the
+    /// integer it seeds the planner with — shift slightly. Same intentional/deterministic story.
+    const BASELINE_ECONOMY: u64 = 0x6BE6_177D_C7CB_856F;
+    const BASELINE_DIALOGUE: u64 = 0x22F5_ED9D_1C35_C8CC;
+    const BASELINE_DIRECTOR: u64 = 0xD33D_5BE7_1CA7_BD67;
 
     #[test]
     fn track1_runs_are_byte_identical_to_master() {

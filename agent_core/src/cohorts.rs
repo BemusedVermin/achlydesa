@@ -487,19 +487,13 @@ pub(crate) fn cohort_crystallize(
     };
     let width = substrate.0.topology().width();
 
-    // Gather the live cast per region, so a dissolving region can fold its survivors back. The
-    // member's f32 `Needs.sustenance` is converted to the fixed-point scalar at this boundary.
+    // Gather the live cast per region, so a dissolving region can fold its survivors back.
+    // `Needs.sustenance` is fixed-point now, so it folds back into the cohort scalar directly.
     let mut cast: Vec<Vec<(Entity, usize, i64, Vec<u32>, Fx)>> = vec![Vec::new(); regions.0.len()];
     for (e, m, skills, inv, needs) in &members {
         if let Some(slot) = cast.get_mut(m.0) {
             let calling = primary_calling(&skills.0);
-            slot.push((
-                e,
-                calling,
-                inv.money,
-                inv.stock.clone(),
-                Fx::saturating_from_num(needs.sustenance),
-            ));
+            slot.push((e, calling, inv.money, inv.stock.clone(), needs.sustenance));
         }
     }
 
@@ -558,8 +552,8 @@ pub(crate) fn cohort_crystallize(
                                 Npc,
                                 Position(cohort.seat),
                                 Needs {
-                                    sustenance: cohort.sustenance.to_num::<f32>(),
-                                    rest: 100.0,
+                                    sustenance: cohort.sustenance,
+                                    rest: Fx::from_num(100),
                                 },
                                 Skills(skills),
                                 Inventory {

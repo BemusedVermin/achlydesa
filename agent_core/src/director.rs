@@ -133,12 +133,12 @@ impl std::ops::Deref for DirectorRes {
 /// Sustenance the protagonist is never dropped below by the director's *own* staged
 /// disasters — so a famine threatens the lead but doesn't end their story outright (the
 /// world's own hunger, and the drama of a foe's knife, still can).
-const PROTAGONIST_FLOOR: f32 = 18.0;
+const PROTAGONIST_FLOOR: Fx = Fx::lit("18");
 
 /// Sustenance a [`Slay`](crate::beats::Effect::Slay) drains — far past any larder, so the
 /// metabolism finishes the kill next tick regardless of the victim's reserves (interim, until
 /// combat lands). The protagonist's floor still shields the avatar from a staged death.
-const SLAY_SEVERITY: f32 = 999.0;
+const SLAY_SEVERITY: Fx = Fx::lit("999");
 
 /// Ticks a [`Bind`](crate::beats::Effect::Bind) holds a soul captive (via [`Detained`]), unless
 /// a [`Free`](crate::beats::Effect::Free) beat strikes the chains first. Counted down by
@@ -889,7 +889,7 @@ pub(crate) fn director_step(
                 sociability: t(soc),
                 piety: t(pie),
                 op_of_proto: proto.map_or(0.0, |p| op.of(p)),
-                need: needs.sustenance.min(needs.rest),
+                need: needs.sustenance.min(needs.rest).to_num::<f32>(),
                 seats: alleg.0.iter().map(|b| b.seat).collect(),
                 traits: pers.0.iter().map(|v| v.to_num::<f32>()).collect(),
                 moods: mood.0.iter().map(|v| v.to_num::<f32>()).collect(),
@@ -1432,7 +1432,7 @@ pub(crate) fn director_step(
                 if let Some(w) = role_entity(*who)
                     && let Ok((.., mut needs, _)) = people.get_mut(w)
                 {
-                    needs.sustenance -= severity;
+                    needs.sustenance -= Fx::from_num(*severity);
                     if w == proto {
                         needs.sustenance = needs.sustenance.max(PROTAGONIST_FLOOR);
                     }
@@ -1487,7 +1487,7 @@ pub(crate) fn director_step(
                     if set.contains(&c.pos_index)
                         && let Ok((.., mut needs, _)) = people.get_mut(c.e)
                     {
-                        needs.sustenance -= severity;
+                        needs.sustenance -= Fx::from_num(*severity);
                         if c.e == proto {
                             needs.sustenance = needs.sustenance.max(PROTAGONIST_FLOOR);
                         }
@@ -1533,11 +1533,14 @@ pub(crate) fn director_step(
                     && let Ok((.., mut needs, _)) = people.get_mut(w)
                 {
                     let a = *amount as f32;
+                    let af = Fx::from_num(*amount);
                     match need {
                         crate::features::NeedKind::Sustenance => {
-                            needs.sustenance = (needs.sustenance + a).min(100.0)
+                            needs.sustenance = (needs.sustenance + af).min(Fx::from_num(100))
                         }
-                        crate::features::NeedKind::Rest => needs.rest = (needs.rest + a).min(100.0),
+                        crate::features::NeedKind::Rest => {
+                            needs.rest = (needs.rest + af).min(Fx::from_num(100))
+                        }
                     }
                     brightness += (a / 100.0).clamp(0.0, 0.5);
                 }
@@ -1871,8 +1874,8 @@ mod tests {
                     Opinion::default(),
                     Allegiance::default(),
                     Needs {
-                        sustenance: 100.0,
-                        rest: 100.0,
+                        sustenance: Fx::from_num(100),
+                        rest: Fx::from_num(100),
                     },
                 ))
                 .id();
@@ -2359,7 +2362,7 @@ mod tests {
             "the director should have set its faction at war (the faction layer)",
         );
         assert!(
-            s.world.get::<Needs>(foe).unwrap().sustenance < 100.0,
+            s.world.get::<Needs>(foe).unwrap().sustenance < Fx::from_num(100),
             "the director's disaster should have scoured a body in the blast (the world layer)",
         );
     }

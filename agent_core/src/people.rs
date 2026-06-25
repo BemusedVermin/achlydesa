@@ -49,8 +49,8 @@ pub struct Npc;
 /// Short-term drives, `0` (desperate) to `100` (sated). Continuous meters.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Needs {
-    pub sustenance: f32,
-    pub rest: f32,
+    pub sustenance: Fx,
+    pub rest: Fx,
 }
 
 /// Per-skill proficiency, indexed by the registry's skill ids. **Doubles as a
@@ -581,8 +581,8 @@ pub(crate) fn people_plan(
             }
 
             let start = PlanState {
-                sustenance: needs.sustenance.round() as i32,
-                rest: needs.rest.round() as i32,
+                sustenance: needs.sustenance.round().to_num::<i32>(),
+                rest: needs.rest.round().to_num::<i32>(),
                 money: inv.money,
                 stock: Stock::from_slice(&inv.stock),
                 pos: pos.0,
@@ -747,7 +747,8 @@ pub(crate) fn people_execute(
                     false
                 } else {
                     inv.stock[g] -= 1;
-                    needs.sustenance = (needs.sustenance + reg.good(g).nutrition).min(100.0);
+                    needs.sustenance = (needs.sustenance + Fx::from_num(reg.good(g).nutrition))
+                        .min(Fx::from_num(100));
                     true
                 }
             }
@@ -765,11 +766,13 @@ pub(crate) fn people_execute(
                     }
                 };
                 substrate.0.graze(pos.0, 1.0);
-                needs.sustenance = (needs.sustenance + relief).min(100.0);
+                // `relief` is derived from the (still-f32) substrate biomass; converted here.
+                needs.sustenance = (needs.sustenance + Fx::from_num(relief)).min(Fx::from_num(100));
                 true
             }
             Step::Rest => {
-                needs.rest = (needs.rest + needs_cfg.rest_recovery).min(100.0);
+                needs.rest =
+                    (needs.rest + Fx::from_num(needs_cfg.rest_recovery)).min(Fx::from_num(100));
                 true
             }
             Step::Make(i) => {
@@ -975,9 +978,13 @@ pub(crate) fn people_execute(
                         AffordEffect::Relieve { need, amount } => {
                             match need {
                                 Need::Sustenance => {
-                                    needs.sustenance = (needs.sustenance + amount as f32).min(100.0)
+                                    needs.sustenance = (needs.sustenance + Fx::from_num(amount))
+                                        .min(Fx::from_num(100))
                                 }
-                                Need::Rest => needs.rest = (needs.rest + amount as f32).min(100.0),
+                                Need::Rest => {
+                                    needs.rest =
+                                        (needs.rest + Fx::from_num(amount)).min(Fx::from_num(100))
+                                }
                             }
                             true
                         }
@@ -1079,9 +1086,9 @@ pub fn people_metabolism(
 ) {
     let tick = substrate.0.tick();
     for (entity, mut needs, pos) in &mut npcs {
-        needs.sustenance -= cfg.hunger_rate;
-        needs.rest -= cfg.fatigue_rate;
-        if needs.sustenance <= 0.0 {
+        needs.sustenance -= Fx::from_num(cfg.hunger_rate);
+        needs.rest -= Fx::from_num(cfg.fatigue_rate);
+        if needs.sustenance <= Fx::ZERO {
             if let Some(t) = throne.as_deref_mut()
                 && t.holder == Some(entity)
             {
@@ -1354,8 +1361,8 @@ pub fn spawn_npcs(
                 Npc,
                 Position(coord),
                 Needs {
-                    sustenance: needs_cfg.initial_sustenance,
-                    rest: needs_cfg.initial_rest,
+                    sustenance: Fx::from_num(needs_cfg.initial_sustenance),
+                    rest: Fx::from_num(needs_cfg.initial_rest),
                 },
                 Skills(skills),
                 Inventory {
