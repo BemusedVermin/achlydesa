@@ -300,6 +300,14 @@ impl Realizer for PlaceRealizer {
     type Out = PlaceMood;
 
     fn realize(&self, tell: &Tell, ctx: &RealizeCtx) -> PlaceMood {
+        // REQUIRES: a placed Tell. The drama-map only renders Tells with a `place`; a placeless one
+        // would point the POI at the origin. Callers pre-filter, but the trait is publicly swappable,
+        // so assert the precondition at the impl boundary rather than fall back silently.
+        debug_assert!(
+            tell.anchor.place.is_some(),
+            "PlaceRealizer requires a placed Tell; got anchor {:?}",
+            tell.anchor
+        );
         let noun = tell
             .hints
             .register
