@@ -1001,8 +1001,10 @@ impl Simulation {
     /// The **prose log** (`docs/perception_layer.md` S5.1): the player's recent history as a
     /// salience-ranked, budgeted handful of one-line recollections, each rendered from a `Tell` by the
     /// `GrammarRealizer` in the register's own authored phrasing — so it arrives as recollection, not
-    /// a wall of text. Empty when the Perception Layer is off. Read-only & deterministic: it surfaces
-    /// only what the legibility pass already ranked, and renders no sim state.
+    /// a wall of text. Filters `When::Past` (S5.1): the *retrospective* surface shows arcs that have
+    /// **played out**, leaving the forming present to the scan and the tidings. Empty when the
+    /// Perception Layer is off. Read-only & deterministic: it surfaces only what the legibility pass
+    /// already ranked, and renders no sim state.
     pub fn prose_log(&self, budget: usize) -> Vec<String> {
         let Some(perception) = self.world.get_resource::<agent_core::Perception>() else {
             return Vec::new();
@@ -1015,7 +1017,8 @@ impl Simulation {
         };
         let realizer = agent_core::GrammarRealizer;
         perception
-            .top(budget)
+            .past()
+            .take(budget)
             .map(|t| realizer.realize(t, &ctx))
             .collect()
     }
