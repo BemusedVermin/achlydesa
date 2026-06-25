@@ -590,12 +590,13 @@ pub(crate) fn apply_outcome(world: &mut World, enc: &Encounter) -> Resolution {
         }
     }
 
-    // Fallen enemies leave the world — but first record each killing to the Chronicle (when the
-    // sift/perception layer is on), so a fight's dead feed the legibility surfaces (the prose log,
-    // the scan, the drama-map) instead of vanishing silently. The deed is attributed to the avatar
-    // whose party felled them — the player's kills enter the narrative as their own. Entities and the
-    // place are captured *before* the despawn, the same discipline the in-schedule taps use. A no-op
-    // (byte-identical) when the Chronicle is absent.
+    // The fallen leave the world — but first record each to the Chronicle (when the sift/perception
+    // layer is on), so a fight's dead feed the legibility surfaces (the prose log, the scan, the
+    // drama-map) instead of vanishing silently. Only a slain **enemy** is the avatar's kill (a
+    // `Killed` attributed to the avatar — the player's deed); a fallen **companion** (also
+    // player-side) is a death the avatar did not deal, so it records as an unattributed `Death`, never
+    // Killed-by-the-avatar. Entities and the place are captured *before* the despawn, the same
+    // discipline the in-schedule taps use. A no-op (byte-identical) when the Chronicle is absent.
     let avatar = enc
         .combatants
         .iter()
@@ -606,10 +607,14 @@ pub(crate) fn apply_outcome(world: &mut World, enc: &Encounter) -> Resolution {
         let Some(at) = world.get::<Position>(e).map(|p| p.0) else {
             continue; // already gone
         };
+        let is_enemy = enc
+            .combatants
+            .iter()
+            .find(|c| c.entity == e)
+            .is_none_or(|c| !c.is_player_side);
         if let Some(mut chron) = world.get_resource_mut::<Chronicle>() {
-            match avatar {
-                // The avatar's party slew them — a deliberate deed, attributed to the avatar.
-                Some(slayer) if slayer != e => chron.record(
+            match (is_enemy, avatar) {
+                (true, Some(slayer)) => chron.record(
                     tick,
                     EpisodeKind::Killed,
                     Provenance::Agent(slayer),
@@ -618,7 +623,8 @@ pub(crate) fn apply_outcome(world: &mut World, enc: &Encounter) -> Resolution {
                     None,
                     0,
                 ),
-                // No avatar in the fight (an autonomous clash) — an unattributed death.
+                // A player-side fall (a companion), or no avatar in the fight (an autonomous clash):
+                // a death the avatar did not deal — unattributed.
                 _ => chron.record(
                     tick,
                     EpisodeKind::Death,
