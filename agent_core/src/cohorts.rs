@@ -537,8 +537,10 @@ pub(crate) fn cohort_crystallize(
                         spawned += 1;
                         // Varied proficiency: a cast has novices and veterans, not clones — jittered
                         // from the cohort's own RNG, so it stays deterministic and perturbs no other
-                        // stream. All fixed-point now that `Skills` is `Fx` (only the RNG draw is f32).
-                        let jitter = Fx::from_num(crng.0.gen_range(2001) as f32 / 1000.0 - 1.0);
+                        // stream. Pure integer→fixed (no f32 intermediate): draw 0..=2000, centre to
+                        // −1000..=1000, divide by 1000 → [−1, 1].
+                        let jitter = Fx::saturating_from_num(crng.0.gen_range(2001) as i32 - 1000)
+                            / Fx::saturating_from_num(1000i32);
                         let mut skills = vec![Fx::ZERO; skill_count];
                         skills[calling] = (cfg.crystallize_skill
                             + jitter * cfg.crystallize_skill_spread)
