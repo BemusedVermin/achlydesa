@@ -2730,21 +2730,42 @@ mod tests {
     }
 
     #[test]
-    fn reference_runs_are_deterministic() {
-        // Determinism only: the same seed + build yields the same run twice. We deliberately do
-        // NOT pin these to frozen "baseline" fingerprints — this is an unreleased project and
-        // behaviour is free to change (e.g. the float→fixed-point migration), so a no-regression pin
-        // is pure friction (it just forces a re-capture on every intentional change). Reproducibility
-        // is the invariant worth keeping; byte-identity to a captured baseline is not.
-        for kind in ["economy", "dialogue", "director"] {
+    fn reference_runs_are_deterministic_and_layers_are_active() {
+        // Two invariants, neither pinned to a frozen baseline (this is an unreleased project — a
+        // no-regression pin just forces a re-capture on every intentional change, which is pure
+        // friction):
+        //   1. **Determinism** — the same seed + build yields the same run twice.
+        //   2. **Off-by-default** (CLAUDE.md invariant #3) — toggling a layer must actually change
+        //      the run, so the three scenarios must differ from each other. A dialogue/director layer
+        //      that silently fired when off (or failed to fire when on) would collapse two scenarios
+        //      to the same fingerprint and trip this — the guard the old pinned baselines provided,
+        //      without the brittleness of frozen hashes.
+        let fp = |kind| {
             let mut a = baseline_sim(kind);
             let mut b = baseline_sim(kind);
+            let f = a.fingerprint();
             assert_eq!(
-                a.fingerprint(),
+                f,
                 b.fingerprint(),
                 "{kind}: run is not reproducible (same seed + build must match)",
             );
-        }
+            f
+        };
+        let economy = fp("economy");
+        let dialogue = fp("dialogue");
+        let director = fp("director");
+        assert_ne!(
+            economy, dialogue,
+            "dialogue changed nothing vs bare economy — is it firing when off, or not at all?",
+        );
+        assert_ne!(
+            dialogue, director,
+            "director changed nothing vs dialogue-only — is it firing when off, or not at all?",
+        );
+        assert_ne!(
+            economy, director,
+            "director scenario matched the bare economy"
+        );
     }
 
     #[test]
@@ -2765,17 +2786,17 @@ mod tests {
             sim.fingerprint()
         };
         // `None` is exactly the built-in 600-node search — identical to an explicit `Some(600)`,
-        // with no pinned literal to maintain.
+        // with no pinned literal to maintain. Cache it; it's the right-hand side of both checks below.
+        let base = run(None);
         assert_eq!(
-            run(None),
+            base,
             run(Some(600)),
             "plan_budget None must equal the explicit 600-node default",
         );
         // A much tighter budget changes at least one plan (the knob actually bites)…
         let tight = run(Some(40));
         assert_ne!(
-            tight,
-            run(None),
+            tight, base,
             "a 40-node budget should change some plan vs the 600-node search",
         );
         // …yet the budgeted run is still fully reproducible (determinism is preserved).
