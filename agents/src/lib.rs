@@ -1096,6 +1096,19 @@ impl Simulation {
         }
     }
 
+    /// The most salient soul the Perception Layer is currently telling a story about and who is still
+    /// in the world — the subject of the top-ranked `Tell` whose subject is present. `None` with the
+    /// layer off or no live storied soul. Read-only; useful for steering a view (or a dev screenshot)
+    /// to where the drama is.
+    pub fn most_salient_subject(&self) -> Option<bevy_ecs::entity::Entity> {
+        let perception = self.world.get_resource::<agent_core::Perception>()?;
+        perception
+            .tells()
+            .iter()
+            .map(|t| t.subject)
+            .find(|&e| self.npc_present(e))
+    }
+
     /// Whether the **incremental** sifter (fed the ring episode-by-episode) and the **retrospective**
     /// oracle agree candidate-for-candidate over this run's Chronicle — the S8.2 acceptance check.
     /// `true` vacuously when the sift layer is off. Dev/test only; changes no sim state.
