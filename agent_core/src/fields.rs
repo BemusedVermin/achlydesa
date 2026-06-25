@@ -337,7 +337,15 @@ pub(crate) fn drift(
                     .filter(|&g| m.stock[g] > 0 && reg.good(g).nutrition > 0.0)
                     .max_by(|&a, &b| reg.good(a).nutrition.total_cmp(&reg.good(b).nutrition));
                 if let Some(g) = pick {
-                    let p = price(&reg, &econ, g, m.price_basis[g].round().max(0.0) as u32);
+                    let p = price(
+                        &reg,
+                        &econ,
+                        g,
+                        m.price_basis[g]
+                            .round()
+                            .max(Fx::ZERO)
+                            .saturating_to_num::<u32>(),
+                    );
                     if inv.money >= p {
                         inv.money -= p;
                         m.money += p;
@@ -351,7 +359,15 @@ pub(crate) fn drift(
                     .filter(|&g| inv.stock[g] > 0 && reg.good(g).nutrition == 0.0)
                     .max_by_key(|&g| inv.stock[g]);
                 if let Some(g) = pick {
-                    let p = price(&reg, &econ, g, m.price_basis[g].round().max(0.0) as u32);
+                    let p = price(
+                        &reg,
+                        &econ,
+                        g,
+                        m.price_basis[g]
+                            .round()
+                            .max(Fx::ZERO)
+                            .saturating_to_num::<u32>(),
+                    );
                     if m.money >= p {
                         inv.stock[g] -= 1;
                         inv.money += p;

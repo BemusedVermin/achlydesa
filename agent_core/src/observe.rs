@@ -18,6 +18,7 @@ use crate::chronicle::{Chronicle, Episode};
 use crate::data::Registry;
 use crate::features::Features;
 use crate::people::{EconRes, Inventory, Market, Npc, Skills, WorldAffordances, price};
+use crate::scalar::Fx;
 use crate::sift::{self, SiftStatus};
 use bevy_ecs::prelude::*;
 use std::collections::BTreeMap;
@@ -99,7 +100,7 @@ impl Census {
                 market_bases.push(
                     m.price_basis
                         .iter()
-                        .map(|&x| x.round().max(0.0) as u32)
+                        .map(|&x| x.round().max(Fx::ZERO).saturating_to_num::<u32>())
                         .collect(),
                 );
             }

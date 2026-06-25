@@ -2746,9 +2746,14 @@ mod tests {
     /// **Re-captured once more** when `Needs.sustenance/rest` flipped to fixed-point: hunger/fatigue
     /// drain accumulates in `Fx` now (not f32), so the meter — and the tick a soul starves, and the
     /// integer it seeds the planner with — shift slightly. Same intentional/deterministic story.
+    ///
+    /// **Director-only re-capture** when the market `price_basis` EMA moved to fixed-point: the
+    /// economy and dialogue references round to the very same integer bases as before (unchanged),
+    /// but the director run's trajectory diverges where an `Fx`-vs-f32 EMA rounds to a different
+    /// price on some tick. Intentional, still deterministic.
     const BASELINE_ECONOMY: u64 = 0x6BE6_177D_C7CB_856F;
     const BASELINE_DIALOGUE: u64 = 0x22F5_ED9D_1C35_C8CC;
-    const BASELINE_DIRECTOR: u64 = 0xD33D_5BE7_1CA7_BD67;
+    const BASELINE_DIRECTOR: u64 = 0xF5D4_472B_8485_751E;
 
     #[test]
     fn track1_runs_are_byte_identical_to_master() {
