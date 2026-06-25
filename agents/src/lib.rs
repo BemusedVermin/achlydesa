@@ -59,6 +59,13 @@ struct RpgSeed(u64);
 /// `people::LEARNED_SKILL` (private there), grown by working `Yield` sites.
 const NOVICE_SKILL: f32 = 0.25;
 
+/// Marks that the avatar has **freed (rejected) the world** — the Gnostic keystone choice, set once
+/// by [`Simulation::free_the_world`]. Its presence is the record of the choice (and a hook for the
+/// director to fall silent — the world-as-protagonist endgame, `docs/gameplay_targets.md`). Absent by
+/// default, so a world that is never rejected is unaffected.
+#[derive(Resource, Default)]
+pub struct WorldFreed;
+
 /// The short verb phrase the Use action offers for an affordance, by its effect — generic by kind
 /// (the site carries only its effect, not the authored action word), which the feature's own name in
 /// the inspect read-out already colours ("the hot springs", "the oasis").
@@ -2421,9 +2428,15 @@ impl Simulation {
         if joined {
             let since = self.tick();
             let at = self.player_position();
-            self.world
-                .entity_mut(listener)
-                .insert((PartyMember { since }, Suspended, Follower));
+            // A recruited companion bonds to the avatar — "your people". This is bond growth through
+            // play (`docs/gameplay_targets.md`): it lifts their stories in every Perception surface
+            // (the `w_bond` term) and is what makes rejecting the world later *cost* something.
+            self.world.entity_mut(listener).insert((
+                PartyMember { since },
+                Suspended,
+                Follower,
+                agent_core::people::Bond(avatar),
+            ));
             // A companion shares the road's hardships: give it `Vitals` if survival is on and it
             // lacks them (party-scoped survival, where NPCs otherwise carry none).
             if self.world.get_resource::<SurvivalConfig>().is_some()
@@ -2473,6 +2486,54 @@ impl Simulation {
             party.remove(e);
         }
         true
+    }
+
+    // --- The world as protagonist: rejecting it ---
+
+    /// **Reject (free) the world** — the Gnostic keystone choice (`docs/gameplay_targets.md`). The
+    /// world is the protagonist, so turning from it is meant to *cost* something: the souls who
+    /// **bonded** to the avatar (companions taken up along the way) grieve — their sorrow and longing
+    /// rise. Returns a farewell line per grieving soul, in entity-stable order; empty if no one bonded
+    /// (the world lets you go unmourned). Marks the world [`WorldFreed`]. A player action off the
+    /// deterministic tick, so a world with no avatar or no bonded soul is unaffected.
+    pub fn free_the_world(&mut self) -> Vec<String> {
+        let Some(avatar) = self.player_avatar() else {
+            return Vec::new();
+        };
+        self.world.insert_resource(WorldFreed);
+        let (sorrow, longing) = {
+            let reg = self.world.resource::<Registry>();
+            (reg.mood_id("sorrow"), reg.mood_id("longing"))
+        };
+        let mut bonded: Vec<bevy_ecs::entity::Entity> = {
+            let mut q = self
+                .world
+                .query::<(bevy_ecs::entity::Entity, &agent_core::people::Bond)>();
+            q.iter(&self.world)
+                .filter(|(_, b)| b.0 == avatar)
+                .map(|(e, _)| e)
+                .collect()
+        };
+        bonded.sort_by_key(|e| e.to_bits());
+        let mut farewell = Vec::new();
+        for e in bonded {
+            for mid in [sorrow, longing].into_iter().flatten() {
+                if let Some(mut m) = self.world.get_mut::<agent_core::Mood>(e)
+                    && let Some(v) = m.0.get_mut(mid)
+                {
+                    *v = (*v + agent_core::Fx::from_num(0.6f32))
+                        .clamp(agent_core::Fx::ZERO, agent_core::Fx::ONE);
+                }
+            }
+            let name = self.display_name(e);
+            farewell.push(format!("{name} grieves your turning from the world."));
+        }
+        farewell
+    }
+
+    /// Whether the avatar has rejected the world (`free_the_world` was invoked).
+    pub fn world_freed(&self) -> bool {
+        self.world.get_resource::<WorldFreed>().is_some()
     }
 
     // --- Survival ---
@@ -3751,6 +3812,100 @@ mod tests {
         // Dismissing returns it to autonomy.
         assert!(sim.dismiss(target));
         assert!(!sim.is_party_member(target) && sim.party_size() == 0);
+    }
+
+    #[test]
+    fn recruiting_a_companion_bonds_them_to_the_avatar() {
+        let mut sim = Simulation::new(Setup {
+            width: 40,
+            height: 30,
+            seed: 2026,
+            npcs: 30,
+            rpg: true,
+            party: true,
+            party_cfg: PartyConfig {
+                recruit_difficulty: -100,
+                ..Default::default()
+            },
+            ..Default::default()
+        });
+        let avatar = sim.spawn_player(None);
+        let target = sim.any_npc().expect("npcs spawned");
+        assert!(
+            sim.player_recruit(target),
+            "recruit passes at trivial difficulty"
+        );
+        let bond = sim.world.get::<agent_core::people::Bond>(target);
+        assert_eq!(
+            bond.map(|b| b.0),
+            Some(avatar),
+            "a recruited companion bonds to the avatar"
+        );
+    }
+
+    #[test]
+    fn rejecting_the_world_makes_bonded_souls_grieve() {
+        // The world-as-protagonist beat: turn from the world and the souls who bonded to you grieve.
+        let mut sim = Simulation::new(Setup {
+            width: 40,
+            height: 30,
+            seed: 2026,
+            npcs: 30,
+            rpg: true,
+            party: true,
+            party_cfg: PartyConfig {
+                recruit_difficulty: -100,
+                ..Default::default()
+            },
+            ..Default::default()
+        });
+        let _avatar = sim.spawn_player(None);
+        let companion = sim.any_npc().expect("npcs spawned");
+        assert!(sim.player_recruit(companion));
+
+        let sorrow_id = sim
+            .world
+            .resource::<Registry>()
+            .mood_id("sorrow")
+            .expect("the sorrow mood ships");
+        let sorrow_of = |sim: &Simulation, e: bevy_ecs::entity::Entity| -> f32 {
+            sim.world
+                .get::<agent_core::Mood>(e)
+                .and_then(|m| m.0.get(sorrow_id).copied())
+                .map_or(0.0, |v| v.to_num::<f32>())
+        };
+        let before = sorrow_of(&sim, companion);
+
+        let farewell = sim.free_the_world();
+        assert!(sim.world_freed(), "the world is marked freed");
+        assert!(
+            !farewell.is_empty(),
+            "a bonded companion grieves your leaving"
+        );
+        assert!(
+            farewell.iter().any(|l| l.contains("grieves")),
+            "the farewell reads as grief: {farewell:?}"
+        );
+        assert!(
+            sorrow_of(&sim, companion) > before,
+            "the companion's sorrow rose past {before}"
+        );
+    }
+
+    #[test]
+    fn freeing_an_unbonded_world_is_unmourned() {
+        // No bonded souls ⇒ the world lets you go unmourned (empty farewell), but is still freed.
+        let mut sim = Simulation::new(Setup {
+            seed: 1,
+            perception: true,
+            ..Default::default()
+        });
+        sim.spawn_player(None);
+        assert!(
+            sim.free_the_world().is_empty(),
+            "no one bonded, no one grieves"
+        );
+        assert!(sim.world_freed());
     }
 
     #[test]
