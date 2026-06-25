@@ -1109,6 +1109,51 @@ impl Simulation {
             .find(|&e| self.npc_present(e))
     }
 
+    /// The **drama-map** (`docs/perception_layer.md` S5.2): each charged place read *through its
+    /// fiction* — one `PlaceMood` per POI (the most salient story centred there), so the player can
+    /// route toward where things are happening. Salience-ranked; empty when the layer is off. The
+    /// `PlaceMood::fiction` is diegetic (a gathering, a hush) — never a gauge. Read-only.
+    pub fn place_moods(&self) -> Vec<agent_core::PlaceMood> {
+        let Some(perception) = self.world.get_resource::<agent_core::Perception>() else {
+            return Vec::new();
+        };
+        let registry = self.world.resource::<Registry>();
+        let name = |e: bevy_ecs::entity::Entity| self.display_name(e);
+        let ctx = agent_core::RealizeCtx {
+            registry,
+            name: &name,
+        };
+        let realizer = agent_core::PlaceRealizer;
+        // The Tells are salience-ranked; keep the loudest story per place (one POI, one mood).
+        let mut seen = std::collections::HashSet::new();
+        perception
+            .tells()
+            .iter()
+            .filter_map(|t| t.anchor.place.map(|p| (p, t)))
+            .filter(|(p, _)| seen.insert(*p))
+            .map(|(_, t)| realizer.realize(t, &ctx))
+            .collect()
+    }
+
+    /// The charge of one place, if the Perception Layer is telling a story centred there — for the
+    /// look-out / tooltip when the avatar stands on (or inspects) a charged POI. The Tells are
+    /// salience-ranked, so this renders the loudest story at `c`. Read-only; called per frame, so it
+    /// finds-then-renders one rather than building every `PlaceMood`.
+    pub fn place_mood_at(&self, c: Coord) -> Option<agent_core::PlaceMood> {
+        let perception = self.world.get_resource::<agent_core::Perception>()?;
+        let tell = perception
+            .tells()
+            .iter()
+            .find(|t| t.anchor.place == Some(c))?;
+        let registry = self.world.resource::<Registry>();
+        let name = |e: bevy_ecs::entity::Entity| self.display_name(e);
+        let ctx = agent_core::RealizeCtx {
+            registry,
+            name: &name,
+        };
+        Some(agent_core::PlaceRealizer.realize(tell, &ctx))
+    }
+
     /// Whether the **incremental** sifter (fed the ring episode-by-episode) and the **retrospective**
     /// oracle agree candidate-for-candidate over this run's Chronicle — the S8.2 acceptance check.
     /// `true` vacuously when the sift layer is off. Dev/test only; changes no sim state.
@@ -4478,6 +4523,42 @@ mod tests {
             rows.iter().all(|r| r.authored.is_none()),
             "a Glance never reveals Γ's authorship"
         );
+    }
+
+    #[test]
+    fn the_drama_map_reads_charged_places_through_their_fiction() {
+        let mut sim = Simulation::new(Setup {
+            width: 32,
+            height: 24,
+            seed: 42,
+            warmup: 60,
+            npcs: 40,
+            markets: 4,
+            feuds: 8,
+            director: true,
+            dialogue: true,
+            director_cfg: DirectorConfig {
+                beat_interval: 7,
+                ..Default::default()
+            },
+            perception: true,
+            ..Default::default()
+        });
+        sim.run(150);
+
+        let moods = sim.place_moods();
+        assert!(!moods.is_empty(), "a dramatic world has charged places");
+        // One PlaceMood per POI (the loudest story centred there).
+        let unique: std::collections::HashSet<_> = moods.iter().map(|m| m.place).collect();
+        assert_eq!(unique.len(), moods.len(), "one mood per place");
+        // Each reads as diegetic fiction — no template slot, no number leaks.
+        assert!(moods.iter().all(|m| {
+            !m.fiction.trim().is_empty()
+                && !m.fiction.contains('{')
+                && !m.fiction.chars().any(|c| c.is_ascii_digit())
+        }));
+        // place_mood_at agrees for a charged place.
+        assert!(sim.place_mood_at(moods[0].place).is_some());
     }
 
     #[test]
