@@ -27,10 +27,11 @@ fn main() {
         let (mut thirst, mut warmth, mut stamina, mut nearest) = (0.0f32, 0.0, 0.0, f32::MAX);
         for &e in &npcs {
             if let Some(v) = sim.vitals_of(e) {
-                thirst += v.thirst;
-                warmth += v.warmth;
-                stamina += v.stamina;
-                nearest = nearest.min(v.lowest_lethal());
+                // Vitals are fixed-point; this demo just aggregates them as f32 for display.
+                thirst += v.thirst.to_num::<f32>();
+                warmth += v.warmth.to_num::<f32>();
+                stamina += v.stamina.to_num::<f32>();
+                nearest = nearest.min(v.lowest_lethal().to_num::<f32>());
             }
         }
         let d = n.max(1) as f32;

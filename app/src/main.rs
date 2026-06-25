@@ -1586,7 +1586,9 @@ fn sheet_text(g: &Game) -> String {
     if let Some(v) = g.sim.vitals_of(e) {
         s.push_str(&format!(
             "\nThirst {:.0}   Warmth {:.0}   Stamina {:.0}\n",
-            v.thirst, v.warmth, v.stamina
+            v.thirst.to_num::<f32>(),
+            v.warmth.to_num::<f32>(),
+            v.stamina.to_num::<f32>()
         ));
     }
     // The party roster — only on the avatar's own sheet (the party is the avatar's).

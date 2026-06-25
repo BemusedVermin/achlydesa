@@ -3,32 +3,37 @@
 //! shelter/gear) blunt the drain. Off by default — no `Vitals` are attached and the system is
 //! never added to the schedule — so a world without it is byte-identical.
 
-use agent_core::{Npc, Player, Position, Substrate};
+use agent_core::{Fx, Npc, Player, Position, Substrate};
 use bevy_ecs::prelude::*;
 use rpg::{Abilities, Flags, Proficiencies};
 
 /// A body's survival meters, `0` (critical) … `100` (fine), drained per day by the climate and
 /// terrain it stands on. Thirst and warmth are lethal; stamina is a non-lethal travel buffer.
+///
+/// Fixed-point ([`Fx`]) so the meter accumulates exactly across many days. The per-day drain is
+/// still computed from the substrate's `f32` climate/terrain fields (temperature, surface water,
+/// biomass) — those are converted to `Fx` at the boundary in [`survival_metabolism`], and become
+/// fully fixed-point once the substrate slice lands.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Vitals {
-    pub thirst: f32,
-    pub warmth: f32,
-    pub stamina: f32,
+    pub thirst: Fx,
+    pub warmth: Fx,
+    pub stamina: Fx,
 }
 
 impl Default for Vitals {
     fn default() -> Self {
         Self {
-            thirst: 100.0,
-            warmth: 100.0,
-            stamina: 100.0,
+            thirst: Fx::from_num(100),
+            warmth: Fx::from_num(100),
+            stamina: Fx::from_num(100),
         }
     }
 }
 
 impl Vitals {
     /// The most depleted of the lethal meters (thirst/warmth) — how close to death this body is.
-    pub fn lowest_lethal(&self) -> f32 {
+    pub fn lowest_lethal(&self) -> Fx {
         self.thirst.min(self.warmth)
     }
 }
@@ -127,11 +132,15 @@ pub fn survival_metabolism(
         // Thirst: green or wet land has water at hand; only arid wastes parch you, worse in heat.
         let biomass_frac =
             (world.plant_biomass(pos.0) / world.params().biomass_max).clamp(0.0, 1.0);
+        // The day's drain/relief is computed in f32 from the substrate's climate fields, then
+        // applied to the fixed-point meter (converted at this boundary). `min`/`max(100/0)` keep it
+        // in band.
+        let full = Fx::from_num(100);
         if water > cfg.water_threshold || biomass_frac > cfg.lush_threshold {
-            v.thirst = (v.thirst + cfg.water_relief).min(100.0);
+            v.thirst = (v.thirst + Fx::from_num(cfg.water_relief)).min(full);
         } else {
             let drain = cfg.thirst_rate + (temp - cfg.heat_ref).max(0.0) * cfg.heat_thirst;
-            v.thirst = (v.thirst - drain * keep).max(0.0);
+            v.thirst = (v.thirst - Fx::from_num(drain * keep)).max(Fx::ZERO);
         }
 
         // Warmth: only the cold drains it (temperate climes are fine and restore it); a sheltered
@@ -140,16 +149,17 @@ pub fn survival_metabolism(
         if cold > 0.0 {
             let sheltered = flags.is_some_and(|f| f.has("sheltered") || f.has("warm_gear"));
             let drain = cold * cfg.cold_warmth * if sheltered { 0.5 } else { 1.0 };
-            v.warmth = (v.warmth - drain * keep).max(0.0);
+            v.warmth = (v.warmth - Fx::from_num(drain * keep)).max(Fx::ZERO);
         } else {
-            v.warmth = (v.warmth + cfg.warmth_regen).min(100.0);
+            v.warmth = (v.warmth + Fx::from_num(cfg.warmth_regen)).min(full);
         }
 
         // Stamina: the daily rest refills it; the travel layer spends it harder.
-        v.stamina = (v.stamina + cfg.stamina_recovery).min(100.0);
+        v.stamina = (v.stamina + Fx::from_num(cfg.stamina_recovery)).min(full);
 
         // Death on a lethal meter — NPCs only; the avatar is left at the floor for the game.
-        if npc.is_some() && (v.thirst <= cfg.death_floor || v.warmth <= cfg.death_floor) {
+        let floor = Fx::from_num(cfg.death_floor);
+        if npc.is_some() && (v.thirst <= floor || v.warmth <= floor) {
             commands.entity(e).despawn();
         }
     }
@@ -161,6 +171,6 @@ mod tests {
 
     #[test]
     fn vitals_start_full() {
-        assert_eq!(Vitals::default().lowest_lethal(), 100.0);
+        assert_eq!(Vitals::default().lowest_lethal(), Fx::from_num(100));
     }
 }

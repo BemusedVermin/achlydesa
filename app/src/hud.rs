@@ -591,9 +591,10 @@ pub fn update_vitals(game: NonSend<Game>, mut q: Query<(&VitalFill, &mut Node)>)
     let vit = game.sim.player_avatar().and_then(|a| game.sim.vitals_of(a));
     for (vf, mut node) in &mut q {
         let pct = match (vit, vf.0) {
-            (Some(v), Vital::Hydration) => v.thirst,
-            (Some(v), Vital::Warmth) => v.warmth,
-            (Some(v), Vital::Stamina) => v.stamina,
+            // Vitals are fixed-point; the gauge reads them out as f32.
+            (Some(v), Vital::Hydration) => v.thirst.to_num::<f32>(),
+            (Some(v), Vital::Warmth) => v.warmth.to_num::<f32>(),
+            (Some(v), Vital::Stamina) => v.stamina.to_num::<f32>(),
             (None, _) => 0.0,
         }
         .clamp(0.0, 100.0);
