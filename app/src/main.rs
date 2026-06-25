@@ -582,6 +582,11 @@ fn build_world() -> Simulation {
             // biases its casting toward souls near the avatar (`agent_core::director`), so the
             // drama is something you can walk into rather than something unfolding off-map.
             director: std::env::var("ACHLYDESA_NODIRECTOR").is_err(),
+            // The Perception Layer: each tick, derive a salience-ranked set of legible `Tell`s from
+            // the Chronicle + Sifter — the substrate the prose log (Journal → "Word abroad", and the
+            // coming drama-map / scan / combat-timeline surfaces) reads, so the staged drama becomes
+            // legible. Implies the sift layer (the Chronicle ring it reads). `docs/perception_layer.md`.
+            perception: true,
             // The RPG, party and exploration layers are on for the game: the avatar and every NPC
             // roll Worlds-Without-Number stats; the avatar can recruit companions who travel as a
             // stack; and travel is cost-paced over a road network with terrain/elevation gates.
