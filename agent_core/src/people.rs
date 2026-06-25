@@ -115,13 +115,13 @@ pub struct Known(pub HashSet<usize>);
 /// trait ids — ambition, greed, vengeance, …). Stable and innate; changes only
 /// through appraised events (see [`events`](crate::events)).
 #[derive(Component, Clone, Debug)]
-pub struct Personality(pub Vec<f32>);
+pub struct Personality(pub Vec<Fx>);
 
 /// A person's current mood: a value per authored emotion (anger, fear, joy, …),
 /// resting at zero. Appraised events spike it; [`mood_decay`] fades it back. Goals'
 /// appeal can read it to weight behaviour by how the agent feels right now.
 #[derive(Component, Clone, Debug)]
-pub struct Mood(pub Vec<f32>);
+pub struct Mood(pub Vec<Fx>);
 
 /// A grudge against a specific other person — the one this agent would see dead.
 /// Binds the `?foe` role of an `avenge`-style goal (`alive(foe) = false`), so "kill
@@ -559,7 +559,9 @@ pub(crate) fn people_plan(
             let mut deeds = Vec::new();
             if let (Some(t), Some(e)) = (throne, enthroned) {
                 facts[fact_slot(e, 0)] = i64::from(t.holder == Some(entity));
-                if ambition.is_some_and(|a| personality.0.get(a).is_some_and(|&v| v > 0.6)) {
+                if ambition
+                    .is_some_and(|a| personality.0.get(a).is_some_and(|&v| v > Fx::from_num(0.6)))
+                {
                     deeds.push(Deed {
                         at: t.tile,
                         fact: fact_slot(e, 0),
@@ -1036,11 +1038,11 @@ pub(crate) fn mood_shapes_traits(
             let Some((t, rate)) = reg.mood_shapes(m) else {
                 continue;
             };
-            let delta = mood.0[m] * rate;
-            if delta > 0.0 {
-                p.0[t] = (p.0[t] + delta).min(1.0);
+            let delta = mood.0[m] * Fx::from_num(rate);
+            if delta > Fx::ZERO {
+                p.0[t] = (p.0[t] + delta).min(Fx::ONE);
                 if let Some(o) = reg.opposes(t) {
-                    p.0[o] = (p.0[o] - delta).max(0.0);
+                    p.0[o] = (p.0[o] - delta).max(Fx::ZERO);
                 }
             }
         }
@@ -1053,7 +1055,7 @@ pub(crate) fn mood_shapes_traits(
 pub(crate) fn mood_decay(mut people: Query<&mut Mood, With<Npc>>, reg: Res<Registry>) {
     people.par_iter_mut().for_each(|mut mood| {
         for m in 0..mood.0.len() {
-            mood.0[m] *= 1.0 - reg.mood_def(m).decay;
+            mood.0[m] *= Fx::ONE - Fx::from_num(reg.mood_def(m).decay);
         }
     });
 }
@@ -1324,17 +1326,21 @@ pub fn spawn_npcs(
     for n in 0..count {
         let m = rng.gen_range(markets.len());
         let coord = catchments[m][rng.gen_range(catchments[m].len())];
-        let mut personality: Vec<f32> = (0..reg.trait_count())
+        let mut personality: Vec<Fx> = (0..reg.trait_count())
             .map(|t| {
                 let d = reg.trait_def(t);
-                let jitter = pers_rng.gen_range(2001) as f32 / 1000.0 - 1.0; // [-1, 1]
-                (d.baseline + jitter * d.spread).clamp(0.0, 1.0)
+                // Integer→fixed jitter in [-1, 1] (centre 0..=2000 to ±1000, /1000 in fixed-point):
+                // a pure integer→`Fx` path with no `f32` intermediate, matching the skills migration.
+                let jitter =
+                    Fx::from_num(pers_rng.gen_range(2001) as i64 - 1000) / Fx::from_num(1000);
+                (Fx::from_num(d.baseline) + jitter * Fx::from_num(d.spread))
+                    .clamp(Fx::ZERO, Fx::ONE)
             })
             .collect();
         if n < ambitious
             && let Some(a) = ambition
         {
-            personality[a] = 1.0;
+            personality[a] = Fx::ONE;
         }
         let skills = birth_skills(
             reg.skill_count(),
@@ -1359,7 +1365,7 @@ pub fn spawn_npcs(
                 Plan::default(),
                 Patron(markets[m].0),
                 Personality(personality),
-                Mood(vec![0.0; reg.mood_count()]),
+                Mood(vec![Fx::ZERO; reg.mood_count()]),
                 Known::default(),
                 Allegiance::default(),
                 Opinion::default(),

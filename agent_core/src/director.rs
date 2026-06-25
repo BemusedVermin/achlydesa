@@ -54,6 +54,7 @@ use crate::dialogue::Dialogue;
 use crate::factions::{Allegiance, Detained, Factions, Law, Opinion};
 use crate::features::{Discovery, FeatureCatalog, Features};
 use crate::people::{Bond, Grievance, Mood, Needs, Npc, Personality, Throne};
+use crate::scalar::Fx;
 use crate::sift::Sift;
 use crate::{Position, Substrate};
 use bevy_ecs::prelude::*;
@@ -873,7 +874,13 @@ pub(crate) fn director_step(
         let topo = substrate.0.topology();
         for (e, pos, pers, mood, op, alleg, needs, gr) in people.iter() {
             alive.insert(e);
-            let t = |id: Option<usize>| id.and_then(|i| pers.0.get(i).copied()).unwrap_or(0.0);
+            // The director's casting heuristics stay `f32`; personality/mood are read out of their
+            // fixed-point storage and converted at this boundary (like the UI — a value read for a
+            // selection decision, never written back into the appraised state).
+            let t = |id: Option<usize>| {
+                id.and_then(|i| pers.0.get(i).copied())
+                    .map_or(0.0, |v| v.to_num::<f32>())
+            };
             cands.push(Cand {
                 e,
                 pos: pos.0,
@@ -884,8 +891,8 @@ pub(crate) fn director_step(
                 op_of_proto: proto.map_or(0.0, |p| op.of(p)),
                 need: needs.sustenance.min(needs.rest),
                 seats: alleg.0.iter().map(|b| b.seat).collect(),
-                traits: pers.0.clone(),
-                moods: mood.0.clone(),
+                traits: pers.0.iter().map(|v| v.to_num::<f32>()).collect(),
+                moods: mood.0.iter().map(|v| v.to_num::<f32>()).collect(),
                 grudge_target: gr.map(|g| g.0),
                 bond_target: bond_det.get(&e).and_then(|x| x.0),
                 detained: bond_det.get(&e).is_some_and(|x| x.1),
@@ -1357,7 +1364,7 @@ pub(crate) fn director_step(
                     && let Ok((.., mut pers, _, _, _, _, _)) = people.get_mut(w)
                     && let Some(v) = pers.0.get_mut(tid)
                 {
-                    *v = (*v + delta).clamp(0.0, 1.0);
+                    *v = (*v + Fx::from_num(*delta)).clamp(Fx::ZERO, Fx::ONE);
                     if matches!(trait_name.as_str(), "vengeance" | "greed" | "ambition")
                         && *delta > 0.0
                     {
@@ -1377,7 +1384,7 @@ pub(crate) fn director_step(
                     && let Ok((.., mut m, _, _, _, _)) = people.get_mut(w)
                     && let Some(v) = m.0.get_mut(mid)
                 {
-                    *v = (*v + delta).clamp(0.0, 1.0);
+                    *v = (*v + Fx::from_num(*delta)).clamp(Fx::ZERO, Fx::ONE);
                     if matches!(mood.as_str(), "anger" | "fear" | "sorrow") && *delta > 0.0 {
                         suffering += delta * 2.0;
                     } else if bright_mood(mood) && *delta > 0.0 {
@@ -1504,7 +1511,7 @@ pub(crate) fn director_step(
                         if let Ok((.., mut m, _, _, _, _)) = people.get_mut(s)
                             && let Some(v) = m.0.get_mut(awe)
                         {
-                            *v = (*v + 0.3).clamp(0.0, 1.0);
+                            *v = (*v + Fx::from_num(0.3)).clamp(Fx::ZERO, Fx::ONE);
                         }
                     }
                 }
@@ -1573,14 +1580,14 @@ pub(crate) fn director_step(
                             if let Some(tid) = reg.trait_id(tname)
                                 && let Some(v) = pers.0.get_mut(tid)
                             {
-                                *v = (*v + 0.15).clamp(0.0, 1.0);
+                                *v = (*v + Fx::from_num(0.15)).clamp(Fx::ZERO, Fx::ONE);
                             }
                         }
                         for mname in ["awe", "elation"] {
                             if let Some(mid) = reg.mood_id(mname)
                                 && let Some(v) = m.0.get_mut(mid)
                             {
-                                *v = (*v + 0.3).clamp(0.0, 1.0);
+                                *v = (*v + Fx::from_num(0.3)).clamp(Fx::ZERO, Fx::ONE);
                             }
                         }
                     }
@@ -1600,7 +1607,7 @@ pub(crate) fn director_step(
                         && let Some(mid) = reg.mood_id("despair")
                         && let Some(v) = m.0.get_mut(mid)
                     {
-                        *v = (*v + 0.3).clamp(0.0, 1.0);
+                        *v = (*v + Fx::from_num(0.3)).clamp(Fx::ZERO, Fx::ONE);
                     }
                 }
                 suffering += 2.0;
@@ -1859,8 +1866,8 @@ mod tests {
                 .spawn((
                     Npc,
                     Position(coord),
-                    Personality(vec![0.0; self.reg.trait_count()]),
-                    Mood(vec![0.0; self.reg.mood_count()]),
+                    Personality(vec![Fx::ZERO; self.reg.trait_count()]),
+                    Mood(vec![Fx::ZERO; self.reg.mood_count()]),
                     Opinion::default(),
                     Allegiance::default(),
                     Needs {
@@ -1878,7 +1885,7 @@ mod tests {
 
         fn set_mood(&mut self, e: Entity, mood: &str, v: f32) {
             let id = self.reg.mood_id(mood).expect("mood exists");
-            self.world.entity_mut(e).get_mut::<Mood>().unwrap().0[id] = v;
+            self.world.entity_mut(e).get_mut::<Mood>().unwrap().0[id] = Fx::from_num(v);
         }
 
         /// Move a soul to a chosen tile (e.g. into the protagonist's blast radius).

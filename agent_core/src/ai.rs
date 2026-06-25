@@ -10,6 +10,7 @@
 //! only knows how to turn (input, curve) pairs into a number, so it never needs to
 //! change when goals, actions, or facts are added.
 
+use crate::scalar::{Fx, fx_math};
 use serde::Deserialize;
 
 /// A response curve mapping an input to a `0..1` utility. Authored in RON.
@@ -30,6 +31,10 @@ pub enum Curve {
 }
 
 impl Curve {
+    /// `f32` evaluation, kept for the substrate-signal consumers still on `f32` — feature
+    /// placement ([`crate::features`]) and the Story Sifter ([`crate::sift`]), whose inputs are
+    /// raw climate/ecology fields (elevation, fertility, …) not yet on fixed-point. The agent
+    /// appraisal goes through [`Curve::eval_fx`] instead.
     pub fn eval(self, x: f32) -> f32 {
         let y = match self {
             Curve::Linear { m, b } => m * x + b,
@@ -39,6 +44,21 @@ impl Curve {
             Curve::Constant(c) => c,
         };
         y.clamp(0.0, 1.0)
+    }
+
+    /// Fixed-point evaluation — the determinism-hardened path the IAUS appraisal uses (see
+    /// [`score`]). The authored `f32` parameters are finite literals, so converting them to `Fx`
+    /// once per eval is exact; the curve math itself runs entirely in `Fx` (the transcendentals via
+    /// [`fx_math`]), so the same input yields the same bits everywhere.
+    pub fn eval_fx(self, x: Fx) -> Fx {
+        let y = match self {
+            Curve::Linear { m, b } => Fx::from_num(m) * x + Fx::from_num(b),
+            Curve::Power { exp } => fx_math::powf(x.max(Fx::ZERO), Fx::from_num(exp)),
+            Curve::Logistic { mid, k } => fx_math::logistic(x, Fx::from_num(mid), Fx::from_num(k)),
+            Curve::Inverse => Fx::ONE - x,
+            Curve::Constant(c) => Fx::from_num(c),
+        };
+        y.clamp(Fx::ZERO, Fx::ONE)
     }
 }
 
@@ -90,15 +110,15 @@ pub struct Consideration {
 /// score (the IAUS compensation). Each consideration reads its input value from
 /// `feature` — the caller maps `Deficit`/`Trait(id)` to a number. No
 /// considerations → no appeal.
-pub fn score(considerations: &[Consideration], feature: impl Fn(Input) -> f32) -> f32 {
+pub fn score(considerations: &[Consideration], feature: impl Fn(Input) -> Fx) -> Fx {
     if considerations.is_empty() {
-        return 0.0;
+        return Fx::ZERO;
     }
-    let mod_factor = 1.0 - 1.0 / considerations.len() as f32;
-    let mut total = 1.0;
+    let mod_factor = Fx::ONE - Fx::ONE / Fx::from_num(considerations.len() as u64);
+    let mut total = Fx::ONE;
     for c in considerations {
-        let s = c.curve.eval(feature(c.input));
-        total *= s + (1.0 - s) * mod_factor * s;
+        let s = c.curve.eval_fx(feature(c.input));
+        total *= s + (Fx::ONE - s) * mod_factor * s;
     }
     total
 }
@@ -138,9 +158,9 @@ mod tests {
             },
         ];
         // Naive product of two 0.85s is 0.7225; with makeup it lands above it.
-        let s = score(&cons, |_| 0.85);
+        let s = score(&cons, |_| Fx::from_num(0.85));
         assert!(
-            s > 0.8,
+            s > Fx::from_num(0.8),
             "compensated score should beat the raw product, got {s}"
         );
     }

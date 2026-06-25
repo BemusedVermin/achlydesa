@@ -10,6 +10,7 @@
 
 use crate::data::{MoodId, Registry, TraitId};
 use crate::people::{Mood, Npc, Personality};
+use crate::scalar::Fx;
 use bevy_ecs::prelude::*;
 use config::{Asset, Config};
 use serde::Deserialize;
@@ -45,11 +46,13 @@ impl AgentEvent {
 #[derive(Resource, Default)]
 pub struct EventQueue(pub Vec<(Entity, AgentEvent)>);
 
-/// The persistent trait shifts and transient mood spikes one event produces.
+/// The persistent trait shifts and transient mood spikes one event produces. The authored `f32`
+/// deltas are converted to fixed-point [`Fx`] once at load, so applying an appraisal is exact
+/// integer arithmetic on the agent's (now fixed-point) personality and mood.
 #[derive(Clone, Debug, Default)]
 struct EventEffects {
-    traits: Vec<(TraitId, f32)>,
-    moods: Vec<(MoodId, f32)>,
+    traits: Vec<(TraitId, Fx)>,
+    moods: Vec<(MoodId, Fx)>,
 }
 
 /// What each kind of event does to an agent — its authored "values": which traits
@@ -83,7 +86,7 @@ impl Appraisals {
                 .into_iter()
                 .map(|(n, delta)| {
                     reg.trait_id(&n)
-                        .map(|t| (t, delta))
+                        .map(|t| (t, Fx::from_num(delta)))
                         .ok_or(AppraisalError::UnknownTrait(n))
                 })
                 .collect::<Result<Vec<_>, _>>()?;
@@ -92,7 +95,7 @@ impl Appraisals {
                 .into_iter()
                 .map(|(n, delta)| {
                     reg.mood_id(&n)
-                        .map(|m| (m, delta))
+                        .map(|m| (m, Fx::from_num(delta)))
                         .ok_or(AppraisalError::UnknownMood(n))
                 })
                 .collect::<Result<Vec<_>, _>>()?;
@@ -139,17 +142,17 @@ pub(crate) fn appraise(
             continue;
         };
         for &(t, delta) in &eff.traits {
-            p.0[t] = (p.0[t] + delta).clamp(0.0, 1.0);
+            p.0[t] = (p.0[t] + delta).clamp(Fx::ZERO, Fx::ONE);
             if let Some(o) = reg.opposes(t) {
-                p.0[o] = (p.0[o] - delta).clamp(0.0, 1.0);
+                p.0[o] = (p.0[o] - delta).clamp(Fx::ZERO, Fx::ONE);
             }
         }
         for &(m, delta) in &eff.moods {
-            mood.0[m] = (mood.0[m] + delta).clamp(0.0, 1.0);
+            mood.0[m] = (mood.0[m] + delta).clamp(Fx::ZERO, Fx::ONE);
             // A spike in one feeling damps its opposite — you can't be furious and
             // serene at once (mood coherence).
             if let Some(o) = reg.mood_opposes(m) {
-                mood.0[o] = (mood.0[o] - delta).clamp(0.0, 1.0);
+                mood.0[o] = (mood.0[o] - delta).clamp(Fx::ZERO, Fx::ONE);
             }
         }
     }
