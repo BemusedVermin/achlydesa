@@ -420,6 +420,16 @@ pub fn journal_text(
         }
     }
 
+    // Word abroad — the world's recent drama, salience-ranked and rendered as recollection by the
+    // Perception Layer (`docs/perception_layer.md` S5.1). Empty until the world stirs.
+    let tidings = sim.prose_log(6);
+    if !tidings.is_empty() {
+        s.push_str("\nWord abroad:\n");
+        for line in &tidings {
+            s.push_str(&format!("  \u{2022} {line}\n"));
+        }
+    }
+
     // The ledger — the souls the avatar has met, and where each one's story stands now.
     s.push_str(&format!("\nPeople known: {}\n", met.len()));
     if met.is_empty() {
