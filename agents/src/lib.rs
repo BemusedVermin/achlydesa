@@ -1023,6 +1023,51 @@ impl Simulation {
             .collect()
     }
 
+    /// **Read the room** (`docs/perception_layer.md` S5.3): assess the charged souls standing in the
+    /// avatar's current cell, ordered by salience, each disclosed only as deep as `tier` — `Glance`
+    /// (demeanour), `Read` (what they are living through), or `Deep` (whether the charge was *grown*
+    /// or *placed by Γ* — the recognition beat). Empty without an avatar, the Perception Layer, or any
+    /// storied soul underfoot. Read-only & deterministic: the assessment itself draws no RNG and
+    /// changes no state (a skill-gated tier / tempo cost is a separate, future step).
+    pub fn read_the_room(&mut self, tier: agent_core::ReadTier) -> Vec<agent_core::ScanLine> {
+        let Some(here) = self.player_position() else {
+            return Vec::new();
+        };
+        // The souls physically in the avatar's cell (the query needs `&mut` for its state).
+        let in_cell: std::collections::HashSet<bevy_ecs::entity::Entity> = {
+            let mut q = self.world.query_filtered::<(
+                bevy_ecs::entity::Entity,
+                &agent_core::Position,
+            ), With<people::Npc>>();
+            q.iter(&self.world)
+                .filter(|(_, p)| p.0 == here)
+                .map(|(e, _)| e)
+                .collect()
+        };
+        if in_cell.is_empty() {
+            return Vec::new();
+        }
+        let Some(perception) = self.world.get_resource::<agent_core::Perception>() else {
+            return Vec::new();
+        };
+        let registry = self.world.resource::<Registry>();
+        let name = |e: bevy_ecs::entity::Entity| self.display_name(e);
+        let ctx = agent_core::RealizeCtx {
+            registry,
+            name: &name,
+        };
+        let realizer = agent_core::ScanRowRealizer { tier };
+        // The Tells are already salience-ranked; take the most salient one about each in-cell soul,
+        // once (a soul may head more than one story).
+        let mut seen = std::collections::HashSet::new();
+        perception
+            .tells()
+            .iter()
+            .filter(|t| in_cell.contains(&t.subject) && seen.insert(t.subject))
+            .map(|t| realizer.realize(t, &ctx))
+            .collect()
+    }
+
     /// Whether the **incremental** sifter (fed the ring episode-by-episode) and the **retrospective**
     /// oracle agree candidate-for-candidate over this run's Chronicle — the S8.2 acceptance check.
     /// `true` vacuously when the sift layer is off. Dev/test only; changes no sim state.
@@ -4307,6 +4352,61 @@ mod tests {
             on.fingerprint(),
             off.fingerprint(),
             "the Perception pass is a pure observer: the sim runs identically with it on or off",
+        );
+    }
+
+    #[test]
+    fn the_scan_reads_a_storied_soul_underfoot() {
+        // A dramatic, perception-on run, then drop the avatar onto a storied soul's tile and read the
+        // room: the scan should surface that soul, and a Glance must never reveal Γ's hand.
+        let mut sim = Simulation::new(Setup {
+            width: 32,
+            height: 24,
+            seed: 42,
+            warmup: 60,
+            npcs: 40,
+            markets: 4,
+            feuds: 8,
+            director: true,
+            dialogue: true,
+            director_cfg: DirectorConfig {
+                beat_interval: 7,
+                ..Default::default()
+            },
+            perception: true,
+            ..Default::default()
+        });
+        sim.run(150);
+
+        // A storied soul still standing in the world (a Tell's subject that hasn't died).
+        let subject = {
+            let p = sim
+                .world
+                .get_resource::<agent_core::Perception>()
+                .expect("perception is on");
+            p.tells()
+                .iter()
+                .map(|t| t.subject)
+                .find(|&e| sim.npc_present(e))
+        };
+        let Some(subject) = subject else {
+            // No storied soul survived — nothing underfoot to read; the API must still be sound.
+            assert!(sim.read_the_room(agent_core::ReadTier::Glance).is_empty());
+            return;
+        };
+
+        let at = sim
+            .npc_position(subject)
+            .expect("a present soul has a tile");
+        sim.spawn_player(Some(at));
+        let rows = sim.read_the_room(agent_core::ReadTier::Glance);
+        assert!(
+            rows.iter().any(|r| r.subject == subject),
+            "the scan reads the storied soul standing underfoot"
+        );
+        assert!(
+            rows.iter().all(|r| r.authored.is_none()),
+            "a Glance never reveals Γ's authorship"
         );
     }
 
