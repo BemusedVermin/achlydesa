@@ -570,7 +570,6 @@ pub(crate) fn converse(
                 continue;
             }
             let listener = cands[cj].e;
-            // Opinion stays `f32` for now (its own migration slice); converted at this boundary.
             let op = cands[ci].op.get(&listener).copied().unwrap_or(Fx::ZERO);
             let grudge = if cands[ci].grudge == Some(listener) {
                 Fx::ONE

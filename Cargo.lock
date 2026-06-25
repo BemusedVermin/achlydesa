@@ -88,6 +88,7 @@ dependencies = [
  "bevy_ecs",
  "bevy_tasks",
  "config",
+ "cordic",
  "fixed",
  "game_sim",
  "pathfinding",
@@ -2229,6 +2230,15 @@ dependencies = [
  "serde_json",
  "time",
  "url",
+]
+
+[[package]]
+name = "cordic"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0ed0a176c0b8c5c95fa0523177530364c5b68a8895d9745730dbfa692a7412d0"
+dependencies = [
+ "fixed",
 ]
 
 [[package]]
