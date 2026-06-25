@@ -14,7 +14,7 @@
 
 // coupling-lint:allow string_ids: governance/law machinery refers to the named predicate "alive"
 // and the "ambition" trait — necessary semantic references, resolved once.
-use crate::chronicle::EpisodeKind;
+use crate::chronicle::{EpisodeKind, Provenance};
 use crate::data::{PredicateId, Registry};
 use crate::features::{Category, FeatureCatalog, Features};
 use crate::people::{Grievance, Inventory, Npc, Personality};
@@ -494,6 +494,7 @@ pub(crate) fn faction_turn(
                 c.record(
                     tick,
                     EpisodeKind::WarDeclared,
+                    Provenance::Sim,
                     [built[a].head(), built[b].head(), None],
                     sa,
                     None,
@@ -636,6 +637,7 @@ pub(crate) fn faction_turn(
             c.record(
                 tick,
                 EpisodeKind::GrievanceFormed,
+                Provenance::Sim,
                 [Some(champ), Some(enemy), None],
                 at,
                 None,
@@ -653,7 +655,15 @@ pub(crate) fn faction_turn(
         if let Some(c) = chronicle.as_deref_mut()
             && let Some(&at) = pos_of.get(&e)
         {
-            c.record(tick, EpisodeKind::Death, [Some(e), None, None], at, None, 0);
+            c.record(
+                tick,
+                EpisodeKind::Death,
+                Provenance::Sim,
+                [Some(e), None, None],
+                at,
+                None,
+                0,
+            );
         }
         commands.entity(e).despawn();
     }

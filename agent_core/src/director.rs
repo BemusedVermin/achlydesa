@@ -48,7 +48,7 @@
 //! [`SplitMix64`] stream).
 
 use crate::beats::{Beat, BeatBook, Effect, Phase, Pre, Role, SLOTS};
-use crate::chronicle::EpisodeKind;
+use crate::chronicle::{EpisodeKind, Provenance};
 use crate::data::{Casting, RegisterId, Registry};
 use crate::dialogue::Dialogue;
 use crate::factions::{Allegiance, Detained, Factions, Law, Opinion};
@@ -1346,6 +1346,7 @@ pub(crate) fn director_step(
                         c.record(
                             tick,
                             EpisodeKind::GrievanceFormed,
+                            Provenance::Director,
                             [Some(w), Some(a), None],
                             proto_pos,
                             None,
@@ -1419,6 +1420,7 @@ pub(crate) fn director_step(
                             c.record(
                                 tick,
                                 EpisodeKind::OpinionCrossed,
+                                Provenance::Director,
                                 [Some(w), Some(tw), None],
                                 proto_pos,
                                 None,
@@ -1563,6 +1565,7 @@ pub(crate) fn director_step(
                         c.record(
                             tick,
                             EpisodeKind::Killed,
+                            Provenance::Director,
                             [role_entity(*by), Some(w), None],
                             proto_pos,
                             None,
@@ -1784,6 +1787,7 @@ pub(crate) fn director_step(
         c.record(
             tick,
             EpisodeKind::BeatFired,
+            Provenance::Director,
             [Some(proto), gossip_other, None],
             proto_pos,
             Some(beat.register),
