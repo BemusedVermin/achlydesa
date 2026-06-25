@@ -226,7 +226,10 @@ pub(crate) fn drift(
             continue; // held by enforcers — cannot act
         }
         let here = pos.0;
-        let hungry = needs.sustenance < cfg.hunger_threshold;
+        // Field-following weighting stays f32 (substrate-gradient math, its own slice); the
+        // fixed-point sustenance meter is read out here.
+        let sustenance = needs.sustenance.to_num::<f32>();
+        let hungry = sustenance < cfg.hunger_threshold;
         // The surplus good to sell = the non-food good held most (food is kept to eat). A fed drifter
         // chases the demand gradient for *that specific good*, routing it to where it's short.
         let surplus_good = if hungry {
@@ -239,7 +242,7 @@ pub(crate) fn drift(
 
         // --- 1. Move one tile up the weighted gradient (staying put is allowed). ---
         // A starving drifter weights food more heavily, so the scent overrides everything else.
-        let starving = (cfg.hunger_threshold - needs.sustenance).max(0.0) / cfg.hunger_threshold;
+        let starving = (cfg.hunger_threshold - sustenance).max(0.0) / cfg.hunger_threshold;
         let w_food = if hungry {
             cfg.w_food * (1.0 + starving)
         } else {
@@ -366,7 +369,8 @@ pub(crate) fn drift(
                 .max_by(|&a, &b| reg.good(a).nutrition.total_cmp(&reg.good(b).nutrition));
             if let Some(g) = food {
                 inv.stock[g] -= 1;
-                needs.sustenance = (needs.sustenance + reg.good(g).nutrition).min(100.0);
+                needs.sustenance =
+                    (needs.sustenance + Fx::from_num(reg.good(g).nutrition)).min(Fx::from_num(100));
             } else {
                 // Graze the tile — flat relief in a plain economy, biomass-scaled under survival —
                 // exactly as `people_execute` does, so a drifter feeds itself as well as a planner.
@@ -380,7 +384,7 @@ pub(crate) fn drift(
                     }
                 };
                 substrate.0.graze(dest, 1.0);
-                needs.sustenance = (needs.sustenance + relief).min(100.0);
+                needs.sustenance = (needs.sustenance + Fx::from_num(relief)).min(Fx::from_num(100));
             }
         }
     }
