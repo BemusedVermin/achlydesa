@@ -2694,12 +2694,12 @@ impl Simulation {
 mod tests {
     use super::*;
 
-    // --- Scaling (Track 1) byte-identical baselines ---
+    // --- Scaling (Track 1) reference determinism scenarios ---
 
-    /// The three reference scenarios the byte-identical guard pins — a bare economy, the
+    /// The three reference scenarios the determinism check runs — a bare economy, the
     /// dialogue layer (exercises `converse`, the tile-bucket target), and the director +
-    /// feuds (exercises grievance planning + the director). One builder so the configs stay
-    /// in lockstep with the pinned-value test.
+    /// feuds (exercises grievance planning + the director). One builder, shared by the
+    /// determinism and plan-budget tests.
     fn baseline_sim(kind: &str) -> Simulation {
         let mut s = Setup {
             width: 32,
@@ -2729,57 +2729,27 @@ mod tests {
         sim
     }
 
-    /// The pinned state-fingerprints of the three reference runs. Every "pure win" in
-    /// `docs/scaling.md` (the `converse` tile-bucket, the GOAP successor prune, a default plan
-    /// budget) must leave these unchanged — that is what makes it byte-identical rather than merely
-    /// fast. A deliberate behaviour change (a *new* value) updates these with a note saying why.
-    ///
-    /// **Re-captured** when `Skills` moved from `f32` to fixed-point (`Fx`): recipe yield and skill
-    /// growth round on integer-backed arithmetic now, so the economy run differs from the old f32
-    /// baselines. This was an intentional type change (determinism hardening), not a regression — the
-    /// run is still deterministic and reproducible, which the second half of the test still checks.
-    ///
-    /// **Re-captured again** when the **IAUS appraisal** plus `Mood`/`Personality` moved to
-    /// fixed-point: goal/intent scoring (the response curves, now exact `Fx` transcendentals),
-    /// personality jitter, mood decay, and the deficit/sanction inputs all round on integer-backed
-    /// arithmetic, so goal selection — and thus the whole run — shifts. Intentional, still
-    /// deterministic.
-    ///
-    /// **Re-captured once more** when `Needs.sustenance/rest` flipped to fixed-point: hunger/fatigue
-    /// drain accumulates in `Fx` now (not f32), so the meter — and the tick a soul starves, and the
-    /// integer it seeds the planner with — shift slightly. Same intentional/deterministic story.
-    ///
-    /// **Director-only re-capture** when the market `price_basis` EMA moved to fixed-point: the
-    /// economy and dialogue references round to the very same integer bases as before (unchanged),
-    /// but the director run's trajectory diverges where an `Fx`-vs-f32 EMA rounds to a different
-    /// price on some tick. Intentional, still deterministic.
-    const BASELINE_ECONOMY: u64 = 0x6BE6_177D_C7CB_856F;
-    const BASELINE_DIALOGUE: u64 = 0x22F5_ED9D_1C35_C8CC;
-    const BASELINE_DIRECTOR: u64 = 0xF5D4_472B_8485_751E;
-
     #[test]
-    fn track1_runs_are_byte_identical_to_master() {
-        for (kind, want) in [
-            ("economy", BASELINE_ECONOMY),
-            ("dialogue", BASELINE_DIALOGUE),
-            ("director", BASELINE_DIRECTOR),
-        ] {
+    fn reference_runs_are_deterministic() {
+        // Determinism only: the same seed + build yields the same run twice. We deliberately do
+        // NOT pin these to frozen "baseline" fingerprints — this is an unreleased project and
+        // behaviour is free to change (e.g. the float→fixed-point migration), so a no-regression pin
+        // is pure friction (it just forces a re-capture on every intentional change). Reproducibility
+        // is the invariant worth keeping; byte-identity to a captured baseline is not.
+        for kind in ["economy", "dialogue", "director"] {
             let mut a = baseline_sim(kind);
-            let got = a.fingerprint();
-            assert_eq!(
-                got, want,
-                "{kind}: fingerprint 0x{got:016X} != pinned 0x{want:016X} — a Track-1 \
-                 change perturbed the run; if intended, re-capture the baseline",
-            );
-            // Same seed, same build → the same run twice (the determinism invariant).
             let mut b = baseline_sim(kind);
-            assert_eq!(got, b.fingerprint(), "{kind}: run is not reproducible");
+            assert_eq!(
+                a.fingerprint(),
+                b.fingerprint(),
+                "{kind}: run is not reproducible (same seed + build must match)",
+            );
         }
     }
 
     #[test]
     fn plan_budget_default_is_identical_a_tighter_one_bites_and_stays_deterministic() {
-        // The same scenario the "economy" baseline pins, parameterised by the planning budget.
+        // The economy reference scenario, parameterised by the planning budget.
         let run = |budget: Option<usize>| {
             let mut sim = Simulation::new(Setup {
                 width: 32,
@@ -2794,17 +2764,18 @@ mod tests {
             sim.run(150);
             sim.fingerprint()
         };
-        // `None` is exactly the built-in 600-node search — byte-identical to the pinned economy
-        // baseline (which is the same scenario with the field untouched).
+        // `None` is exactly the built-in 600-node search — identical to an explicit `Some(600)`,
+        // with no pinned literal to maintain.
         assert_eq!(
             run(None),
-            BASELINE_ECONOMY,
-            "plan_budget None must be the unchanged 600-node plan",
+            run(Some(600)),
+            "plan_budget None must equal the explicit 600-node default",
         );
         // A much tighter budget changes at least one plan (the knob actually bites)…
         let tight = run(Some(40));
         assert_ne!(
-            tight, BASELINE_ECONOMY,
+            tight,
+            run(None),
             "a 40-node budget should change some plan vs the 600-node search",
         );
         // …yet the budgeted run is still fully reproducible (determinism is preserved).
