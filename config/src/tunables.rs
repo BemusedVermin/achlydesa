@@ -559,6 +559,55 @@ pub fn sift() -> SiftConfig {
     loaded("sift.ron")
 }
 
+/// Knobs for the **Perception Layer** (`docs/perception_layer.md`) — the salience weights and
+/// thresholds that turn the Chronicle + Sifter into player-legible `Tell`s. Off by default, so a
+/// perception-free world is unchanged (the `Perception` resource is absent and its pass
+/// early-returns). It reads the Chronicle + Sifter, so enabling it implies the sift layer.
+#[derive(Clone, Debug, Serialize, serde::Deserialize)]
+#[serde(default)]
+pub struct PerceptionConfig {
+    /// Wake the Perception Layer — derive ranked `Tell`s from the Chronicle + Sifter each tick.
+    pub enabled: bool,
+    /// The least salience a `Tell` must reach to be kept — the budget floor that forces restraint.
+    pub min_salience: f32,
+    /// Hexes within which a forming story counts as "near the avatar" (the proximity term's reach).
+    /// Inert in any player-less run, so headless / V&V stays byte-identical.
+    pub reach: i32,
+    /// Salience weight on the Sifter's interest (the surprise + dissonance it already scores).
+    pub w_dissonance: f32,
+    /// Salience weight on spatial proximity to the avatar (0 when no avatar exists).
+    pub w_proximity: f32,
+    /// Salience weight on authorship anomaly — how much of a story Γ *wrote* vs. the world *grew*.
+    pub w_authorship: f32,
+    /// Salience weight on **attachment** — a story whose cast holds a `Bond` to the avatar rises, so
+    /// the souls who came to care for the player surface above the indifferent crowd. The hook the
+    /// *emotional story* (world-as-protagonist) leans on (`docs/gameplay_targets.md`). 0 in any
+    /// player-less / bond-less run, so headless / V&V stays byte-identical.
+    pub w_bond: f32,
+    /// Salience weight on recurrence — a subject/motif recurring across stories (Phase 5; 0 for now).
+    pub w_recurrence: f32,
+}
+
+impl Default for PerceptionConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            min_salience: 0.0,
+            reach: 6,
+            w_dissonance: 1.0,
+            w_proximity: 1.0,
+            w_authorship: 0.75,
+            w_bond: 1.5,
+            w_recurrence: 0.5,
+        }
+    }
+}
+
+/// Perception-layer knobs, defaults with optional `assets/config/perception.ron`.
+pub fn perception() -> PerceptionConfig {
+    loaded("perception.ron")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
