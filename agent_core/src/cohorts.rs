@@ -569,7 +569,7 @@ pub(crate) fn cohort_crystallize(
                                 Plan::default(),
                                 Patron(cohort.market),
                                 Personality(roll_personality(&reg, &mut crng.0)),
-                                crate::people::Mood(vec![0.0; reg.mood_count()]),
+                                crate::people::Mood(vec![Fx::ZERO; reg.mood_count()]),
                                 crate::people::Known::default(),
                                 crate::factions::Allegiance::default(),
                                 crate::factions::Opinion::default(),
@@ -696,12 +696,14 @@ fn pick_callings(pop: &[u32], k: u64) -> Vec<u32> {
 
 /// Roll a fresh personality near each trait's baseline (varied by its spread) — the same shape
 /// `spawn_npcs` uses, drawn from the cohort's own RNG so promotion perturbs no other stream.
-fn roll_personality(reg: &Registry, rng: &mut SplitMix64) -> Vec<f32> {
+fn roll_personality(reg: &Registry, rng: &mut SplitMix64) -> Vec<Fx> {
     (0..reg.trait_count())
         .map(|t| {
             let d = reg.trait_def(t);
-            let jitter = rng.gen_range(2001) as f32 / 1000.0 - 1.0; // [-1, 1]
-            (d.baseline + jitter * d.spread).clamp(0.0, 1.0)
+            // Integer→fixed jitter in [-1, 1] — the pure-integer path (no f32 intermediate), as in
+            // `people::seed_people` and the skills migration.
+            let jitter = Fx::from_num(rng.gen_range(2001) as i64 - 1000) / Fx::from_num(1000);
+            (Fx::from_num(d.baseline) + jitter * Fx::from_num(d.spread)).clamp(Fx::ZERO, Fx::ONE)
         })
         .collect()
 }

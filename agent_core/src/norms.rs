@@ -28,6 +28,7 @@
 use crate::data::{PredicateId, Registry, TraitId};
 use crate::goals::{ConditionDef, GoalError};
 use crate::plan::{Condition, PlanState};
+use crate::scalar::Fx;
 use bevy_ecs::prelude::Resource;
 use config::{Asset, Config};
 use serde::Deserialize;
@@ -153,23 +154,25 @@ impl Norms {
         act: Option<(PredicateId, i64)>,
         s: &PlanState,
         reg: &Registry,
-        personality: &[f32],
-    ) -> f32 {
-        let Some(act) = act else { return 0.0 };
+        personality: &[Fx],
+    ) -> Fx {
+        let Some(act) = act else { return Fx::ZERO };
         let in_force = self.applicable(act, s, reg);
         let justified = Self::justified(&in_force);
-        let mut pressure = 0.0;
+        let mut pressure = Fx::ZERO;
         for n in &in_force {
+            // Authored weight is a finite `f32` literal — converting once here is exact.
+            let weight = Fx::from_num(n.weight);
             match n.modality {
                 Modality::Forbidden if !justified => {
                     let defiance = n
                         .defiance
                         .and_then(|t| personality.get(t))
                         .copied()
-                        .unwrap_or(0.0);
-                    pressure += n.weight * (1.0 - defiance.clamp(0.0, 1.0));
+                        .unwrap_or(Fx::ZERO);
+                    pressure += weight * (Fx::ONE - defiance.clamp(Fx::ZERO, Fx::ONE));
                 }
-                Modality::Obliged => pressure -= n.weight,
+                Modality::Obliged => pressure -= weight,
                 _ => {}
             }
         }
@@ -270,7 +273,7 @@ mod tests {
         let reg = Registry::bundled();
         let norms = Norms::default();
         let s = state(&reg, empty_facts(&reg));
-        assert_eq!(norms.sanction(reg.verb("avenge"), &s, &reg, &[]), 0.0);
+        assert_eq!(norms.sanction(reg.verb("avenge"), &s, &reg, &[]), Fx::ZERO);
     }
 
     #[test]
@@ -279,9 +282,9 @@ mod tests {
         let reg = Registry::bundled();
         let norms = Norms::from_ron(r#"[(act: "avenge", modality: Forbidden)]"#, &reg).unwrap();
         let s = state(&reg, empty_facts(&reg));
-        assert_eq!(norms.sanction(reg.verb("avenge"), &s, &reg, &[]), 1.0);
+        assert_eq!(norms.sanction(reg.verb("avenge"), &s, &reg, &[]), Fx::ONE);
         // ...but it says nothing about an unrelated act.
-        assert_eq!(norms.sanction(reg.verb("rule"), &s, &reg, &[]), 0.0);
+        assert_eq!(norms.sanction(reg.verb("rule"), &s, &reg, &[]), Fx::ZERO);
     }
 
     #[test]
@@ -299,12 +302,12 @@ mod tests {
         .unwrap();
         // Foe is a commoner: the taboo stands.
         let s = state(&reg, empty_facts(&reg));
-        assert_eq!(norms.sanction(reg.verb("avenge"), &s, &reg, &[]), 1.0);
+        assert_eq!(norms.sanction(reg.verb("avenge"), &s, &reg, &[]), Fx::ONE);
         // Foe holds the throne: justified, sanction gone.
         let mut facts = empty_facts(&reg);
         facts[slot(&reg, "rule", 1)] = 1; // enthroned(foe) = 1
         let s = state(&reg, facts);
-        assert_eq!(norms.sanction(reg.verb("avenge"), &s, &reg, &[]), 0.0);
+        assert_eq!(norms.sanction(reg.verb("avenge"), &s, &reg, &[]), Fx::ZERO);
     }
 
     #[test]
@@ -318,12 +321,15 @@ mod tests {
         )
         .unwrap();
         let s = state(&reg, empty_facts(&reg));
-        let mut meek = vec![0.0; reg.trait_count()];
-        meek[reg.trait_id("vengeance").unwrap()] = 0.0;
-        let mut vengeful = vec![0.0; reg.trait_count()];
-        vengeful[reg.trait_id("vengeance").unwrap()] = 1.0;
-        assert_eq!(norms.sanction(reg.verb("avenge"), &s, &reg, &meek), 1.0);
-        assert_eq!(norms.sanction(reg.verb("avenge"), &s, &reg, &vengeful), 0.0);
+        let mut meek = vec![Fx::ZERO; reg.trait_count()];
+        meek[reg.trait_id("vengeance").unwrap()] = Fx::ZERO;
+        let mut vengeful = vec![Fx::ZERO; reg.trait_count()];
+        vengeful[reg.trait_id("vengeance").unwrap()] = Fx::ONE;
+        assert_eq!(norms.sanction(reg.verb("avenge"), &s, &reg, &meek), Fx::ONE);
+        assert_eq!(
+            norms.sanction(reg.verb("avenge"), &s, &reg, &vengeful),
+            Fx::ZERO
+        );
     }
 
     #[test]
@@ -333,7 +339,10 @@ mod tests {
         let norms =
             Norms::from_ron(r#"[(act: "rule", modality: Obliged, weight: 0.5)]"#, &reg).unwrap();
         let s = state(&reg, empty_facts(&reg));
-        assert_eq!(norms.sanction(reg.verb("rule"), &s, &reg, &[]), -0.5);
+        assert_eq!(
+            norms.sanction(reg.verb("rule"), &s, &reg, &[]),
+            Fx::from_num(-0.5)
+        );
     }
 
     #[test]
@@ -351,13 +360,13 @@ mod tests {
         .unwrap();
         // Foe is a commoner: only the general permission applies — free to act.
         let s = state(&reg, empty_facts(&reg));
-        assert_eq!(norms.sanction(reg.verb("avenge"), &s, &reg, &[]), 0.0);
+        assert_eq!(norms.sanction(reg.verb("avenge"), &s, &reg, &[]), Fx::ZERO);
         assert!(!norms.forbids(reg.verb("avenge"), &s, &reg));
         // Foe is the king: the specific prohibition overrides the broad permission.
         let mut facts = empty_facts(&reg);
         facts[slot(&reg, "rule", 1)] = 1; // enthroned(foe) = 1
         let s = state(&reg, facts);
-        assert_eq!(norms.sanction(reg.verb("avenge"), &s, &reg, &[]), 1.0);
+        assert_eq!(norms.sanction(reg.verb("avenge"), &s, &reg, &[]), Fx::ONE);
         assert!(norms.forbids(reg.verb("avenge"), &s, &reg));
     }
 
@@ -376,14 +385,19 @@ mod tests {
         .unwrap();
         // Foe dead: duty discharged, only the blanket taboo stands.
         let s = state(&reg, empty_facts(&reg));
-        assert_eq!(norms.sanction(reg.verb("avenge"), &s, &reg, &[]), 1.0);
+        assert_eq!(norms.sanction(reg.verb("avenge"), &s, &reg, &[]), Fx::ONE);
         assert!(norms.forbids(reg.verb("avenge"), &s, &reg));
         // Foe alive: the duty applies, justifies the act (no longer forbidden), and
         // leaves a net negative pressure (a pull).
         let mut facts = empty_facts(&reg);
         facts[slot(&reg, "avenge", 1)] = 1; // alive(foe) = 1
         let s = state(&reg, facts);
-        assert_eq!(norms.sanction(reg.verb("avenge"), &s, &reg, &[]), -0.4);
+        // The authored weight is parsed as `f32`, so the expected sanction must convert from the
+        // same `f32` value (0.4 has no exact binary form, and f32 ≠ f64 there).
+        assert_eq!(
+            norms.sanction(reg.verb("avenge"), &s, &reg, &[]),
+            Fx::from_num(-0.4f32)
+        );
         assert!(!norms.forbids(reg.verb("avenge"), &s, &reg));
     }
 
@@ -398,11 +412,11 @@ mod tests {
         )
         .unwrap();
         let s = state(&reg, empty_facts(&reg));
-        let mut vengeful = vec![0.0; reg.trait_count()];
-        vengeful[reg.trait_id("vengeance").unwrap()] = 1.0;
+        let mut vengeful = vec![Fx::ZERO; reg.trait_count()];
+        vengeful[reg.trait_id("vengeance").unwrap()] = Fx::ONE;
         assert_eq!(
             norms.sanction(reg.verb("avenge"), &s, &reg, &vengeful),
-            0.0,
+            Fx::ZERO,
             "feels no deterrence"
         );
         assert!(
@@ -435,7 +449,7 @@ mod tests {
         );
         let s = state(&reg, empty_facts(&reg));
         assert!(
-            law.sanction(reg.verb("awaken"), &s, &reg, &[]) > 0.0,
+            law.sanction(reg.verb("awaken"), &s, &reg, &[]) > Fx::ZERO,
             "under the Law, awakening another should carry a sanction"
         );
     }

@@ -768,11 +768,13 @@ fn assemble_reads<'a>(
         if !op.0.is_empty() {
             opinion.insert(e, op.0.clone());
         }
-        mood.insert(e, md.0.clone());
+        // The Story Sifter's pattern scoring stays `f32` (its axes are raw narrative signals, not
+        // the IAUS appraisal); mood/vengeance are converted out of fixed-point at this read boundary.
+        mood.insert(e, md.0.iter().map(|v| v.to_num::<f32>()).collect());
         if let Some(id) = vengeance_id
             && let Some(&v) = pers.0.get(id)
         {
-            vengeance.insert(e, v);
+            vengeance.insert(e, v.to_num::<f32>());
         }
     }
     let by_id: HashMap<u64, Episode> = ring.iter().map(|e| (e.id, *e)).collect();

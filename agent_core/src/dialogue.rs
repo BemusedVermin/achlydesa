@@ -23,6 +23,7 @@ use crate::chronicle::{Chronicle, EpisodeKind};
 use crate::data::Registry;
 use crate::factions::Opinion;
 use crate::people::{Grievance, Mood, Needs, Npc, Personality};
+use crate::scalar::Fx;
 use crate::{Position, Substrate};
 use bevy_ecs::prelude::*;
 use config::{Asset, Bundled};
@@ -394,14 +395,14 @@ impl MoodWords {
         MoodWords { ids, n }
     }
 
-    fn dominant(&self, moods: &[f32]) -> Affect {
-        let mut best = 0.15f32; // a feeling has to be felt to colour speech
+    fn dominant(&self, moods: &[Fx]) -> Affect {
+        let mut best = Fx::from_num(0.15); // a feeling has to be felt to colour speech
         let mut out = Affect {
             word: "even",
             bucket: "plain",
         };
         for &(id, word, bucket) in &self.ids[..self.n] {
-            let v = moods.get(id).copied().unwrap_or(0.0);
+            let v = moods.get(id).copied().unwrap_or(Fx::ZERO);
             if v > best {
                 best = v;
                 out = Affect { word, bucket };
@@ -412,7 +413,7 @@ impl MoodWords {
 }
 
 /// The speaker's loudest motives, as adjectives (traits above a threshold).
-fn motive_words(reg: &Registry, traits: &[f32]) -> SmallVec<[&'static str; 4]> {
+fn motive_words(reg: &Registry, traits: &[Fx]) -> SmallVec<[&'static str; 4]> {
     let table = [
         ("vengeance", "vengeful"),
         ("ambition", "ambitious"),
@@ -435,16 +436,16 @@ fn motive_words(reg: &Registry, traits: &[f32]) -> SmallVec<[&'static str; 4]> {
         ("pride", "proud"),
         ("zeal", "zealous"),
     ];
-    let mut out: SmallVec<[(&'static str, f32); 8]> = SmallVec::new();
+    let mut out: SmallVec<[(&'static str, Fx); 8]> = SmallVec::new();
     for (name, word) in table {
         if let Some(id) = reg.trait_id(name)
             && let Some(&v) = traits.get(id)
-            && v > 0.55
+            && v > Fx::from_num(0.55)
         {
             out.push((word, v));
         }
     }
-    out.sort_by(|a, b| b.1.total_cmp(&a.1));
+    out.sort_by(|a, b| b.1.cmp(&a.1));
     out.into_iter().take(2).map(|(w, _)| w).collect()
 }
 
@@ -463,8 +464,8 @@ struct Cand {
     e: Entity,
     tile: usize,
     pos: Coord,
-    traits: Vec<f32>,
-    moods: Vec<f32>,
+    traits: Vec<Fx>,
+    moods: Vec<Fx>,
     op: HashMap<Entity, f32>,
     grudge: Option<Entity>,
 }
@@ -563,30 +564,31 @@ pub(crate) fn converse(
         let stile = cands[ci].tile;
         // Score every co-located (listener, intent) and keep the most appealing thing worth
         // saying. Only this speaker's own tile-bucket is scanned, not the whole population.
-        let mut best: Option<(f32, Entity, usize)> = None;
+        let mut best: Option<(Fx, Entity, usize)> = None;
         for &cj in by_tile.get(&stile).map_or(&[][..], Vec::as_slice) {
             if cj == ci {
                 continue;
             }
             let listener = cands[cj].e;
+            // Opinion stays `f32` for now (its own migration slice); converted at this boundary.
             let op = cands[ci].op.get(&listener).copied().unwrap_or(0.0);
             let grudge = if cands[ci].grudge == Some(listener) {
-                1.0
+                Fx::ONE
             } else {
-                0.0
+                Fx::ZERO
             };
-            let shared = dlg.shared_history(speaker, listener);
+            let shared = Fx::from_num(dlg.shared_history(speaker, listener));
             let prom = director
                 .as_ref()
-                .map(|d| (d.prominence_of(listener) / 4.0).min(1.0))
-                .unwrap_or(0.0);
+                .map(|d| Fx::from_num((d.prominence_of(listener) / 4.0).min(1.0)))
+                .unwrap_or(Fx::ZERO);
             for (bi, intent) in book.0.iter().enumerate() {
                 let raw = ai::score(&intent.appeal, |input| match input {
-                    Input::Deficit => 0.0,
-                    Input::Trait(t) => cands[ci].traits.get(t).copied().unwrap_or(0.0),
-                    Input::Mood(m) => cands[ci].moods.get(m).copied().unwrap_or(0.0),
-                    Input::Sanction => 0.0,
-                    Input::OpinionOf => (op + 1.0) * 0.5,
+                    Input::Deficit => Fx::ZERO,
+                    Input::Trait(t) => cands[ci].traits.get(t).copied().unwrap_or(Fx::ZERO),
+                    Input::Mood(m) => cands[ci].moods.get(m).copied().unwrap_or(Fx::ZERO),
+                    Input::Sanction => Fx::ZERO,
+                    Input::OpinionOf => (Fx::from_num(op) + Fx::ONE) * Fx::from_num(0.5),
                     Input::GrievanceAgainst => grudge,
                     Input::SharedHistory => shared,
                     Input::Prominence => prom,
@@ -603,8 +605,14 @@ pub(crate) fn converse(
                             .any(|r| r.partner == listener && r.act == intent.act)
                     })
                     .unwrap_or(false);
-                let score = raw * intent.weight * if echo { cfg.echo_penalty } else { 1.0 };
-                if score >= cfg.appeal_floor && best.is_none_or(|(b, _, _)| score > b) {
+                let echo_factor = if echo {
+                    Fx::from_num(cfg.echo_penalty)
+                } else {
+                    Fx::ONE
+                };
+                let score = raw * Fx::from_num(intent.weight) * echo_factor;
+                if score >= Fx::from_num(cfg.appeal_floor) && best.is_none_or(|(b, _, _)| score > b)
+                {
                     best = Some((score, listener, bi));
                 }
             }
@@ -645,7 +653,7 @@ pub(crate) fn converse(
                         && let Ok((.., mut m, _, _, _)) = people.get_mut(w)
                         && let Some(v) = m.0.get_mut(mid)
                     {
-                        *v = (*v + delta).clamp(0.0, 1.0);
+                        *v = (*v + Fx::from_num(*delta)).clamp(Fx::ZERO, Fx::ONE);
                     }
                 }
                 Move::Sway {
@@ -658,7 +666,7 @@ pub(crate) fn converse(
                         && let Ok((.., mut pers, _, _, _, _)) = people.get_mut(w)
                         && let Some(v) = pers.0.get_mut(tid)
                     {
-                        *v = (*v + delta).clamp(0.0, 1.0);
+                        *v = (*v + Fx::from_num(*delta)).clamp(Fx::ZERO, Fx::ONE);
                     }
                 }
                 Move::Grudge { who, against } => {
@@ -1019,7 +1027,7 @@ impl<G: TextGen> SlmRealizer<G> {
 /// emergent "what would this person, feeling this way about you, want to say?". This is the
 /// **NPC** path (an NPC is its own mind); the player's path is [`repertoire`], which does
 /// not score, because the *player* is the avatar's mind.
-pub fn available(world: &World, speaker: Entity, listener: Entity) -> Vec<(String, f32)> {
+pub fn available(world: &World, speaker: Entity, listener: Entity) -> Vec<(String, Fx)> {
     let book = world.resource::<IntentBook>();
     let reg = world.resource::<Registry>();
     let Some(traits) = world.get::<Personality>(speaker).map(|p| p.0.clone()) else {
@@ -1037,35 +1045,39 @@ pub fn available(world: &World, speaker: Entity, listener: Entity) -> Vec<(Strin
         .get::<Grievance>(speaker)
         .is_some_and(|g| g.0 == listener)
     {
-        1.0
+        Fx::ONE
     } else {
-        0.0
+        Fx::ZERO
     };
-    let shared = world
-        .resource::<Dialogue>()
-        .shared_history(speaker, listener);
+    let shared = Fx::from_num(
+        world
+            .resource::<Dialogue>()
+            .shared_history(speaker, listener),
+    );
     let prom = world
         .get_resource::<crate::director::Director>()
-        .map(|d| (d.prominence_of(listener) / 4.0).min(1.0))
-        .unwrap_or(0.0);
+        .map(|d| Fx::from_num((d.prominence_of(listener) / 4.0).min(1.0)))
+        .unwrap_or(Fx::ZERO);
     let _ = reg;
-    let mut out: Vec<(String, f32)> = book
+    // Scored in fixed-point; the utility is surfaced as `f32` only for this query's callers (UI /
+    // the top-line pick), never fed back into simulation state.
+    let mut out: Vec<(String, Fx)> = book
         .0
         .iter()
         .map(|intent| {
             let s = ai::score(&intent.appeal, |input| match input {
-                Input::Deficit | Input::Sanction => 0.0,
-                Input::Trait(t) => traits.get(t).copied().unwrap_or(0.0),
-                Input::Mood(m) => moods.get(m).copied().unwrap_or(0.0),
-                Input::OpinionOf => (op + 1.0) * 0.5,
+                Input::Deficit | Input::Sanction => Fx::ZERO,
+                Input::Trait(t) => traits.get(t).copied().unwrap_or(Fx::ZERO),
+                Input::Mood(m) => moods.get(m).copied().unwrap_or(Fx::ZERO),
+                Input::OpinionOf => (Fx::from_num(op) + Fx::ONE) * Fx::from_num(0.5),
                 Input::GrievanceAgainst => grudge,
                 Input::SharedHistory => shared,
                 Input::Prominence => prom,
-            }) * intent.weight;
+            }) * Fx::from_num(intent.weight);
             (intent.id.clone(), s)
         })
         .collect();
-    out.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
+    out.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
     out
 }
 
@@ -1088,7 +1100,7 @@ pub fn repertoire(world: &World) -> Vec<String> {
 /// player who just addressed it). `None` if it has nothing worth saying. Cadence/cooldown
 /// is ignored: the soul was spoken to, and answers.
 pub fn reply(world: &mut World, speaker: Entity, listener: Entity) -> Option<Utterance> {
-    let floor = world.resource::<DialogueRes>().appeal_floor;
+    let floor = Fx::from_num(world.resource::<DialogueRes>().appeal_floor);
     let (id, score) = available(world, speaker, listener).into_iter().next()?;
     if score < floor {
         return None;
@@ -1144,7 +1156,7 @@ pub fn apply_moves_scaled(
                     && let Some(mut m) = world.get_mut::<Mood>(w)
                     && let Some(v) = m.0.get_mut(mid)
                 {
-                    *v = (*v + delta * scale).clamp(0.0, 1.0);
+                    *v = (*v + Fx::from_num(delta * scale)).clamp(Fx::ZERO, Fx::ONE);
                 }
             }
             Move::Sway {
@@ -1158,7 +1170,7 @@ pub fn apply_moves_scaled(
                     && let Some(mut p) = world.get_mut::<Personality>(w)
                     && let Some(v) = p.0.get_mut(tid)
                 {
-                    *v = (*v + delta * scale).clamp(0.0, 1.0);
+                    *v = (*v + Fx::from_num(delta * scale)).clamp(Fx::ZERO, Fx::ONE);
                 }
             }
             Move::Grudge { who, against } => {

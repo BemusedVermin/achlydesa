@@ -293,22 +293,26 @@ impl Condition {
     /// How far from satisfied, normalized `0..1` (`0` = met). This is the single
     /// generic feature the utility layer scores a goal's appeal from — the same
     /// axis whether the gap is hunger, an empty larder, or thin savings.
-    pub fn deficit(&self, s: &PlanState, reg: &Registry) -> f32 {
-        let frac = |short: f32, target: f32| (short.max(0.0) / target.max(1.0)).clamp(0.0, 1.0);
+    pub fn deficit(&self, s: &PlanState, reg: &Registry) -> Fx {
+        // The gap and target are whole units (meters, coins, stock), so the ratio is an exact
+        // fixed-point division — no float intermediate on the appraisal path.
+        let frac = |short: i64, target: i64| {
+            (Fx::from_num(short.max(0)) / Fx::from_num(target.max(1))).clamp(Fx::ZERO, Fx::ONE)
+        };
         match *self {
             Condition::Sustenance { at_least } => {
-                frac((at_least - s.sustenance) as f32, at_least as f32)
+                frac((at_least - s.sustenance) as i64, at_least as i64)
             }
-            Condition::Rest { at_least } => frac((at_least - s.rest) as f32, at_least as f32),
-            Condition::Money { at_least } => frac((at_least - s.money) as f32, at_least as f32),
+            Condition::Rest { at_least } => frac((at_least - s.rest) as i64, at_least as i64),
+            Condition::Money { at_least } => frac(at_least - s.money, at_least),
             Condition::Holding { good, at_least } => {
-                frac(at_least as f32 - good.count(s, reg) as f32, at_least as f32)
+                frac(at_least as i64 - good.count(s, reg) as i64, at_least as i64)
             }
             Condition::Fact { .. } => {
                 if self.satisfied(s, reg) {
-                    0.0
+                    Fx::ZERO
                 } else {
-                    1.0
+                    Fx::ONE
                 }
             }
         }

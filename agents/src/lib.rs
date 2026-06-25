@@ -1014,8 +1014,12 @@ impl Simulation {
         let (sum, n) = q
             .iter(&self.world)
             .filter_map(|p| p.0.get(id).copied())
-            .fold((0.0f32, 0u32), |(s, n), v| (s + v, n + 1));
-        if n == 0 { 0.0 } else { sum / n as f32 }
+            .fold((agent_core::Fx::ZERO, 0u32), |(s, n), v| (s + v, n + 1));
+        if n == 0 {
+            0.0
+        } else {
+            (sum / agent_core::Fx::from_num(n)).to_num::<f32>()
+        }
     }
 
     /// The entity the director stages its drama for, if a protagonist is tagged and alive.
@@ -1160,17 +1164,21 @@ impl Simulation {
             (reg.trait_id("vengeance"), reg.mood_id("anger"))
         };
         let mag = 0.2 * scale * if calm { -1.0 } else { 1.0 };
+        // `mag` derives from the (still-`f32`) speech-strength check; converted at this boundary so
+        // the actual personality/mood mutation lands in fixed-point. Player-only, so a player-less
+        // world is unaffected.
+        let mag = Fx::from_num(mag);
         if let Some(t) = veng
             && let Some(mut p) = self.world.get_mut::<people::Personality>(npc)
             && let Some(v) = p.0.get_mut(t)
         {
-            *v = (*v + mag).clamp(0.0, 1.0);
+            *v = (*v + mag).clamp(Fx::ZERO, Fx::ONE);
         }
         if let Some(m) = anger
             && let Some(mut mood) = self.world.get_mut::<people::Mood>(npc)
             && let Some(v) = mood.0.get_mut(m)
         {
-            *v = (*v + mag).clamp(0.0, 1.0);
+            *v = (*v + mag).clamp(Fx::ZERO, Fx::ONE);
         }
         self.step(); // counsel is an action; the world lives a moment on
         Some(if scale <= 0.0 {
@@ -2401,7 +2409,11 @@ impl Simulation {
     /// The named trait's value for an entity (for inspecting personality).
     pub fn trait_of(&self, e: bevy_ecs::entity::Entity, name: &str) -> Option<f32> {
         let id = self.world.resource::<Registry>().trait_id(name)?;
-        self.world.get::<Personality>(e)?.0.get(id).copied()
+        self.world
+            .get::<Personality>(e)?
+            .0
+            .get(id)
+            .map(|v| v.to_num::<f32>())
     }
 
     /// The highest value of a named trait across all living people (for observing
@@ -2412,7 +2424,7 @@ impl Simulation {
         };
         let mut q = self.world.query_filtered::<&Personality, With<Npc>>();
         q.iter(&self.world)
-            .filter_map(|p| p.0.get(id).copied())
+            .filter_map(|p| p.0.get(id).map(|v| v.to_num::<f32>()))
             .fold(0.0, f32::max)
     }
 
@@ -2423,14 +2435,18 @@ impl Simulation {
         };
         let mut q = self.world.query_filtered::<&Personality, With<Npc>>();
         q.iter(&self.world)
-            .filter_map(|p| p.0.get(id).copied())
+            .filter_map(|p| p.0.get(id).map(|v| v.to_num::<f32>()))
             .fold(1.0, f32::min)
     }
 
     /// A named mood for an entity, if it has one.
     pub fn mood_of(&self, e: bevy_ecs::entity::Entity, name: &str) -> Option<f32> {
         let id = self.world.resource::<Registry>().mood_id(name)?;
-        self.world.get::<Mood>(e)?.0.get(id).copied()
+        self.world
+            .get::<Mood>(e)?
+            .0
+            .get(id)
+            .map(|v| v.to_num::<f32>())
     }
 
     /// The highest value of a named mood across all living people.
@@ -2440,7 +2456,7 @@ impl Simulation {
         };
         let mut q = self.world.query_filtered::<&Mood, With<Npc>>();
         q.iter(&self.world)
-            .filter_map(|m| m.0.get(id).copied())
+            .filter_map(|m| m.0.get(id).map(|v| v.to_num::<f32>()))
             .fold(0.0, f32::max)
     }
 
@@ -2592,8 +2608,11 @@ impl Simulation {
                     mix(&mut b, bits as u64);
                     mix(&mut b, (bits >> 64) as u64);
                 }
+                // personality is fixed-point now — fold its exact i128 bits, like skills.
                 for &p in &pers.0 {
-                    mix(&mut b, q(p));
+                    let bits = p.to_bits();
+                    mix(&mut b, bits as u64);
+                    mix(&mut b, (bits >> 64) as u64);
                 }
                 mix(&mut b, plan.goal.map_or(u64::MAX, |g| g as u64));
                 bodies.push((e.to_bits(), b));
@@ -2714,9 +2733,15 @@ mod tests {
     /// growth round on integer-backed arithmetic now, so the economy run differs from the old f32
     /// baselines. This was an intentional type change (determinism hardening), not a regression — the
     /// run is still deterministic and reproducible, which the second half of the test still checks.
-    const BASELINE_ECONOMY: u64 = 0x03BD_39D6_39F6_263D;
-    const BASELINE_DIALOGUE: u64 = 0x8D95_7846_2009_8E1F;
-    const BASELINE_DIRECTOR: u64 = 0x21DE_8ECA_2F78_CADE;
+    ///
+    /// **Re-captured again** when the **IAUS appraisal** plus `Needs`/`Mood`/`Personality` moved to
+    /// fixed-point: goal/intent scoring (the response curves, now exact `Fx` transcendentals),
+    /// personality jitter, mood decay, and the deficit/sanction inputs all round on integer-backed
+    /// arithmetic, so goal selection — and thus the whole run — shifts. Intentional, still
+    /// deterministic.
+    const BASELINE_ECONOMY: u64 = 0x75AC_29B8_EEB7_78DE;
+    const BASELINE_DIALOGUE: u64 = 0xCBA1_E478_EF28_0A43;
+    const BASELINE_DIRECTOR: u64 = 0x4BB8_B8C0_76D3_845F;
 
     #[test]
     fn track1_runs_are_byte_identical_to_master() {

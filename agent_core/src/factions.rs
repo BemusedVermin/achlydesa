@@ -370,9 +370,11 @@ pub(crate) fn faction_turn(
     let mut members: Vec<Vec<MemberInfo>> = vec![Vec::new(); seats.len()];
     let mut new_bonds: HashMap<Entity, SmallVec<[Bond; 4]>> = HashMap::new();
     for (e, pos, inv, pers, alleg, grievance, detained, opinion) in &npcs {
+        // Faction politics (leader election, schism distance) stays `f32`; personality is read out
+        // of fixed-point storage and converted here, a selection boundary like the director's.
         let ambition = ambition_id
             .and_then(|a| pers.0.get(a).copied())
-            .unwrap_or(0.0);
+            .map_or(0.0, |v| v.to_num::<f32>());
         let money = inv.money + money_delta.get(&e).copied().unwrap_or(0);
         let mut ranked: Vec<(usize, f32)> = Vec::new();
         for (si, &seat) in seats.iter().enumerate() {
@@ -430,7 +432,7 @@ pub(crate) fn faction_turn(
                 entity: e,
                 ambition,
                 money,
-                personality: pers.0.clone(),
+                personality: pers.0.iter().map(|v| v.to_num::<f32>()).collect(),
                 grievance: grievance.is_some(),
                 detained: detained.is_some(),
             });
@@ -672,6 +674,7 @@ pub(crate) fn detention_countdown(
 mod tests {
     use super::*;
     use crate::features::Feature;
+    use crate::scalar::Fx;
     use game_sim::World as GameWorld;
 
     /// A **contrived realm** for the faction turn: a tiny world with hand-seated courts and members
@@ -739,9 +742,9 @@ mod tests {
 
         /// Spawn a member at `coord` with the given ambition and purse.
         fn member(&mut self, coord: Coord, ambition: f32, money: i64) -> Entity {
-            let mut pers = vec![0.0; self.reg.trait_count()];
+            let mut pers = vec![Fx::ZERO; self.reg.trait_count()];
             if let Some(a) = self.reg.trait_id("ambition") {
-                pers[a] = ambition;
+                pers[a] = Fx::from_num(ambition);
             }
             self.world
                 .spawn((

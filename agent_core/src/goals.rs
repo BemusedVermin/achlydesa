@@ -20,6 +20,7 @@ use crate::ai::{self, Consideration, Curve, Input};
 use crate::data::{PredicateId, Registry};
 use crate::norms::Norms;
 use crate::plan::{Condition, GoodSel, PlanState};
+use crate::scalar::Fx;
 use bevy_ecs::prelude::Resource;
 use config::{Asset, Config};
 use serde::Deserialize;
@@ -45,7 +46,7 @@ pub struct Goals(pub Vec<Goal>);
 /// Appeal below which a goal isn't worth pursuing at all (see [`Goals::agenda`]).
 /// Tiny — it only quashes goals scoring an effective zero (a fully suppressed want),
 /// never a real-but-faint one.
-pub const MIN_APPEAL: f32 = 1e-4;
+pub const MIN_APPEAL: Fx = Fx::lit("0.0001");
 
 impl Goals {
     /// The defaults shipped with the crate — the bundled content set.
@@ -96,23 +97,23 @@ impl Goals {
         i: usize,
         s: &PlanState,
         reg: &Registry,
-        personality: &[f32],
-        mood: &[f32],
+        personality: &[Fx],
+        mood: &[Fx],
         norms: &Norms,
-    ) -> f32 {
+    ) -> Fx {
         let g = &self.0[i];
         let deficit = g.condition.deficit(s, reg);
         let sanction = norms.sanction(g.act, s, reg, personality);
         ai::score(&g.appeal, |input| match input {
             Input::Deficit => deficit,
-            Input::Trait(t) => personality.get(t).copied().unwrap_or(0.0),
-            Input::Mood(m) => mood.get(m).copied().unwrap_or(0.0),
+            Input::Trait(t) => personality.get(t).copied().unwrap_or(Fx::ZERO),
+            Input::Mood(m) => mood.get(m).copied().unwrap_or(Fx::ZERO),
             Input::Sanction => sanction,
             // Listener-relative axes are the dialogue layer's; a goal has no addressee.
             Input::OpinionOf
             | Input::GrievanceAgainst
             | Input::SharedHistory
-            | Input::Prominence => 0.0,
+            | Input::Prominence => Fx::ZERO,
         })
     }
 
@@ -121,15 +122,15 @@ impl Goals {
         &self,
         s: &PlanState,
         reg: &Registry,
-        personality: &[f32],
-        mood: &[f32],
+        personality: &[Fx],
+        mood: &[Fx],
         norms: &Norms,
     ) -> Vec<usize> {
-        let appeals: Vec<f32> = (0..self.0.len())
+        let appeals: Vec<Fx> = (0..self.0.len())
             .map(|i| self.appeal(i, s, reg, personality, mood, norms))
             .collect();
         let mut idx: Vec<usize> = (0..self.0.len()).collect();
-        idx.sort_by(|&a, &b| appeals[b].total_cmp(&appeals[a]).then(a.cmp(&b)));
+        idx.sort_by(|&a, &b| appeals[b].cmp(&appeals[a]).then(a.cmp(&b)));
         idx
     }
 
@@ -144,16 +145,16 @@ impl Goals {
         &self,
         s: &PlanState,
         reg: &Registry,
-        personality: &[f32],
-        mood: &[f32],
+        personality: &[Fx],
+        mood: &[Fx],
         norms: &Norms,
     ) -> Vec<usize> {
-        let mut live: Vec<(usize, f32)> = (0..self.0.len())
+        let mut live: Vec<(usize, Fx)> = (0..self.0.len())
             .filter(|&i| !self.0[i].condition.satisfied(s, reg))
             .map(|i| (i, self.appeal(i, s, reg, personality, mood, norms)))
             .filter(|&(_, a)| a >= MIN_APPEAL)
             .collect();
-        live.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
+        live.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
         live.into_iter().map(|(i, _)| i).collect()
     }
 }
@@ -390,7 +391,7 @@ mod tests {
         top_for(goals, reg, s, &[])
     }
 
-    fn top_for(goals: &Goals, reg: &Registry, s: &PlanState, personality: &[f32]) -> String {
+    fn top_for(goals: &Goals, reg: &Registry, s: &PlanState, personality: &[Fx]) -> String {
         let n = Norms::default();
         goals.0[goals.ranked(s, reg, personality, &[], &n)[0]]
             .name
@@ -398,9 +399,9 @@ mod tests {
     }
 
     /// A personality vector with one named trait set to `value`, the rest zero.
-    fn personality_with(reg: &Registry, name: &str, value: f32) -> Vec<f32> {
-        let mut p = vec![0.0; reg.trait_count()];
-        p[reg.trait_id(name).unwrap()] = value;
+    fn personality_with(reg: &Registry, name: &str, value: f32) -> Vec<Fx> {
+        let mut p = vec![Fx::ZERO; reg.trait_count()];
+        p[reg.trait_id(name).unwrap()] = Fx::from_num(value);
         p
     }
 
