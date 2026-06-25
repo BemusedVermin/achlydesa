@@ -2936,6 +2936,63 @@ mod tests {
     }
 
     #[test]
+    fn a_combat_kill_is_recorded_to_the_chronicle() {
+        use ::combat_core::{Controller, StepResult, StubAi};
+        use bevy_ecs::prelude::*;
+
+        // Combat AND the sift layer on, so the Chronicle exists. A fight the avatar wins should
+        // record the slain enemy as a Killed episode attributed to the avatar — so the kill reaches
+        // the legibility surfaces instead of the body just vanishing.
+        let mut sim = Simulation::new(Setup {
+            npcs: 2,
+            seed: 7,
+            combat: true,
+            sift: true,
+            ..Default::default()
+        });
+        let avatar = sim.spawn_player(None);
+        let enemy = {
+            let mut q = sim.world.query_filtered::<Entity, With<Npc>>();
+            q.iter(&sim.world).next().expect("an NPC exists")
+        };
+        let before = sim.chronicle_len();
+
+        let mut enc = sim.begin_combat(vec![enemy]).expect("a fight begins");
+        let mut ai = StubAi::new(enc.sim.library().clone());
+        let mut guard = 0;
+        while let StepResult::Decision { decision, view } = enc.sim.run_until_decision_or_end() {
+            enc.sim.submit(ai.decide(&decision, &view));
+            guard += 1;
+            assert!(guard < 100_000, "fight failed to terminate");
+        }
+        let res = sim.finish_combat(&enc).expect("a resolution");
+        assert!(res.downed.contains(&enemy), "the enemy fell");
+
+        assert!(
+            sim.chronicle_len() > before,
+            "the kill was recorded to the Chronicle"
+        );
+        let killed = {
+            let chron = sim
+                .world
+                .get_resource::<agent_core::Chronicle>()
+                .expect("the Chronicle is present");
+            chron
+                .recent()
+                .find(|ep| {
+                    ep.kind == agent_core::EpisodeKind::Killed && ep.parties[1] == Some(enemy)
+                })
+                .copied()
+        };
+        let killed = killed.expect("a Killed episode naming the enemy as victim");
+        assert_eq!(killed.parties[0], Some(avatar), "attributed to the avatar");
+        assert!(
+            matches!(killed.provenance, agent_core::Provenance::Agent(s) if s == avatar),
+            "the avatar's own deed",
+        );
+    }
+
+    #[test]
     fn cohort_layer_conserves_money_crystallizes_and_is_deterministic() {
         let build = || {
             let mut sim = Simulation::new(Setup {

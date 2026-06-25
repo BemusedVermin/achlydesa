@@ -14,7 +14,7 @@
 //! is the Enemy faction driven by `combat_core::StubAi`.
 
 use crate::{Coord, fauna, people};
-use agent_core::Position;
+use agent_core::{Chronicle, EpisodeKind, Position, Provenance, Substrate};
 use bevy_ecs::entity::Entity;
 use bevy_ecs::prelude::*;
 use combat_core as cc;
@@ -590,11 +590,47 @@ pub(crate) fn apply_outcome(world: &mut World, enc: &Encounter) -> Resolution {
         }
     }
 
-    // Fallen enemies leave the world. (The avatar is left standing for the caller to handle.)
+    // Fallen enemies leave the world — but first record each killing to the Chronicle (when the
+    // sift/perception layer is on), so a fight's dead feed the legibility surfaces (the prose log,
+    // the scan, the drama-map) instead of vanishing silently. The deed is attributed to the avatar
+    // whose party felled them — the player's kills enter the narrative as their own. Entities and the
+    // place are captured *before* the despawn, the same discipline the in-schedule taps use. A no-op
+    // (byte-identical) when the Chronicle is absent.
+    let avatar = enc
+        .combatants
+        .iter()
+        .find(|c| c.is_avatar)
+        .map(|c| c.entity);
+    let tick = world.resource::<Substrate>().0.tick();
     for &e in &downed {
-        if world.get::<Position>(e).is_some() {
-            world.despawn(e);
+        let Some(at) = world.get::<Position>(e).map(|p| p.0) else {
+            continue; // already gone
+        };
+        if let Some(mut chron) = world.get_resource_mut::<Chronicle>() {
+            match avatar {
+                // The avatar's party slew them — a deliberate deed, attributed to the avatar.
+                Some(slayer) if slayer != e => chron.record(
+                    tick,
+                    EpisodeKind::Killed,
+                    Provenance::Agent(slayer),
+                    [Some(slayer), Some(e), None],
+                    at,
+                    None,
+                    0,
+                ),
+                // No avatar in the fight (an autonomous clash) — an unattributed death.
+                _ => chron.record(
+                    tick,
+                    EpisodeKind::Death,
+                    Provenance::Sim,
+                    [Some(e), None, None],
+                    at,
+                    None,
+                    0,
+                ),
+            }
         }
+        world.despawn(e);
     }
 
     let victory =
