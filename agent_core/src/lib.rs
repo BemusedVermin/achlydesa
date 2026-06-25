@@ -86,8 +86,8 @@ pub use people::{
     NeedsConfig, Npc, Patron, Personality, Plan, Skills, Throne, WorldAffordances, price,
 };
 pub use perception::{
-    Anchor, GrammarRealizer, Perception, ReadTier, RealizeCtx, RealizeHints, Realizer, Surface,
-    Tell, TellKind, When,
+    Anchor, GrammarRealizer, Perception, ReadTier, RealizeCtx, RealizeHints, Realizer, ScanLine,
+    ScanRowRealizer, Surface, Tell, TellKind, When,
 };
 pub use plan::{
     AffordEffect, Affordance, Condition, Deed, GoodSel, MarketSnapshot, Need, PlanCtx, PlanState,
