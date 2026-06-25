@@ -445,7 +445,7 @@ fn motive_words(reg: &Registry, traits: &[Fx]) -> SmallVec<[&'static str; 4]> {
             out.push((word, v));
         }
     }
-    out.sort_by(|a, b| b.1.cmp(&a.1));
+    out.sort_by_key(|b| std::cmp::Reverse(b.1));
     out.into_iter().take(2).map(|(w, _)| w).collect()
 }
 
