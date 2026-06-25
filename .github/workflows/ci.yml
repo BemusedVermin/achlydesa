@@ -3,8 +3,11 @@ name: CI
 on:
   push:
     branches: [master]
+  # Run the merge gate on EVERY PR, whatever its base — so stacked PRs (a feature
+  # branch targeting another feature branch, not `master`) are gated too. A base
+  # filter here would silently skip CI on them (only `pull_request` events whose
+  # *base* matches the filter fire). `push` stays master-only to avoid double runs.
   pull_request:
-    branches: [master]
 
 # Newer pushes to a PR cancel older in-flight runs on the same ref.
 concurrency:
