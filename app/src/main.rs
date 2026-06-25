@@ -2388,6 +2388,16 @@ fn update_hud(
         .iter()
         .map(|q| format!("\nCharge: {} {}", q.objective, g.sim.quest_bearing(q)))
         .collect();
+    // The drama-map (S5.2): if a story is centred on this very tile, read the place through its
+    // fiction — a gathering, a hush — so where you stand is legible as story, not just terrain.
+    let drama_here: String = match &view {
+        Some(v) => g
+            .sim
+            .place_mood_at(v.pos)
+            .map(|m| format!("\n  {}", m.fiction))
+            .unwrap_or_default(),
+        None => String::new(),
+    };
 
     for (kind, mut text, mut vis) in &mut texts {
         text.0 = match kind {
@@ -2406,7 +2416,7 @@ fn update_hud(
                             format!("\nyou see: {}", v.here.features.join(", "))
                         };
                         format!(
-                            "Day {day}\n({}, {})  {}  {:.0} m\nfertile {:.2}   {} soul(s) near\nfog lifted from {} tiles{}{}{}",
+                            "Day {day}\n({}, {})  {}  {:.0} m\nfertile {:.2}   {} soul(s) near\nfog lifted from {} tiles{}{}{}{}",
                             v.pos.col,
                             v.pos.row,
                             v.here.terrain.name(),
@@ -2415,6 +2425,7 @@ fn update_hud(
                             v.nearby.len(),
                             explored,
                             feats,
+                            drama_here,
                             search_cue,
                             charges,
                         )
