@@ -464,6 +464,7 @@ fn main() {
             dev_open_convo,
             dev_talk_pick,
             dev_walk,
+            dev_scan,
             update_quests,
         ),
     )
@@ -1486,6 +1487,26 @@ fn dev_open_convo(mut game: NonSendMut<Game>) {
         let g = &mut *game;
         open_conversation_with(g, npc);
     }
+}
+
+/// Dev hook: with `ACHLYDESA_SCAN` set, let the world run until stories form, drop the avatar onto
+/// the most storied soul, and read the room once — so the scan readout can be screenshotted
+/// headlessly. No effect in normal play.
+fn dev_scan(mut game: NonSendMut<Game>, mut done: Local<bool>) {
+    if *done || std::env::var("ACHLYDESA_SCAN").is_err() {
+        return;
+    }
+    *done = true;
+    let g = &mut *game;
+    // Let drama form and the Perception Layer rank it, then stand the avatar where the loudest story
+    // is so the scan has a storied soul underfoot.
+    g.sim.run(160);
+    if let Some(subject) = g.sim.most_salient_subject()
+        && let Some(at) = g.sim.npc_position(subject)
+    {
+        g.sim.spawn_player(Some(at));
+    }
+    do_scan(g);
 }
 
 /// Dev hook: with `ACHLYDESA_WALK=N` set, march the avatar through N rounds of frontier-walking
