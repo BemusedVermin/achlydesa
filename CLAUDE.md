@@ -59,9 +59,11 @@ Six crates, in dependency order (each may depend only on those above it). The de
 plates) and injects it via `Simulation::from_world(world, setup)`; `Simulation::new(setup)` is a
 headless/test convenience that generates a small default world from `Setup::params`. `Setup` is *the*
 knob surface — seed, warm-up, populations, and which optional layers wake (`dialogue`, `director`,
-`rpg`, `party`, `survival`, `exploration`), each off by default and byte-identical when off. `app`
-holds the `Simulation` as a Bevy `NonSend` resource and drives it by hand (`sim.step()`), one tick per
-player action; it never lets the outer Bevy schedule run the sim.
+`rpg`, `party`, `survival`, `exploration`, `perception`, `combat`, `sift`, `fields`, `cohorts`, …).
+**The game turns them all on**; each can be switched off only for a lean headless/test run, where it
+keeps to its own state and doesn't perturb the rest (`Setup::default()` stays minimal so a test opts
+into exactly what it exercises). `app` holds the `Simulation` as a Bevy `NonSend` resource and drives
+it by hand (`sim.step()`), one tick per player action; it never lets the outer Bevy schedule run the sim.
 
 The RPG / survival / exploration layers (the `rpg`/`party`/`survival`/`travel`/`explore` crates) are
 a large, ongoing build — design, rationale, and per-phase status live in
@@ -75,9 +77,14 @@ These are enforced patterns, visible across `agents/src/lib.rs` — preserve the
   run. The schedule runs single-threaded in a fixed order (`ExecutorKind::SingleThreaded`). Parallel
   planning (`people_plan`) is allowed only because it writes each agent's own `Plan` from read-only
   shared state, so the result is split-independent.
-- **Off by default = byte-identical.** Every optional layer (dialogue, director, player avatar)
-  keeps its state in its *own* resource/component and early-returns when disabled, so a world without
-  it is bit-for-bit identical to one before the layer existed. New optional layers must do the same.
+- **Layers default ON, and disable *cleanly*.** The full experience is the default — the game
+  (`app`'s `Setup`) turns on every layer it has. Do **not** add a feature off-by-default and make the
+  user hunt for a flag; if something is asked for, it ships *on*. Each layer still keeps its state in
+  its *own* resource/component and early-returns when disabled, so it *can* be switched off — for a
+  focused test or a lean headless run — without perturbing the others. That isolation (and the
+  byte-identity it happens to give a disabled layer) is a tool for turning things off *cleanly*, never
+  a reason to keep them off. The `Setup::default()` used by tests stays minimal so a test opts into
+  exactly the layers it exercises; that is the "able to be turned off" case, not the player's.
 - **Separate, derived RNG streams.** Each subsystem that needs randomness seeds a *dedicated* stream
   by xor-ing the run seed with a distinct constant (e.g. predation, feature placement, the director,
   dialogue). This is what lets a layer be added without perturbing any other layer's stream. Never

@@ -531,7 +531,11 @@ fn build_world() -> Simulation {
             (name: "sustained", condition: Sustenance(at_least: 70), appeal: [(input: Deficit, curve: Power(exp: 2.0))]),
             (name: "rested",    condition: Rest(at_least: 70),        appeal: [(input: Deficit, curve: Power(exp: 2.0))]),
             (name: "stocked",   condition: Holding(good: Edible, at_least: 12), appeal: [(input: Deficit, curve: Linear(m: 0.6, b: 0.0))]),
-            (name: "solvent",   condition: Money(at_least: 200),      appeal: [(input: Deficit, curve: Linear(m: 0.5, b: 0.0))])
+            (name: "solvent",   condition: Money(at_least: 200),      appeal: [(input: Deficit, curve: Linear(m: 0.5, b: 0.0))]),
+            (name: "avenge",    condition: Verb(verb: "avenge", target: Foe),
+                appeal: [(input: Deficit, curve: Linear(m: 0.55, b: 0.0)), (input: Sanction, curve: Linear(m: -1.0, b: 1.0))]),
+            (name: "rule",      condition: Verb(verb: "rule", target: Me),
+                appeal: [(input: Trait("ambition"), curve: Linear(m: 0.7, b: 0.0)), (input: Deficit, curve: Linear(m: 1.0, b: 0.0))])
         ]"#,
         &reg,
     )
@@ -577,6 +581,12 @@ fn build_world() -> Simulation {
             npcs: env("ACHLYDESA_NPCS", 420),
             markets: 12,
             markets_on_settlements: true,
+            // Seed bottom-up drama to go with the director's: ambitious souls who vie for the
+            // throne (the `rule` goal), vendettas (`avenge`), and vassals who inherit a slain
+            // lord's grudge — so power struggles and feuds smoulder across the populace.
+            ambitious: 50,
+            feuds: 40,
+            vassals: 20,
             dialogue: true,
             // The hidden narrative director shapes drama among the populace as you explore — the
             // headline of the narrative-surfacing layer (`docs/narrative_surfacing.md`). On by
@@ -605,6 +615,15 @@ fn build_world() -> Simulation {
             // on their own — the world-wide variant (`survival_everyone: true`) waits on that AI.
             survival: true,
             survival_everyone: false,
+            // Everything else on, too. The contested throne ambitious souls vie for; the **sift**
+            // Chronicle the drama is read from; the stigmergic-field **drifter** tier; and the
+            // **Tier-2 cohort** layer that lets the continent carry a managed million souls,
+            // crystallizing a bounded cast into real entities near the avatar.
+            throne: true,
+            sift: true,
+            fields: true,
+            cohorts: true,
+            cohort_pop: 1_000_000,
             // Level-of-detail: NPCs within this many hexes of the avatar simulate in full every
             // tick; farther ones run on a coarse clock (one tick in `sim_far_stride`), so a heavily
             // peopled world stays smooth as you walk while the distant populace still lives, slowly.
