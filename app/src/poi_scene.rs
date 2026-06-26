@@ -112,9 +112,29 @@ fn loaded_if_present(
     })
 }
 
+/// A cel surface material: a real authored tileable texture when present (`assets/textures/<rel>`),
+/// else a **procedural** one generated from noise ([`crate::textures`]). Untinted (the albedo carries
+/// the colour); it sits under the cel pass, so the procedural palettes stay mid-value, low-contrast.
+fn surface(
+    asset_server: &AssetServer,
+    images: &mut Assets<Image>,
+    rel: &str,
+    kind: crate::textures::TextureKind,
+    roughness: f32,
+) -> ToonMaterial {
+    let texture = loaded_if_present(asset_server, rel, false)
+        .unwrap_or_else(|| images.add(crate::textures::procedural_surface(kind)));
+    toon(StandardMaterial {
+        base_color: Color::WHITE,
+        base_color_texture: Some(texture),
+        perceptual_roughness: roughness,
+        ..default()
+    })
+}
+
 /// Build the diorama's shared assets — the cel-shaded ground/plaza/slate, plus the HD-2D character
 /// **sprite** pieces. Each surface/sprite uses a real authored file when present (see
-/// `assets/sprites/`, `assets/textures/`), otherwise a procedural placeholder.
+/// `assets/sprites/`, `assets/textures/`), otherwise a procedural one.
 pub(crate) fn build_assets(
     asset_server: &AssetServer,
     meshes: &mut Assets<Mesh>,
@@ -122,36 +142,29 @@ pub(crate) fn build_assets(
     images: &mut Assets<Image>,
     materials: &mut Assets<StandardMaterial>,
 ) -> PoiAssets {
-    // A cel surface: a real tileable texture when present (untinted), else the flat fallback colour.
-    let surface = |rel: &str, fallback: Color, roughness: f32| {
-        let (base_color, base_color_texture) = match loaded_if_present(asset_server, rel, false) {
-            Some(h) => (Color::WHITE, Some(h)),
-            None => (fallback, None),
-        };
-        toon(StandardMaterial {
-            base_color,
-            base_color_texture,
-            perceptual_roughness: roughness,
-            ..default()
-        })
-    };
     PoiAssets {
         ground_mesh: meshes.add(Cylinder::new(15.0, 0.4)),
         ground_mat: toon_mats.add(surface(
+            asset_server,
+            images,
             "textures/ground_grass.png",
-            Color::srgb(0.34, 0.40, 0.26),
+            crate::textures::TextureKind::Grass,
             0.97,
         )),
         plaza_mesh: meshes.add(Cylinder::new(7.0, 0.18)),
         plaza_mat: toon_mats.add(surface(
+            asset_server,
+            images,
             "textures/plaza_stone.png",
-            Color::srgb(0.46, 0.44, 0.40),
+            crate::textures::TextureKind::Plaza,
             0.95,
         )),
         slate_mesh: meshes.add(Cuboid::new(1.3, 2.0, 0.28)),
         slate_mat: toon_mats.add(surface(
+            asset_server,
+            images,
             "textures/slate_face.png",
-            Color::srgb(0.30, 0.31, 0.36),
+            crate::textures::TextureKind::Slate,
             0.9,
         )),
         sprite_mesh: meshes.add(Rectangle::new(SPRITE_W, SPRITE_H)),

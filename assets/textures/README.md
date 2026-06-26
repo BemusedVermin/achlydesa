@@ -1,13 +1,15 @@
 # Environment textures — drop-in
 
-Save a tileable texture here under its exact filename and it **replaces the flat cel colour on the
-next run** — no code change. A missing file falls back to the flat placeholder colour.
+These surfaces are **procedural by default** — generated from noise in `app/src/textures.rs` (tileable
+grass, plaza cobblestone, slate). Save a tileable texture here under its exact filename and it
+**overrides the procedural one on the next run** — no code change. A missing file just uses the
+procedural default.
 
-| File | Surface | Placeholder colour |
+| File | Surface | Procedural default |
 |------|---------|--------------------|
-| `ground_grass.png` | the settlement commons (ground disc) | green |
-| `plaza_stone.png` | the paved central plaza | grey |
-| `slate_face.png` | the readable stone slate | dark |
+| `ground_grass.png` | the settlement commons (ground disc) | FBM grass |
+| `plaza_stone.png` | the paved central plaza | Worley cobblestone |
+| `slate_face.png` | the readable stone slate | stratified slate |
 
 ## Specs
 - **Tileable PNG, sRGB, ~512².**
