@@ -572,8 +572,11 @@ fn hud_resolution() -> WindowResolution {
     WindowResolution::new(hud::REF_W as u32, hud::REF_H as u32)
 }
 
-/// A peopled, settled, *living* world to walk through — dialogue on so the populace talks
-/// as you pass; the director left asleep so the world stays whole while you explore.
+/// A peopled, settled, *living* world to walk through — **every layer awake**: the populace
+/// talks, the hidden director shapes drama, vendettas and a contested throne smoulder among the
+/// people, and the continent carries a managed million souls. Individual layers can be dialled
+/// back through the `ACHLYDESA_*` env knobs (e.g. `ACHLYDESA_NODIRECTOR`), but the default is the
+/// full thing.
 fn build_world() -> Simulation {
     let reg = Registry::bundled();
     let goals = Goals::from_ron(
@@ -587,6 +590,15 @@ fn build_world() -> Simulation {
             (name: "rule",      condition: Verb(verb: "rule", target: Me),
                 appeal: [(input: Trait("ambition"), curve: Linear(m: 0.7, b: 0.0)), (input: Deficit, curve: Linear(m: 1.0, b: 0.0))])
         ]"#,
+        &reg,
+    )
+    .unwrap();
+    // A vendetta is a **duty** while the slayer still lives — so a vassal inherits and acts on a
+    // slain lord's grudge even if not a born avenger (the feud/vassal V&V behaviour). Gated to
+    // "while the foe is alive" so the score settles rather than cycling forever.
+    let norms = agents::Norms::from_ron(
+        r#"[(act: "avenge", modality: Obliged, weight: 0.5,
+            when: Some(Relation(predicate: "alive", subject: Foe, equals: 1)))]"#,
         &reg,
     )
     .unwrap();
@@ -633,10 +645,12 @@ fn build_world() -> Simulation {
             markets_on_settlements: true,
             // Seed bottom-up drama to go with the director's: ambitious souls who vie for the
             // throne (the `rule` goal), vendettas (`avenge`), and vassals who inherit a slain
-            // lord's grudge — so power struggles and feuds smoulder across the populace.
+            // lord's grudge — so power struggles and feuds smoulder across the populace. The
+            // `avenge`-duty `norms` make a mild vassal take up the quarrel, not just born avengers.
             ambitious: 50,
             feuds: 40,
             vassals: 20,
+            norms,
             dialogue: true,
             // The hidden narrative director shapes drama among the populace as you explore — the
             // headline of the narrative-surfacing layer (`docs/narrative_surfacing.md`). On by
