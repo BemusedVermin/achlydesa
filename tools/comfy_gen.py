@@ -23,6 +23,8 @@ import json
 import os
 import pathlib
 import random
+import subprocess
+import sys
 import time
 import urllib.parse
 import urllib.request
@@ -43,16 +45,38 @@ QUAD_ASPECT = 1.7 / 3.0
 DEFAULT_PIXELS = 128
 
 
+def _pillow():
+    """Import Pillow, auto-installing it into *this* interpreter if missing — the shrink/reframe needs
+    it, and silently skipping that was the whole 'it doesn't shrink' footgun. Returns the `Image`
+    module, or `None` if it genuinely can't be installed (then we shout, not whisper)."""
+    try:
+        from PIL import Image
+
+        return Image
+    except ImportError:
+        pass
+    print("Pillow not found — installing it so the sprite can be shrunk to pixel art ...")
+    try:
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "--quiet", "Pillow"])
+        from PIL import Image
+
+        return Image
+    except Exception as exc:  # noqa: BLE001
+        print("\n" + "!" * 70)
+        print(f"! Could not install Pillow ({exc}).")
+        print(f"! The sprite was NOT shrunk. Install it and re-run:")
+        print(f"!   {sys.executable} -m pip install pillow")
+        print("!" * 70 + "\n")
+        return None
+
+
 def frame_sprite(png_bytes, pixels=DEFAULT_PIXELS):
     """Make a generation game-ready: trim the transparent margins, **shrink to a low pixel-art
     resolution** (so SDXL's photographic detail — those uncanny faces — collapses into readable
     blocks), and stand the figure **feet-at-bottom, centered** on a quad-aspect canvas. The game
-    point-samples it, so the low-res PNG renders as crisp pixels. Needs Pillow (the ComfyUI env has
-    it); without it the raw image is saved and you shrink/crop by hand."""
-    try:
-        from PIL import Image
-    except ImportError:
-        print("(Pillow not found — saving the raw image; shrink + crop feet-to-base manually per the docs)")
+    point-samples it, so the low-res PNG renders as crisp pixels."""
+    Image = _pillow()
+    if Image is None:
         return png_bytes
     im = Image.open(io.BytesIO(png_bytes)).convert("RGBA")
     bbox = im.getchannel("A").getbbox()  # tight box of the non-transparent figure
