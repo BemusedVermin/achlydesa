@@ -240,8 +240,10 @@ pub struct Resident {
     /// A one-glance read of their bearing, when the perception layer holds a charge on them
     /// (so a settlement scene shows *who is troubled*, not a row of identical figures).
     pub demeanour: Option<String>,
-    /// The soul's archetype (the WWN edge name), or empty — biases their procedural figure's dress.
-    pub archetype: String,
+    /// The soul's archetype as its **typed edge id** (`None` if it has no edge) — keys their
+    /// procedural figure's dress. Deliberately the id, never the display name: presentation must not
+    /// branch on names (see [`Simulation::archetype_id_of`]).
+    pub archetype: Option<usize>,
 }
 
 /// Something to read in a place — a weathered slate, a notice, an inscription. Reading it yields
@@ -1862,7 +1864,7 @@ impl Simulation {
                     entity: e,
                     name,
                     demeanour: charged.get(&e).map(|s| (*s).to_string()),
-                    archetype: self.archetype_of(e).unwrap_or("").to_string(),
+                    archetype: self.archetype_id_of(e),
                 }
             })
             .collect();
