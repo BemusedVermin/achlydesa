@@ -124,3 +124,30 @@ If you'd rather generate them in ComfyUI:
 Make **one** `townsfolk.png` and grab **one** `ground_grass.png`, drop them in, and run
 `cargo run -p app` (then enter a settlement). We'll look at the real thing on a known-good scene before
 you batch the rest — easier to dial the prompt/scale against a live target than to guess.
+
+---
+
+## Troubleshooting
+
+**`'JoinImageWithAlpha' object has no attribute 'join_image_with_alpha'`** (raised by
+`LayeredDiffusionDecodeRGBA`). A known incompatibility between ComfyUI-layerdiffuse and current
+ComfyUI: a ComfyUI refactor changed the built-in `JoinImageWithAlpha` node, so layerdiffuse's call to
+it breaks ([ComfyUI issue #10766](https://github.com/Comfy-Org/ComfyUI/issues/10766)). It's the node
+pair being out of sync — not your workflow.
+
+1. First, **Manager → Update All → restart ComfyUI** (it may already be fixed upstream).
+2. If it persists, **patch one method** in `custom_nodes/ComfyUI-layerdiffuse/layered_diffusion.py` —
+   in class `LayeredDiffusionDecodeRGBA`, replace the `decode` body's `JoinImageWithAlpha()…` return
+   with the inline join (reproducing the node's old result — the two mask inversions cancel to the
+   original mask as the alpha channel):
+   ```python
+   def decode(self, samples, images, sd_version: str, sub_batch_size: int):
+       image, mask = super().decode(samples, images, sd_version, sub_batch_size)
+       # JoinImageWithAlpha's instance method was refactored away in current ComfyUI; inline it.
+       return (torch.cat((image[..., :3], mask.unsqueeze(-1)), dim=-1),)
+   ```
+   `torch` is already imported at the top of that file. (An extension update will overwrite this — fine
+   as a stop-gap.)
+3. Robust long-term alternative: drop LayerDiffuse and cut the background with a **rembg / RMBG** node
+   instead (generate the character on a flat background, then remove it). Trades native alpha for an
+   extra node, but doesn't depend on the layerdiffuse↔ComfyUI version pairing.
