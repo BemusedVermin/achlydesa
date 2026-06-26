@@ -130,34 +130,23 @@ fn pick(rng: &mut crate::props::Rng, xs: &[[u8; 4]]) -> [u8; 4] {
     xs[rng.int(xs.len() as u32) as usize]
 }
 
-/// The shirt colour, biased by archetype so a class reads at a glance; otherwise seed-chosen.
-/// Draws the seed-chosen colour **unconditionally** so the archetype only swaps the result, never the
-/// RNG position — otherwise the same seed would yield different hair/beard for a smith vs. a farmer.
-fn shirt_for(archetype: &str, rng: &mut crate::props::Rng) -> [u8; 4] {
+/// The shirt colour. When the soul has an archetype, its **typed edge id** indexes the palette — so a
+/// class reads consistently at a glance — otherwise the colour is seed-chosen. No string matching: the
+/// id *is* the identity (a display name is for humans and must never drive a sprite). The seeded
+/// colour is drawn unconditionally so per-soul features don't drift when the archetype path is taken.
+fn shirt_for(archetype: Option<usize>, rng: &mut crate::props::Rng) -> [u8; 4] {
     let seeded = pick(rng, B_SHIRT);
-    let a = archetype.to_ascii_lowercase();
-    if a.contains("noble") || a.contains("court") || a.contains("lord") {
-        [96, 64, 72, 255]
-    } else if a.contains("priest") || a.contains("monk") || a.contains("seer") {
-        [58, 62, 74, 255]
-    } else if a.contains("soldier") || a.contains("guard") || a.contains("warrior") {
-        [70, 78, 86, 255]
-    } else if a.contains("smith")
-        || a.contains("farm")
-        || a.contains("craft")
-        || a.contains("labor")
-        || a.contains("hunt")
-    {
-        [86, 70, 56, 255]
-    } else {
-        seeded
+    match archetype {
+        // Spread the small edge index across the palette so neighbouring archetypes look distinct.
+        Some(id) => B_SHIRT[id.wrapping_mul(0x9E37_79B1) % B_SHIRT.len()],
+        None => seeded,
     }
 }
 
 /// A full-body pixel character — **feet at the base, front-facing, transparent** — composed
-/// deterministically from `seed`; `archetype` biases the clothing. Nearest-sampled, so it stays crisp
-/// on the billboard quad; the cel ink-outline traces its alpha silhouette.
-pub fn procedural_body_sprite(seed: u64, archetype: &str) -> Image {
+/// deterministically from `seed`; the typed `archetype` edge id (if any) keys the clothing.
+/// Nearest-sampled, so it stays crisp on the billboard quad; the cel ink-outline traces its alpha.
+pub fn procedural_body_sprite(seed: u64, archetype: Option<usize>) -> Image {
     let mut rng = crate::props::Rng::new(seed ^ 0xB0D1_5EED);
     let mut buf = vec![0u8; (BW * BH * 4) as usize];
 
@@ -186,10 +175,8 @@ pub fn procedural_body_sprite(seed: u64, archetype: &str) -> Image {
         brect(&mut buf, ax - 1, 40, ax + 1, 43, skin);
     }
 
-    // A vest / apron panel for some — a quick class read. Draw the chance unconditionally (before the
-    // `smith` short-circuit) so the figure's later hair/baldness/beard stay put across archetypes.
-    let seeded_vest = rng.chance(0.25);
-    if archetype.contains("smith") || seeded_vest {
+    // A vest / apron panel for some — a per-soul detail.
+    if rng.chance(0.25) {
         brect(&mut buf, cx - 4, 24, cx + 4, 42, bshade(shirt, 0.7));
     }
 
@@ -229,10 +216,10 @@ mod tests {
 
     #[test]
     fn body_sprite_is_drawn_and_per_soul() {
-        let a = procedural_body_sprite(seed_of("Maren"), "farmer");
+        let a = procedural_body_sprite(seed_of("Maren"), Some(2));
         assert_eq!(
             a.data,
-            procedural_body_sprite(seed_of("Maren"), "farmer").data
+            procedural_body_sprite(seed_of("Maren"), Some(2)).data
         );
         let drawn = a
             .data
@@ -244,9 +231,20 @@ mod tests {
         assert!(drawn > 200, "the figure should draw something ({drawn} px)");
         assert_ne!(
             a.data,
-            procedural_body_sprite(seed_of("Bram"), "soldier").data,
+            procedural_body_sprite(seed_of("Bram"), Some(5)).data,
             "different souls → different sprites"
         );
+    }
+
+    #[test]
+    fn same_archetype_same_shirt_different_archetype_differs() {
+        // The typed id keys the shirt — same id → same colour, regardless of the seed.
+        let mut r1 = crate::props::Rng::new(1);
+        let mut r2 = crate::props::Rng::new(2);
+        assert_eq!(shirt_for(Some(3), &mut r1), shirt_for(Some(3), &mut r2));
+        // And distinct ids generally land on distinct palette entries.
+        let mut r = crate::props::Rng::new(0);
+        assert_ne!(shirt_for(Some(0), &mut r), shirt_for(Some(1), &mut r));
     }
 
     /// Preview: raw RGBA of sample figures to `target/`. Run `cargo test -p app -- --ignored
@@ -256,14 +254,14 @@ mod tests {
     fn dump_body_preview() {
         let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../target");
         for (name, arch) in [
-            ("Maren", "farmer"),
-            ("Bram", "soldier"),
-            ("Yalda", "noble"),
-            ("Coil", "priest"),
-            ("Zoe", "smith"),
-            ("Vesper", ""),
-            ("Ossa", ""),
-            ("Nebro", "court"),
+            ("Maren", Some(0)),
+            ("Bram", Some(1)),
+            ("Yalda", Some(2)),
+            ("Coil", Some(3)),
+            ("Zoe", Some(4)),
+            ("Vesper", None),
+            ("Ossa", None),
+            ("Nebro", Some(5)),
         ] {
             let img = procedural_body_sprite(seed_of(name), arch);
             std::fs::write(

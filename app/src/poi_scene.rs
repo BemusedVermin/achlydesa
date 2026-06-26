@@ -63,7 +63,7 @@ fn body_material(
     materials: &mut Assets<StandardMaterial>,
     real: Option<Handle<Image>>,
     seed: u64,
-    archetype: &str,
+    archetype: Option<usize>,
 ) -> Handle<StandardMaterial> {
     let texture =
         real.unwrap_or_else(|| images.add(crate::sprites::procedural_body_sprite(seed, archetype)));
@@ -160,7 +160,7 @@ pub(crate) fn build_assets(
             materials,
             loaded_if_present(asset_server, "sprites/avatar.png", true),
             crate::sprites::seed_of("avatar"),
-            "traveller",
+            None,
         ),
     }
 }
@@ -431,7 +431,7 @@ fn build_diorama(
         let mat = match cache.0.get(&seed) {
             Some(h) => h.clone(),
             None => {
-                let h = body_material(images, materials, None, seed, &res.archetype);
+                let h = body_material(images, materials, None, seed, res.archetype);
                 cache.0.insert(seed, h.clone());
                 h
             }
