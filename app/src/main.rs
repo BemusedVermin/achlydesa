@@ -43,6 +43,7 @@ mod mesh;
 mod minimap;
 mod outline;
 mod palette;
+mod poi_scene;
 mod props;
 mod scatter;
 mod toon;
@@ -51,6 +52,23 @@ mod world_mesh;
 
 use layout::{tile_top, tile_world};
 use toon::{ToonMaterial, toon};
+
+/// The top-level **context** the player is in — the one-of-N mode that owns the screen, modelled as
+/// a Bevy state machine so entering/leaving a context is `OnEnter`/`OnExit` and a system's
+/// applicability is `run_if(in_state(..))`, not a thicket of `is_some()` guards. Conversation and
+/// the pause menu are deliberately *not* here: they are orthogonal overlays that sit atop whichever
+/// context is active (a chat happens *inside* the overworld or a settlement), so they stay as their
+/// own small modal state and never tear a context down.
+#[derive(States, Default, Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) enum GameMode {
+    /// Walking the hex board — the default.
+    #[default]
+    Overworld,
+    /// A fight (the `combat` module drives the headless engine).
+    Combat,
+    /// Standing inside a place — the [`poi_scene`] diorama.
+    PoiScene,
+}
 
 // =====================================================================================
 // The dialogue voice (optional SLM). All candle-touching code is confined to the `voice`
@@ -392,13 +410,12 @@ fn main() {
         palette::SKY_RGB[2],
     )))
     .add_systems(Startup, setup)
+    .init_state::<GameMode>()
+    .insert_resource(poi_scene::PoiTarget::default())
     .add_systems(
         Update,
         (
             drive_sim,
-            talk_input,
-            poll_voice,
-            tick_typewriter,
             wait_input,
             search_input,
             use_input,
@@ -417,11 +434,12 @@ fn main() {
             ui::update_labels,
             update_hud,
         )
-            .chain(),
+            .chain()
+            .run_if(in_state(GameMode::Overworld)),
     )
     // The fauna layer runs as its own group: `sync_fauna` re-targets creatures when
     // the world ticks (idempotent in between, so loose ordering is fine) and
-    // `animate_fauna` is purely visual.
+    // `animate_fauna` is purely visual. Overworld-only — paused while inside a place or a fight.
     .add_systems(
         Update,
         (
@@ -432,12 +450,18 @@ fn main() {
             sheet_input,
             scan_input,
         )
-            .chain(),
+            .chain()
+            .run_if(in_state(GameMode::Overworld)),
     )
-    // The conversation panel + the who-to-talk-to chooser: fill them, style and handle their buttons.
+    // The conversation panel + the who-to-talk-to chooser. The conversation is an **overlay** that
+    // can be open in any context, so its input/voicing/typewriter run always (they self-guard on
+    // `game.convo`), not gated to the overworld.
     .add_systems(
         Update,
         (
+            talk_input,
+            poll_voice,
+            tick_typewriter,
             convo_ui::update_convo_panel,
             convo_ui::style_speak_choices,
             convo_ui::speak_choice_click,
@@ -473,7 +497,9 @@ fn main() {
     .add_systems(
         Update,
         (
-            attack_input,
+            // A fight can only be *begun* from the overworld; the rest of the group drives/paints an
+            // ongoing fight and self-guards on `game.combat`.
+            attack_input.run_if(in_state(GameMode::Overworld)),
             combat::combat_tick,
             dev_combat_autoplay,
             combat::combat_input,
@@ -484,8 +510,31 @@ fn main() {
             combat::update_combat_tray,
             combat::update_combat_timeline,
             hide_hud_in_combat,
+            // Reflect the combat data into the context FSM (one authority for gating).
+            sync_combat_mode,
+        ),
+    )
+    // The POI scene: enter/leave on the FSM, then the in-scene systems. The overlay fill runs always
+    // (it hides itself when the `PoiScene` resource is absent).
+    .add_systems(OnEnter(GameMode::PoiScene), poi_scene::enter_scene)
+    .add_systems(OnExit(GameMode::PoiScene), poi_scene::exit_scene)
+    .add_systems(
+        Update,
+        (
+            poi_scene::poi_input,
+            poi_scene::poi_clicks,
+            poi_scene::poi_camera,
+            poi_scene::dev_read,
         )
-            .chain(),
+            .run_if(in_state(GameMode::PoiScene)),
+    )
+    .add_systems(
+        Update,
+        (poi_scene::update_poi_overlay, poi_enter_input, dev_poi),
+    )
+    .add_systems(
+        Update,
+        hide_labels_off_overworld.run_if(not(in_state(GameMode::Overworld))),
     )
     // The framed HUD: keep the whole frame scaled to the window, then refresh the trays.
     .add_systems(
@@ -741,6 +790,21 @@ fn setup(
         Transform::from_rotation(Quat::from_euler(EulerRot::YXZ, -0.6, -0.95, 0.0)),
     ));
 
+    // A dedicated 2-D camera that owns ALL UI, sitting above both 3-D world cameras (the overworld
+    // and the POI-scene diorama). The UI is one layer drawn over whichever world camera is active;
+    // without it, the POI scene's second 3-D camera steals the "default UI camera" and the HUD
+    // vanishes whenever that camera sleeps. `order: 10` draws it last; a `None` clear composites the
+    // UI over the 3-D output instead of wiping it.
+    commands.spawn((
+        Camera2d,
+        Camera {
+            order: 10,
+            clear_color: ClearColorConfig::None,
+            ..default()
+        },
+        bevy::ui::IsDefaultUiCamera,
+    ));
+
     // Load the shared HUD fonts first, so every panel is styled through the theme.
     let theme_fonts = ThemeFonts::embed(&mut fonts);
     ui::setup_ui(&mut commands, &mut meshes, &mut materials, &theme_fonts);
@@ -749,6 +813,7 @@ fn setup(
     hud::spawn(&mut commands, &theme_fonts, grassy);
     convo_ui::spawn(&mut commands, &theme_fonts);
     combat::spawn_combat_ui(&mut commands, &theme_fonts, &mut images);
+    poi_scene::spawn_infra(&mut commands, &mut meshes, &mut toon_mats, &theme_fonts);
     let parchment = asset_server.load("ui/parchment.jpg");
     spawn_pause_menu(&mut commands, &theme_fonts, parchment);
     commands.insert_resource(theme_fonts);
@@ -1220,9 +1285,10 @@ fn menu_input(
 /// Hide the always-on overlays (legend, inspect) while paused, for a clean modal.
 fn hide_overlays_when_paused(
     game: NonSend<Game>,
+    state: Res<State<GameMode>>,
     mut q: Query<&mut Visibility, With<ui::HideOnPause>>,
 ) {
-    let hide = game.paused || game.combat.is_some();
+    let hide = game.paused || game.combat.is_some() || *state.get() == GameMode::PoiScene;
     for mut vis in &mut q {
         *vis = if hide {
             Visibility::Hidden
@@ -1419,27 +1485,44 @@ fn dev_capture(
     let Ok(path) = std::env::var("ACHLYDESA_SHOT") else {
         return;
     };
+    let shot_frame: u32 = std::env::var("ACHLYDESA_SHOT_FRAME")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(18);
     clock.0 += 1;
-    if clock.0 == 18 {
+    if clock.0 == shot_frame {
         commands
             .spawn(Screenshot::primary_window())
             .observe(save_to_disk(path));
     }
-    if clock.0 >= 48 {
+    if clock.0 >= shot_frame + 30 {
         exit.write(AppExit::Success);
     }
 }
 
 /// Hide the exploration HUD frame while a fight is on, so the combat overlay reads as its own clean
 /// screen (the trays otherwise sit dimly beneath the translucent overlay). Restored when it ends.
-fn hide_hud_in_combat(game: NonSend<Game>, mut trays: Query<&mut Visibility, With<hud::Tray>>) {
-    let hide = game.combat.is_some();
+fn hide_hud_in_combat(
+    game: NonSend<Game>,
+    state: Res<State<GameMode>>,
+    mut trays: Query<&mut Visibility, With<hud::Tray>>,
+) {
+    let hide = game.combat.is_some() || *state.get() == GameMode::PoiScene;
     for mut v in &mut trays {
         *v = if hide {
             Visibility::Hidden
         } else {
             Visibility::Inherited
         };
+    }
+}
+
+/// Hide the floating overworld place-labels while in another context. They own their visibility in
+/// the overworld via `ui::update_labels`, which is suspended off-overworld — so this only runs (and
+/// only ever hides) outside it, leaving no two systems fighting over the same `Visibility`.
+fn hide_labels_off_overworld(mut q: Query<&mut Visibility, With<ui::MapLabel>>) {
+    for mut v in &mut q {
+        *v = Visibility::Hidden;
     }
 }
 
@@ -2311,6 +2394,74 @@ fn camera_control(
     }
     let f = game.avatar_render;
     *tf = cam_transform(Vec3::new(f.x, 0.0, f.z), &rig);
+}
+
+/// Keep the [`GameMode`] FSM in step with the combat data. A fight is still begun/ended through the
+/// `combat` module's own `CombatUi`; this reflects that into the context state so the overworld
+/// suspends while fighting and there is one authority for *gating*. (Migrating combat's triggers to
+/// drive `NextState` directly is a clean follow-up; this keeps the seam small and combat untouched.)
+fn sync_combat_mode(
+    game: NonSend<Game>,
+    state: Res<State<GameMode>>,
+    mut next: ResMut<NextState<GameMode>>,
+) {
+    match (game.combat.is_some(), state.get()) {
+        (true, GameMode::Overworld) => next.set(GameMode::Combat),
+        (false, GameMode::Combat) => next.set(GameMode::Overworld),
+        _ => {}
+    }
+}
+
+/// Step *into* the settlement underfoot — **Enter**, when the avatar stands on a discovered
+/// community. The transition itself is the FSM's ([`poi_scene::request_enter`]).
+fn poi_enter_input(
+    keys: Res<ButtonInput<KeyCode>>,
+    state: Res<State<GameMode>>,
+    game: NonSend<Game>,
+    mut target: ResMut<poi_scene::PoiTarget>,
+    mut next: ResMut<NextState<GameMode>>,
+) {
+    if *state.get() != GameMode::Overworld
+        || game.convo.is_some()
+        || game.paused
+        || !keys.just_pressed(KeyCode::Enter)
+    {
+        return;
+    }
+    let Some(at) = game.sim.player_position() else {
+        return;
+    };
+    let here_is_a_settlement = {
+        let cat = game.sim.feature_catalog();
+        game.sim
+            .features_at(at)
+            .iter()
+            .any(|f| f.discovered && cat.def(f.kind).category == agents::Category::Community)
+    };
+    if here_is_a_settlement {
+        poi_scene::request_enter(&mut target, &mut next, at);
+    }
+}
+
+/// Dev/screenshot only: step into the most-peopled tile so the diorama is full (`ACHLYDESA_POI`).
+fn dev_poi(
+    mut game: NonSendMut<Game>,
+    state: Res<State<GameMode>>,
+    mut target: ResMut<poi_scene::PoiTarget>,
+    mut next: ResMut<NextState<GameMode>>,
+    mut done: Local<bool>,
+) {
+    if *done || std::env::var("ACHLYDESA_POI").is_err() || *state.get() != GameMode::Overworld {
+        return;
+    }
+    let mut counts: std::collections::HashMap<Coord, usize> = std::collections::HashMap::new();
+    for c in game.sim.npc_positions() {
+        *counts.entry(c).or_default() += 1;
+    }
+    if let Some((&c, _)) = counts.iter().max_by_key(|(_, n)| **n) {
+        poi_scene::request_enter(&mut target, &mut next, c);
+        *done = true;
+    }
 }
 
 /// Check the avatar's taken **charges** each frame: a charge is fulfilled when the other is reached

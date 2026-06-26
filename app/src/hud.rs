@@ -445,6 +445,7 @@ pub fn spawn(commands: &mut Commands, f: &ThemeFonts, grassy: Handle<Image>) {
     // ── Circular minimap, tucked into the bottom-right corner (above the trays). ──
     commands.spawn((
         HudMinimap,
+        crate::ui::HideOnPause,
         ImageNode {
             image: Handle::default(),
             image_mode: NodeImageMode::Stretch,
@@ -475,6 +476,7 @@ pub fn spawn(commands: &mut Commands, f: &ThemeFonts, grassy: Handle<Image>) {
     };
     commands.spawn((
         crate::HudKind::Look,
+        crate::ui::HideOnPause,
         Node {
             left: px(LEFT_W + theme::SP_MD),
             top: px(TOP_H + theme::SP_MD),
