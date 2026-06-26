@@ -1023,11 +1023,27 @@ impl Simulation {
             name: &name,
         };
         let realizer = agent_core::GrammarRealizer;
+        // The loudest current drama — forming *and* resolved. (A `past()`-only log shows resolved
+        // arcs, which are rare, so it was almost always empty and the player saw nothing.)
         perception
-            .past()
-            .take(budget)
+            .top(budget)
             .map(|t| realizer.realize(t, &ctx))
             .collect()
+    }
+
+    /// The single loudest story the Perception Layer is telling, rendered as one prose line — the
+    /// headline the always-on **tidings** banner leads with, so the legibility layer *pushes* the
+    /// drama at the player. `None` when the layer is off or quiet.
+    fn top_tell_prose(&self) -> Option<String> {
+        let perception = self.world.get_resource::<agent_core::Perception>()?;
+        let tell = perception.tells().first()?;
+        let registry = self.world.resource::<Registry>();
+        let name = |e: bevy_ecs::entity::Entity| self.display_name(e);
+        let ctx = agent_core::RealizeCtx {
+            registry,
+            name: &name,
+        };
+        Some(agent_core::GrammarRealizer.realize(tell, &ctx))
     }
 
     /// **Read the room** (`docs/perception_layer.md` S5.3): assess the charged souls standing in the
@@ -1159,6 +1175,29 @@ impl Simulation {
             name: &name,
         };
         Some(agent_core::PlaceRealizer.realize(tell, &ctx))
+    }
+
+    /// **Drama afoot** — the place-fiction the look-out shows so the player can read where things are
+    /// happening *as they move*, not only when standing on the exact tile. The tile underfoot if it is
+    /// the seat of a story; else the loudest charged place within reach, with a bearing to it ("...,
+    /// to the north"). `None` when the layer is off or nothing is charged nearby. Read-only.
+    pub fn drama_nearby(&self) -> Option<String> {
+        let at = self.player_position()?;
+        let width = self.substrate().topology().width();
+        let moods = self.place_moods(); // salience-ranked
+        if let Some(m) = moods.iter().find(|m| m.place == at) {
+            return Some(m.fiction.clone());
+        }
+        // The loudest charged place within a few days' travel, pointed to.
+        const RANGE: i32 = 12;
+        let near = moods
+            .iter()
+            .find(|m| wrapped_dist(at, m.place, width) <= RANGE)?;
+        Some(format!(
+            "{}  ({})",
+            near.fiction,
+            compass_dir(at, near.place, width)
+        ))
     }
 
     /// Whether the **incremental** sifter (fed the ring episode-by-episode) and the **retrospective**
@@ -1535,6 +1574,12 @@ impl Simulation {
     /// ("Unrest stirs to the east — Allogenes, the Avenger."); else `None` (the land is quiet here).
     /// Read-only; safe to call every frame.
     pub fn tidings(&mut self) -> Option<String> {
+        // The Perception Layer leads: its loudest story (salience-ranked, avatar-proximity-weighted)
+        // is pushed at the player on the always-on banner — the legibility layer made *felt*, not
+        // waiting to be found. Falls back to the local gossip / unrest pulse when it is quiet.
+        if let Some(line) = self.top_tell_prose() {
+            return Some(line);
+        }
         if let Some(g) = self.overheard() {
             return Some(format!("Word here \u{2014} {g}"));
         }
