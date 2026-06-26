@@ -215,6 +215,75 @@ pub struct Quest {
     pub objective: String,
 }
 
+/// What a place holds when the avatar steps *into* it — the cast to talk with and the things to
+/// read. The authoritative content of a POI scene: the view (`app`) renders it as a 3D toon diorama
+/// but invents none of it. A snapshot (no borrow), derived by [`Simulation::scene_at`]. This is the
+/// embodied **perception organ** — you learn the world's drama by being among its people and reading
+/// what the place itself recorded, not by reading a ranked log.
+#[derive(Clone, Debug)]
+pub struct SceneView {
+    pub place: Coord,
+    /// The settlement's name, or a bare place-word when the tile carries no named, discovered feature.
+    pub title: String,
+    /// The souls present — each a person to walk up to and speak with.
+    pub residents: Vec<Resident>,
+    /// The slates / notices / inscriptions to read — the knowledge organ.
+    pub readables: Vec<Readable>,
+}
+
+/// One soul present in a place's scene — a figure in the diorama you can approach and talk to.
+#[derive(Clone, Debug)]
+pub struct Resident {
+    pub entity: bevy_ecs::entity::Entity,
+    /// Name + any arc honorific ("Maren, the Betrayed").
+    pub name: String,
+    /// A one-glance read of their bearing, when the perception layer holds a charge on them
+    /// (so a settlement scene shows *who is troubled*, not a row of identical figures).
+    pub demeanour: Option<String>,
+}
+
+/// Something to read in a place — a weathered slate, a notice, an inscription. Reading it yields
+/// lore (the discovery web's gate keys, via [`Simulation::learn_lore`]) and tells the player what
+/// the *living world* recorded here, so reading is itself an act of perceiving the drama.
+#[derive(Clone, Debug)]
+pub struct Readable {
+    pub title: String,
+    /// The body, line by line — rendered as recollection, never a wall of text.
+    pub lines: Vec<String>,
+    /// The lore tokens reading it grants; empty for ambient flavour with nothing to learn.
+    pub grants: Vec<String>,
+}
+
+/// A one-glance bearing word for a soul carrying a perception charge of this kind — what you read on
+/// their face across a settlement square before you have said a word.
+fn demeanour_word(kind: agent_core::TellKind) -> &'static str {
+    use agent_core::TellKind::*;
+    match kind {
+        Tension => "on edge",
+        Threat => "spoiling for blood",
+        Aftermath => "shadowed by what passed",
+        Mystery => "hard to read",
+        Opportunity => "watchful for an opening",
+        Recurrence => "a name that keeps surfacing",
+    }
+}
+
+/// Prettify a content token ("ash_hamlet" → "Ash Hamlet") for display.
+fn prettify(token: &str) -> String {
+    token
+        .split(['_', ' '])
+        .filter(|w| !w.is_empty())
+        .map(|w| {
+            let mut ch = w.chars();
+            match ch.next() {
+                Some(f) => f.to_uppercase().collect::<String>() + ch.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 /// The giver's spoken request and the objective line for a charge, framed by the thread's register
 /// — both authored as data (`registers.ron`'s `quest_plea`/`quest_objective`, `{giver}`/`{other}`).
 fn quest_text(def: &agent_core::RegisterDef, giver: &str, other: &str) -> (String, String) {
@@ -1757,6 +1826,122 @@ impl Simulation {
                 format!("{titled} — {doing}")
             })
             .collect()
+    }
+
+    /// What stands in the place at hex `c` when the avatar steps *into* it — the souls present and
+    /// the things to read. Drives the POI scene: the view renders this as a 3D diorama, inventing
+    /// nothing. The title is the discovered settlement's name; residents are the souls on the tile,
+    /// each tagged with its perception charge; the readables are slates that record the loudest
+    /// drama anchored here — so to read one is to *perceive* what the world has been doing. Read-only
+    /// over the world (needs `&mut`, like the other inspection accessors).
+    pub fn scene_at(&mut self, c: Coord) -> SceneView {
+        let title = self.place_title(c);
+        // The souls on this tile — the cast you can walk up to.
+        let here: Vec<bevy_ecs::entity::Entity> = {
+            let mut q = self
+                .world
+                .query_filtered::<(bevy_ecs::entity::Entity, &Position), With<people::Npc>>();
+            q.iter(&self.world)
+                .filter(|(_, p)| p.0 == c)
+                .map(|(e, _)| e)
+                .collect()
+        };
+        // The bearing each charged soul wears, read off the perception layer once.
+        let charged = self.charged_demeanour();
+        let residents = here
+            .into_iter()
+            .map(|e| {
+                let base = self.display_name(e);
+                let name = match self.npc_epithet(e) {
+                    Some(ep) => format!("{base}, {ep}"),
+                    None => base,
+                };
+                Resident {
+                    entity: e,
+                    name,
+                    demeanour: charged.get(&e).map(|s| (*s).to_string()),
+                }
+            })
+            .collect();
+        let readables = self.slate_readables(c, &title);
+        SceneView {
+            place: c,
+            title,
+            residents,
+            readables,
+        }
+    }
+
+    /// The place's name: a discovered `Community` feature's, else a bare place-word.
+    fn place_title(&self, c: Coord) -> String {
+        let cat = self.feature_catalog();
+        self.features_at(c)
+            .iter()
+            .find(|f| f.discovered && cat.def(f.kind).category == agent_core::Category::Community)
+            .map(|f| prettify(&cat.def(f.kind).name))
+            .unwrap_or_else(|| "this place".to_string())
+    }
+
+    /// Each soul the perception layer holds a charge on → a one-glance bearing word, so a scene can
+    /// show who is troubled. Empty when the layer is off.
+    fn charged_demeanour(
+        &self,
+    ) -> std::collections::HashMap<bevy_ecs::entity::Entity, &'static str> {
+        let mut out = std::collections::HashMap::new();
+        if let Some(p) = self.world.get_resource::<agent_core::Perception>() {
+            for tell in p.tells() {
+                out.entry(tell.subject)
+                    .or_insert_with(|| demeanour_word(tell.kind));
+            }
+        }
+        out
+    }
+
+    /// The things to read in the place at `c` — a slate recording the loudest drama anchored here
+    /// (realized through the same register grammar the gossip uses), or, when nothing has happened
+    /// worth carving, a bare ambient marker. Reading the former grants lore; the latter teaches
+    /// nothing.
+    fn slate_readables(&self, c: Coord, title: &str) -> Vec<Readable> {
+        if let Some(perception) = self.world.get_resource::<agent_core::Perception>()
+            && let Some(tell) = perception.at(c).next()
+        {
+            let registry = self.world.resource::<Registry>();
+            let name = |e: bevy_ecs::entity::Entity| self.display_name(e);
+            let ctx = agent_core::RealizeCtx {
+                registry,
+                name: &name,
+            };
+            let line = agent_core::GrammarRealizer.realize(tell, &ctx);
+            let subject = self.display_name(tell.subject);
+            return vec![Readable {
+                title: "A weathered slate".to_string(),
+                lines: vec![line],
+                grants: vec![format!("what befell {subject}")],
+            }];
+        }
+        vec![Readable {
+            title: "A worn marker".to_string(),
+            lines: vec![format!(
+                "\u{201c}{title}\u{201d} \u{2014} the name is all the stone still gives up."
+            )],
+            grants: Vec::new(),
+        }]
+    }
+
+    /// Fold lore the avatar has just read into its knowledge, returning the tokens that are *new*
+    /// (so the reader can show "you now know …"). Player-side memory; never feeds the deterministic
+    /// sim. A no-op when there is no player layer.
+    pub fn learn_lore(&mut self, tokens: &[String]) -> Vec<String> {
+        let Some(mut k) = self.world.get_resource_mut::<player::PlayerKnowledge>() else {
+            return Vec::new();
+        };
+        let mut fresh = Vec::new();
+        for t in tokens {
+            if k.lore.insert(t.clone()) {
+                fresh.push(t.clone());
+            }
+        }
+        fresh
     }
 
     /// What the avatar can **do** at the place it stands — the available, discovered affordances on
@@ -3732,6 +3917,50 @@ mod tests {
             npcs,
             ..Default::default()
         })
+    }
+
+    #[test]
+    fn a_scene_is_peopled_and_readable() {
+        // Stepping into an inhabited place yields its cast and something to read — the embodied
+        // perception organ, not a log line.
+        let mut sim = Simulation::new(Setup {
+            width: 32,
+            height: 24,
+            seed: 2026,
+            warmup: 60,
+            npcs: 40,
+            perception: true,
+            director: true,
+            dialogue: true,
+            sift: true,
+            ..Default::default()
+        });
+        sim.run(120);
+        let here = *sim.npc_positions().first().expect("a populated world");
+        let scene = sim.scene_at(here);
+        assert!(!scene.residents.is_empty(), "the scene has no one in it");
+        assert!(
+            scene.residents.iter().all(|r| !r.name.is_empty()),
+            "a resident has no name"
+        );
+        assert!(!scene.readables.is_empty(), "nothing to read in the place");
+        assert!(
+            scene.readables.iter().all(|r| !r.lines.is_empty()),
+            "a readable has an empty body"
+        );
+    }
+
+    #[test]
+    fn reading_a_slate_teaches_lore() {
+        // The knowledge loop: a slate's grant folds into what the avatar knows, once.
+        let mut sim = economy(8);
+        let tokens = vec!["what befell Maren".to_string()];
+        assert_eq!(sim.learn_lore(&tokens), tokens, "the fact was new");
+        assert!(sim.player_knows("what befell Maren"));
+        assert!(
+            sim.learn_lore(&tokens).is_empty(),
+            "re-reading the same slate teaches nothing new"
+        );
     }
 
     #[test]
