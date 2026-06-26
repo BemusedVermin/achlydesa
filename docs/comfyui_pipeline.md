@@ -45,10 +45,13 @@ python tools/comfy_gen.py --name avatar     --prompt "a hooded traveller with a 
 python tools/comfy_gen.py --name child      --prompt "a small barefoot village child" --seed 7
 ```
 
-It posts the API-format graph (`docs/comfyui/sprite_workflow_api.json`) to `/prompt`, waits, and saves
-the transparent PNG to `assets/sprites/<name>.png`. The constant sprite framing (front view, full
-body, feet-visible) is prepended automatically; `--raw` sends your prompt verbatim. Flags: `--seed`,
-`--negative`, `--workflow <path>`, `--out <dir>`; the `COMFY_URL` env var points at a non-default server.
+It posts the API-format graph (`docs/comfyui/sprite_workflow_api.json`) to `/prompt`, waits, saves the
+transparent PNG to `assets/sprites/<name>.png`, and **auto-reframes it feet-at-base** — trims the
+transparent margins and stands the figure centered on the bottom edge (nearest-neighbour, so pixels
+stay crisp) so it sits on the ground in-game with no manual crop. (Needs Pillow, which the ComfyUI
+Python env already has; `--no-frame` to skip.) The constant sprite framing is prepended to the prompt
+automatically; `--raw` sends it verbatim. Flags: `--seed`, `--negative`, `--workflow <path>`,
+`--out <dir>`; the `COMFY_URL` env var points at a non-default server.
 
 **The API is three calls:** `POST /prompt {"prompt": <graph>}` queues and returns a `prompt_id`;
 `GET /history/<prompt_id>` reports the outputs once it's done; `GET /view?filename=…` returns the PNG.

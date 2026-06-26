@@ -11,11 +11,13 @@ ComfyUI's HTTP API and get a PNG saved straight into `assets/`. Standard library
 
 The constant framing (front view, full body, feet-visible, sprite style) is prepended automatically;
 `--raw` sends the prompt verbatim instead. Override the server with COMFY_URL, the workflow with
---workflow, the output folder with --out. Crop the result so the feet touch the bottom edge before
-using it in-game (see docs/comfyui_pipeline.md).
+--workflow, the output folder with --out. The result is trimmed and reframed **feet-at-base** so it
+stands on the ground in-game (needs Pillow, which ComfyUI has; `--no-frame` to skip). See
+docs/comfyui_pipeline.md.
 """
 
 import argparse
+import io
 import json
 import os
 import pathlib
@@ -35,6 +37,33 @@ DEFAULT_NEGATIVE = (
     "multiple views, sprite sheet, turnaround, cropped, sitting, extra limbs, "
     "blurry, jpeg artifacts, text, watermark, busy background, drop shadow on ground"
 )
+# Output canvas — matches the in-game billboard quad aspect (SPRITE_W:SPRITE_H = 1.7:3.0).
+SPRITE_CANVAS = (256, 456)
+
+
+def frame_sprite(png_bytes, size=SPRITE_CANVAS):
+    """Trim the transparent margins and re-place the figure **feet-at-bottom, centered** on a
+    fixed-aspect canvas, so it stands on the ground in-game (nearest-neighbour keeps pixels crisp).
+    Needs Pillow — which the ComfyUI Python env already has; if it's missing, the raw image is saved
+    and you crop it by hand."""
+    try:
+        from PIL import Image
+    except ImportError:
+        print("(Pillow not found — saving the raw image; crop feet-to-base manually per the docs)")
+        return png_bytes
+    im = Image.open(io.BytesIO(png_bytes)).convert("RGBA")
+    bbox = im.getchannel("A").getbbox()  # tight box of the non-transparent figure
+    if bbox:
+        im = im.crop(bbox)
+    w, h = size
+    target_h = round(h * 0.95)  # a sliver of headroom
+    new_w = max(1, round(im.width * target_h / im.height))
+    im = im.resize((new_w, target_h), Image.NEAREST)
+    canvas = Image.new("RGBA", size, (0, 0, 0, 0))
+    canvas.paste(im, ((w - new_w) // 2, h - target_h), im)  # centered, feet on the bottom edge
+    buf = io.BytesIO()
+    canvas.save(buf, "PNG")
+    return buf.getvalue()
 
 
 def _api(path, payload=None):
@@ -63,6 +92,7 @@ def main():
     ap.add_argument("--negative", default=DEFAULT_NEGATIVE)
     ap.add_argument("--seed", type=int, default=None, help="fixed seed (default: random)")
     ap.add_argument("--raw", action="store_true", help="send --prompt verbatim, skip the sprite framing")
+    ap.add_argument("--no-frame", action="store_true", help="save the raw image; skip the feet-at-base reframe")
     ap.add_argument("--workflow", default=str(ROOT / "docs" / "comfyui" / "sprite_workflow_api.json"))
     ap.add_argument("--out", default=str(ROOT / "assets" / "sprites"))
     args = ap.parse_args()
@@ -106,12 +136,14 @@ def main():
     with urllib.request.urlopen(f"{COMFY}/view?{q}") as r:
         png = r.read()
 
+    if not args.no_frame:
+        png = frame_sprite(png)  # trim + stand feet-on-the-ground, ready to drop in
+
     out_dir = pathlib.Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
     dst = out_dir / f"{args.name}.png"
     dst.write_bytes(png)
-    print(f"saved {dst}")
-    print("next: crop so the feet touch the bottom edge, then run `cargo run -p app`")
+    print(f"saved {dst}  (run `cargo run -p app` and enter a settlement to see it)")
 
 
 if __name__ == "__main__":
