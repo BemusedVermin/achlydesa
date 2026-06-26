@@ -1882,6 +1882,18 @@ impl Simulation {
             .unwrap_or_else(|| "this place".to_string())
     }
 
+    /// The name of the discovered settlement the avatar stands *in*, if any — drives the "step
+    /// inside" prompt and the **Enter** verb. `None` when the avatar is not on a discovered
+    /// community (so the prompt/verb only appear where you can actually enter).
+    pub fn settlement_here(&self) -> Option<String> {
+        let at = self.player_position()?;
+        let cat = self.feature_catalog();
+        self.features_at(at)
+            .iter()
+            .find(|f| f.discovered && cat.def(f.kind).category == agent_core::Category::Community)
+            .map(|f| prettify(&cat.def(f.kind).name))
+    }
+
     /// Each soul the perception layer holds a charge on → a one-glance bearing word, so a scene can
     /// show who is troubled. Empty when the layer is off.
     fn charged_demeanour(

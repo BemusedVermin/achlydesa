@@ -104,6 +104,7 @@ impl Vital {
 pub enum ActionKind {
     Inspect,
     Travel,
+    Enter,
     Search,
     Use,
     Wait,
@@ -112,9 +113,10 @@ pub enum ActionKind {
     Scan,
 }
 // coupling-lint:allow const_all ACTIONS: the tray order for the closed ActionKind verb set (see its allow).
-const ACTIONS: [ActionKind; 8] = [
+const ACTIONS: [ActionKind; 9] = [
     ActionKind::Inspect,
     ActionKind::Travel,
+    ActionKind::Enter,
     ActionKind::Search,
     ActionKind::Use,
     ActionKind::Wait,
@@ -127,6 +129,7 @@ impl ActionKind {
         match self {
             ActionKind::Inspect => "Inspect",
             ActionKind::Travel => "Travel",
+            ActionKind::Enter => "Enter",
             ActionKind::Search => "Search",
             ActionKind::Use => "Use",
             ActionKind::Wait => "Wait",
@@ -615,6 +618,7 @@ struct ActionCtx {
     findable: bool,
     soul_near: bool,
     can_use: bool,
+    on_settlement: bool,
     in_convo: bool,
 }
 
@@ -627,6 +631,8 @@ fn action_ctx(g: &mut Game) -> ActionCtx {
         soul_near: !g.sim.player_nearby_npcs().is_empty(),
         // Is there an affordance the avatar can engage where it stands (a POI to *use*)?
         can_use: !g.sim.affordances_here().is_empty(),
+        // Is the avatar standing in a discovered settlement it can step into?
+        on_settlement: g.sim.settlement_here().is_some(),
         // A conversation or its who-to-talk-to chooser is modal over the tray.
         in_convo: g.convo.is_some() || g.talk_choices.is_some(),
     }
@@ -639,6 +645,8 @@ fn enabled(c: &ActionCtx, a: ActionKind) -> bool {
     match a {
         ActionKind::Inspect => true,
         ActionKind::Travel => c.has_sel && !c.traveling,
+        // Step into the settlement underfoot — only where you're standing in one.
+        ActionKind::Enter => c.on_settlement && !c.traveling,
         ActionKind::Search => !c.traveling && c.findable,
         // Use engages a smart-object (rest, water, forage, a craft) where the avatar stands.
         ActionKind::Use => c.can_use && !c.traveling,
@@ -693,6 +701,8 @@ pub fn update_action_buttons(
 /// pause menu owns the screen). Mirrors the keyboard verbs via the shared `crate::do_*` helpers.
 pub fn action_button_click(
     mut game: NonSendMut<Game>,
+    mut poi_target: ResMut<crate::poi_scene::PoiTarget>,
+    mut next: ResMut<NextState<crate::GameMode>>,
     q: Query<(&ActionButton, &Interaction), Changed<Interaction>>,
 ) {
     if game.paused || game.convo.is_some() || game.talk_choices.is_some() {
@@ -723,6 +733,12 @@ pub fn action_button_click(
                 } else {
                     "No path leads there on foot.".into()
                 };
+            }
+        }
+        ActionKind::Enter => {
+            if let Some(at) = g.sim.player_position() {
+                crate::poi_scene::request_enter(&mut poi_target, &mut next, at);
+                g.status = "You step toward the heart of the settlement.".into();
             }
         }
         ActionKind::Search => crate::do_search(g),

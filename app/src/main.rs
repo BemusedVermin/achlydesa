@@ -2547,6 +2547,13 @@ fn update_hud(
         .drama_nearby()
         .map(|d| format!("\n  {d}"))
         .unwrap_or_default();
+    // When the avatar stands in a settlement, say so — and how to step inside (the Enter verb /
+    // the lit "Enter" tray button). Without this the entry is undiscoverable.
+    let enter_cue: String = g
+        .sim
+        .settlement_here()
+        .map(|name| format!("\n  \u{2192} Press Enter to step into {name}"))
+        .unwrap_or_default();
 
     for (kind, mut text, mut vis) in &mut texts {
         text.0 = match kind {
@@ -2565,7 +2572,7 @@ fn update_hud(
                             format!("\nyou see: {}", v.here.features.join(", "))
                         };
                         format!(
-                            "Day {day}\n({}, {})  {}  {:.0} m\nfertile {:.2}   {} soul(s) near\nfog lifted from {} tiles{}{}{}{}",
+                            "Day {day}\n({}, {})  {}  {:.0} m\nfertile {:.2}   {} soul(s) near\nfog lifted from {} tiles{}{}{}{}{}",
                             v.pos.col,
                             v.pos.row,
                             v.here.terrain.name(),
@@ -2574,6 +2581,7 @@ fn update_hud(
                             v.nearby.len(),
                             explored,
                             feats,
+                            enter_cue,
                             drama_here,
                             search_cue,
                             charges,
