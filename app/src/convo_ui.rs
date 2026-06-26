@@ -55,7 +55,6 @@ const TALK_ROWS: usize = 8;
 /// from spawn; the update only swaps the string).
 #[derive(Component, Clone, Copy, PartialEq, Eq)]
 pub enum ConvoText {
-    Initial,
     Name,
     Dispo,
     Dialog,
@@ -125,32 +124,17 @@ pub fn spawn(commands: &mut Commands, f: &ThemeFonts) {
                 ..default()
             })
             .with_children(|col| {
+                // The speaker's procedural pixel **bust** — head and shoulders, sitting on the panel.
+                // The image is filled per-conversation by `update_convo_portrait`.
                 col.spawn((
                     ConvoPortrait,
                     Node {
-                        width: px(PORTRAIT_D),
-                        height: px(PORTRAIT_D),
-                        border: UiRect::all(px(3.0)),
-                        border_radius: BorderRadius::all(px(PORTRAIT_D / 2.0)),
-                        justify_content: JustifyContent::Center,
-                        align_items: AlignItems::Center,
+                        width: px(PORTRAIT_D * 1.1),
+                        height: px(PORTRAIT_D * 1.25),
                         ..default()
                     },
-                    BackgroundColor(Color::srgb(0.20, 0.22, 0.25)),
-                    BorderColor::all(theme::AWE),
-                ))
-                .with_children(|d| {
-                    d.spawn((
-                        ConvoText::Initial,
-                        Text::new(""),
-                        TextFont {
-                            font: f.serif.clone(),
-                            font_size: PORTRAIT_D * 0.42,
-                            ..default()
-                        },
-                        TextColor(theme::HEADING),
-                    ));
-                });
+                    ImageNode::default(),
+                ));
                 col.spawn((
                     ConvoText::Name,
                     theme::serif(f, "", theme::T_TITLE, theme::HEADING),
@@ -408,7 +392,6 @@ pub fn update_convo_panel(
     game: NonSend<Game>,
     time: Res<Time>,
     mut root: Query<&mut Visibility, With<ConvoRoot>>,
-    mut portrait: Query<&mut BackgroundColor, With<ConvoPortrait>>,
     mut texts: Query<(&ConvoText, &mut Text)>,
 ) {
     let Some(c) = &game.convo else {
@@ -435,21 +418,7 @@ pub fn update_convo_panel(
         }
     };
 
-    // Portrait sigil — the speaker's archetype tint + initial.
-    let initial = c
-        .name
-        .chars()
-        .next()
-        .map(|ch| ch.to_uppercase().to_string())
-        .unwrap_or_default();
-    let tint = hud::archetype_tint(&format!(
-        "{}/{}",
-        game.sim.archetype_of(c.listener).unwrap_or(""),
-        c.name
-    ));
-    if let Ok(mut bg) = portrait.single_mut() {
-        bg.0 = tint;
-    }
+    // (The speaker's bust is drawn by `update_convo_portrait`, not here.)
 
     // The transcript, revealed RPG-style; an animated ellipsis while a reply is still generating.
     let dots = [".", "..", "..."][((time.elapsed_secs() * 3.0) as usize) % 3];
@@ -474,7 +443,6 @@ pub fn update_convo_panel(
 
     for (role, mut text) in &mut texts {
         text.0 = match role {
-            ConvoText::Initial => initial.clone(),
             ConvoText::Name => c.name.clone(),
             ConvoText::Dispo => dispo.clone(),
             ConvoText::Dialog => dialog.clone(),

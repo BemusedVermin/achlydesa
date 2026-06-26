@@ -44,6 +44,7 @@ mod minimap;
 mod outline;
 mod palette;
 mod poi_scene;
+mod portraits;
 mod props;
 mod scatter;
 mod sprites;
@@ -278,6 +279,8 @@ struct Convo {
     /// A **charge** this soul is offering (it leads a live thread) — `None` if it has none, or it has
     /// already been taken. The "take up the charge" button reads this.
     offer: Option<agents::Quest>,
+    /// The speaker's procedural pixel bust, generated once on open by `update_convo_portrait`.
+    bust: Option<Handle<Image>>,
 }
 
 /// One line of the open conversation, revealed like classic RPG text. The character's reply
@@ -463,6 +466,7 @@ fn main() {
             talk_input,
             poll_voice,
             tick_typewriter,
+            update_convo_portrait,
             convo_ui::update_convo_panel,
             convo_ui::style_speak_choices,
             convo_ui::speak_choice_click,
@@ -2114,8 +2118,37 @@ fn open_conversation_with(g: &mut Game, npc: Entity) {
         transcript,
         input: String::new(),
         offer,
+        bust: None,
     });
     g.status = format!("You fall into talk with {name}.");
+}
+
+/// Draw the speaker's procedural pixel **bust** into the conversation portrait — once per open
+/// conversation (cached on `Convo::bust`). Deterministic per soul (seeded from archetype + name, the
+/// key the sigil used), so a face is recognisably theirs.
+fn update_convo_portrait(
+    mut game: NonSendMut<Game>,
+    mut images: ResMut<Assets<Image>>,
+    mut portrait: Query<&mut ImageNode, With<convo_ui::ConvoPortrait>>,
+) {
+    if !game.convo.as_ref().is_some_and(|c| c.bust.is_none()) {
+        return;
+    }
+    let (name, archetype) = {
+        let c = game.convo.as_ref().unwrap();
+        let arch = game.sim.archetype_of(c.listener).unwrap_or("").to_string();
+        (c.name.clone(), arch)
+    };
+    let bust = images.add(portraits::procedural_bust(
+        portraits::seed_of(&format!("{archetype}/{name}")),
+        &archetype,
+    ));
+    if let Ok(mut node) = portrait.single_mut() {
+        node.image = bust.clone();
+    }
+    if let Some(c) = game.convo.as_mut() {
+        c.bust = Some(bust);
+    }
 }
 
 /// **Talk** — press **T** by a soul to open a free-text conversation, then *type* to it;
