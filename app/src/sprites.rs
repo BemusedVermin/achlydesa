@@ -131,7 +131,10 @@ fn pick(rng: &mut crate::props::Rng, xs: &[[u8; 4]]) -> [u8; 4] {
 }
 
 /// The shirt colour, biased by archetype so a class reads at a glance; otherwise seed-chosen.
+/// Draws the seed-chosen colour **unconditionally** so the archetype only swaps the result, never the
+/// RNG position — otherwise the same seed would yield different hair/beard for a smith vs. a farmer.
 fn shirt_for(archetype: &str, rng: &mut crate::props::Rng) -> [u8; 4] {
+    let seeded = pick(rng, B_SHIRT);
     let a = archetype.to_ascii_lowercase();
     if a.contains("noble") || a.contains("court") || a.contains("lord") {
         [96, 64, 72, 255]
@@ -147,7 +150,7 @@ fn shirt_for(archetype: &str, rng: &mut crate::props::Rng) -> [u8; 4] {
     {
         [86, 70, 56, 255]
     } else {
-        pick(rng, B_SHIRT)
+        seeded
     }
 }
 
@@ -183,8 +186,10 @@ pub fn procedural_body_sprite(seed: u64, archetype: &str) -> Image {
         brect(&mut buf, ax - 1, 40, ax + 1, 43, skin);
     }
 
-    // A vest / apron panel for some — a quick class read.
-    if archetype.contains("smith") || rng.chance(0.25) {
+    // A vest / apron panel for some — a quick class read. Draw the chance unconditionally (before the
+    // `smith` short-circuit) so the figure's later hair/baldness/beard stay put across archetypes.
+    let seeded_vest = rng.chance(0.25);
+    if archetype.contains("smith") || seeded_vest {
         brect(&mut buf, cx - 4, 24, cx + 4, 42, bshade(shirt, 0.7));
     }
 

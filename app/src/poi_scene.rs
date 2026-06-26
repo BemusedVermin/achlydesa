@@ -425,12 +425,13 @@ fn build_diorama(
         let a = std::f32::consts::FRAC_PI_2 + (t - 0.5) * spread;
         let r = rng.range(3.0, 5.0);
         let pos = Vec3::new(r * a.cos(), 0.0, r * a.sin());
-        // Each resident is their *own* procedural figure, cached per soul so it's stable across visits.
-        let seed = crate::sprites::seed_of(&res.name);
+        // Each resident is their *own* procedural figure, keyed by the **ECS-stable entity id** (two
+        // souls can share a name), cached so a soul keeps its body across visits.
+        let seed = res.entity.to_bits();
         let mat = match cache.0.get(&seed) {
             Some(h) => h.clone(),
             None => {
-                let h = body_material(images, materials, None, seed, "");
+                let h = body_material(images, materials, None, seed, &res.archetype);
                 cache.0.insert(seed, h.clone());
                 h
             }
