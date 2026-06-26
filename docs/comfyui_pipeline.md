@@ -46,11 +46,12 @@ python tools/comfy_gen.py --name child      --prompt "a small barefoot village c
 ```
 
 It posts the API-format graph (`docs/comfyui/sprite_workflow_api.json`) to `/prompt`, waits, saves the
-transparent PNG to `assets/sprites/<name>.png`, and **auto-reframes it feet-at-base** — trims the
-transparent margins and stands the figure centered on the bottom edge (nearest-neighbour, so pixels
-stay crisp) so it sits on the ground in-game with no manual crop. (Needs Pillow, which the ComfyUI
-Python env already has; `--no-frame` to skip.) The constant sprite framing is prepended to the prompt
-automatically; `--raw` sends it verbatim. Flags: `--seed`, `--negative`, `--workflow <path>`,
+transparent PNG to `assets/sprites/<name>.png`, and **makes it game-ready**: trims the transparent
+margins, **shrinks it to a pixel-art resolution** (`--pixels`, default 128 — so SDXL's photographic
+detail, the uncanny faces, collapses into readable blocks; the game point-samples it, so the low-res
+PNG stays crisp), and stands the figure feet-at-base on the bottom edge. No manual crop. (Needs Pillow,
+which the ComfyUI env has; `--no-frame` to skip.) The constant sprite framing is prepended to the
+prompt; `--raw` sends it verbatim. Flags: `--seed`, `--pixels`, `--negative`, `--workflow <path>`,
 `--out <dir>`; the `COMFY_URL` env var points at a non-default server.
 
 **The API is three calls:** `POST /prompt {"prompt": <graph>}` queues and returns a `prompt_id`;
