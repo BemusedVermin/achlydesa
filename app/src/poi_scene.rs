@@ -199,8 +199,11 @@ pub(crate) fn enter_scene(
     ra: Res<RenderAssets>,
     mut cam: Query<&mut Camera, With<PoiCam>>,
 ) {
+    // The only caller (`request_enter`) always sets the target before the transition; if it didn't,
+    // `in_state(PoiScene)` systems would panic on the missing `PoiScene` resource a frame later, so
+    // fail loudly here at the actual bug instead.
     let Some(place) = target.0.take() else {
-        return;
+        panic!("OnEnter(PoiScene) fired with no PoiTarget set — caller must request_enter first");
     };
     let view = game.sim.scene_at(place);
     build_diorama(&mut commands, &assets, &lib, &ra, &view);
