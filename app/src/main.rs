@@ -857,6 +857,7 @@ fn setup(
     combat::spawn_combat_ui(&mut commands, &theme_fonts, &mut images);
     poi_scene::spawn_infra(
         &mut commands,
+        &asset_server,
         &mut meshes,
         &mut toon_mats,
         &mut images,

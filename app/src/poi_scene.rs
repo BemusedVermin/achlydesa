@@ -55,46 +55,90 @@ pub(crate) struct PoiAssets {
 const SPRITE_H: f32 = 3.0;
 const SPRITE_W: f32 = 1.7;
 
+/// The asset root the running game reads from — mirrors `AssetPlugin.file_path` (`../assets`
+/// resolved from `CARGO_MANIFEST_DIR`) — so a drop-in file is detected at the *same* place the asset
+/// server will load it. Compile-time, so it's cwd-independent under `cargo run`.
+const ASSET_ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../assets");
+
+/// Load `assets/<rel>` **iff the file is actually there**, else `None`. This is the whole drop-in
+/// mechanism: author a real sprite/texture, save it to the catalogued path, and it replaces its
+/// placeholder on the next run with no code change. A missing file would otherwise load as a broken
+/// (opaque white) texture and wreck the alpha mask, so the existence check matters.
+fn loaded_if_present(asset_server: &AssetServer, rel: &str) -> Option<Handle<Image>> {
+    std::path::Path::new(ASSET_ROOT)
+        .join(rel)
+        .exists()
+        .then(|| asset_server.load(rel.to_string()))
+}
+
 /// Build the diorama's shared assets — the cel-shaded ground/plaza/slate, plus the HD-2D character
-/// **sprite** pieces (an upright quad + placeholder-silhouette materials).
+/// **sprite** pieces. Each surface/sprite uses a real authored file when present (see
+/// `assets/sprites/`, `assets/textures/`), otherwise a procedural placeholder.
 pub(crate) fn build_assets(
+    asset_server: &AssetServer,
     meshes: &mut Assets<Mesh>,
     toon_mats: &mut Assets<ToonMaterial>,
     images: &mut Assets<Image>,
     materials: &mut Assets<StandardMaterial>,
 ) -> PoiAssets {
     let silhouette = images.add(crate::sprites::placeholder_silhouette(128, 224));
-    // A tinted, alpha-masked, unlit sprite: the mask makes the depth prepass (hence the cel outline)
-    // trace the silhouette, so the placeholder already reads as a cel-outlined character.
-    let sprite_mat = |tint: Color| StandardMaterial {
-        base_color: tint,
-        base_color_texture: Some(silhouette.clone()),
-        alpha_mode: AlphaMode::Mask(0.5),
-        unlit: true,
-        ..default()
+    // An alpha-masked, unlit sprite. With a real sprite (`base_color = WHITE`) the art shows as drawn;
+    // with the placeholder, `base_color` *tints* the white silhouette. The mask makes the depth
+    // prepass — hence the cel outline — trace the figure either way.
+    let sprite_mat = |real: Option<Handle<Image>>, tint: Color| {
+        let (base_color, texture) = match real {
+            Some(h) => (Color::WHITE, h),
+            None => (tint, silhouette.clone()),
+        };
+        StandardMaterial {
+            base_color,
+            base_color_texture: Some(texture),
+            alpha_mode: AlphaMode::Mask(0.5),
+            unlit: true,
+            ..default()
+        }
+    };
+    // A cel surface: a real tileable texture when present (untinted), else the flat fallback colour.
+    let surface = |rel: &str, fallback: Color, roughness: f32| {
+        let (base_color, base_color_texture) = match loaded_if_present(asset_server, rel) {
+            Some(h) => (Color::WHITE, Some(h)),
+            None => (fallback, None),
+        };
+        toon(StandardMaterial {
+            base_color,
+            base_color_texture,
+            perceptual_roughness: roughness,
+            ..default()
+        })
     };
     PoiAssets {
         ground_mesh: meshes.add(Cylinder::new(15.0, 0.4)),
-        ground_mat: toon_mats.add(toon(StandardMaterial {
-            base_color: Color::srgb(0.34, 0.40, 0.26),
-            perceptual_roughness: 0.97,
-            ..default()
-        })),
+        ground_mat: toon_mats.add(surface(
+            "textures/ground_grass.png",
+            Color::srgb(0.34, 0.40, 0.26),
+            0.97,
+        )),
         plaza_mesh: meshes.add(Cylinder::new(7.0, 0.18)),
-        plaza_mat: toon_mats.add(toon(StandardMaterial {
-            base_color: Color::srgb(0.46, 0.44, 0.40),
-            perceptual_roughness: 0.95,
-            ..default()
-        })),
+        plaza_mat: toon_mats.add(surface(
+            "textures/plaza_stone.png",
+            Color::srgb(0.46, 0.44, 0.40),
+            0.95,
+        )),
         slate_mesh: meshes.add(Cuboid::new(1.3, 2.0, 0.28)),
-        slate_mat: toon_mats.add(toon(StandardMaterial {
-            base_color: Color::srgb(0.30, 0.31, 0.36),
-            perceptual_roughness: 0.9,
-            ..default()
-        })),
+        slate_mat: toon_mats.add(surface(
+            "textures/slate_face.png",
+            Color::srgb(0.30, 0.31, 0.36),
+            0.9,
+        )),
         sprite_mesh: meshes.add(Rectangle::new(SPRITE_W, SPRITE_H)),
-        sprite_avatar_mat: materials.add(sprite_mat(Color::srgb(0.96, 0.80, 0.30))),
-        sprite_npc_mat: materials.add(sprite_mat(Color::srgb(0.72, 0.78, 0.86))),
+        sprite_avatar_mat: materials.add(sprite_mat(
+            loaded_if_present(asset_server, "sprites/avatar.png"),
+            Color::srgb(0.96, 0.80, 0.30),
+        )),
+        sprite_npc_mat: materials.add(sprite_mat(
+            loaded_if_present(asset_server, "sprites/townsfolk.png"),
+            Color::srgb(0.72, 0.78, 0.86),
+        )),
     }
 }
 
@@ -145,15 +189,23 @@ pub(crate) fn request_enter(target: &mut PoiTarget, next: &mut NextState<GameMod
 
 // ── Startup: the scene camera, its light, and the overlay UI ─────────────────────────────────────
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn spawn_infra(
     commands: &mut Commands,
+    asset_server: &AssetServer,
     meshes: &mut Assets<Mesh>,
     toon_mats: &mut Assets<ToonMaterial>,
     images: &mut Assets<Image>,
     materials: &mut Assets<StandardMaterial>,
     fonts: &ThemeFonts,
 ) {
-    commands.insert_resource(build_assets(meshes, toon_mats, images, materials));
+    commands.insert_resource(build_assets(
+        asset_server,
+        meshes,
+        toon_mats,
+        images,
+        materials,
+    ));
 
     // The diorama camera: orthographic 2.5-D like the overworld, on layer 1, inactive until a scene
     // opens. The depth prepass earns the cel outline for free (see `outline.rs`); HDR + Bloom give
