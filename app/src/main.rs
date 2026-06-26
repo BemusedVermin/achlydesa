@@ -526,12 +526,18 @@ fn main() {
             poi_scene::poi_clicks,
             poi_scene::poi_camera,
             poi_scene::dev_read,
+            poi_scene::dev_leave,
         )
             .run_if(in_state(GameMode::PoiScene)),
     )
     .add_systems(
         Update,
-        (poi_scene::update_poi_overlay, poi_enter_input, dev_poi),
+        (
+            poi_scene::update_poi_overlay,
+            poi_enter_input,
+            dev_poi,
+            enforce_single_scene,
+        ),
     )
     .add_systems(
         Update,
@@ -1267,8 +1273,18 @@ fn sheet_input(keys: Res<ButtonInput<KeyCode>>, mut game: NonSendMut<Game>) {
 
 /// **Esc** — the back button. A conversation handles its own Esc (in `talk_input`, which runs
 /// after this); otherwise Esc closes an open panel (journal/sheet), or toggles the pause menu.
-fn pause_input(keys: Res<ButtonInput<KeyCode>>, mut game: NonSendMut<Game>) {
-    if game.convo.is_some() || game.combat.is_some() || !keys.just_pressed(KeyCode::Escape) {
+fn pause_input(
+    keys: Res<ButtonInput<KeyCode>>,
+    state: Res<State<GameMode>>,
+    mut game: NonSendMut<Game>,
+) {
+    // Inside the POI scene, Esc belongs to the scene (close a slate / step back out) — never the
+    // pause menu, which would otherwise open *over* the still-rendering diorama.
+    if game.convo.is_some()
+        || game.combat.is_some()
+        || *state.get() == GameMode::PoiScene
+        || !keys.just_pressed(KeyCode::Escape)
+    {
         return;
     }
     // Esc first dismisses the who-to-talk-to chooser; otherwise it toggles the pause menu.
@@ -1554,6 +1570,24 @@ fn hide_hud_in_combat(
 /// Hide the floating overworld place-labels while in another context. They own their visibility in
 /// the overworld via `ui::update_labels`, which is suspended off-overworld — so this only runs (and
 /// only ever hides) outside it, leaving no two systems fighting over the same `Visibility`.
+/// Runtime guard for the **single-scene invariant**: away from the POI scene, the diorama camera
+/// must be asleep and no diorama entity may exist — so the overworld and a settlement scene are
+/// never both drawing. A `debug_assert`, so a teardown leak (the "town kept rendering after I left"
+/// bug) fails loudly the instant it happens, at zero release cost.
+fn enforce_single_scene(
+    state: Res<State<GameMode>>,
+    poi_cam: Query<&Camera, With<poi_scene::PoiCam>>,
+    diorama: Query<(), With<poi_scene::PoiProp>>,
+) {
+    let in_poi = *state.get() == GameMode::PoiScene;
+    let cam_active = poi_cam.single().map(|c| c.is_active).unwrap_or(false);
+    let count = diorama.iter().count();
+    debug_assert!(
+        poi_scene::scene_invariant_holds(in_poi, cam_active, count),
+        "two scenes rendering: in_poi={in_poi} poi_cam_active={cam_active} diorama_entities={count}"
+    );
+}
+
 fn hide_labels_off_overworld(mut q: Query<&mut Visibility, With<ui::MapLabel>>) {
     for mut v in &mut q {
         *v = Visibility::Hidden;
