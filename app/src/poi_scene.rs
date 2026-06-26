@@ -22,7 +22,7 @@ use std::f32::consts::TAU;
 
 use crate::props::{Prop, PropLibrary, Rng};
 use crate::toon::{ToonMaterial, toon};
-use crate::{Game, GameMode, RenderAssets};
+use crate::{Game, GameMode};
 
 /// The render layer the diorama and its camera/light share — invisible to the overworld camera.
 const SCENE_LAYER: usize = 1;
@@ -43,15 +43,36 @@ pub(crate) struct PoiAssets {
     plaza_mat: Handle<ToonMaterial>,
     slate_mesh: Handle<Mesh>,
     slate_mat: Handle<ToonMaterial>,
-    figure_mesh: Handle<Mesh>,
+    /// An upright quad for the HD-2D character **billboards** — feet at the base, faces the camera.
+    sprite_mesh: Handle<Mesh>,
+    /// Placeholder sprite materials (silhouette texture, alpha-masked, tinted): the gold avatar and
+    /// the cool townsfolk. Swap `base_color_texture` for real art — see `docs/hd2d_assets.md`.
+    sprite_avatar_mat: Handle<StandardMaterial>,
+    sprite_npc_mat: Handle<StandardMaterial>,
 }
 
-/// Build the diorama's shared assets — a grassy ground disc, a paved plaza, a stone slate, and a
-/// person-sized figure capsule (the cel material bands them like the rest of the world).
+/// The billboard quad's height in world units — a person, tall enough to read beside the buildings.
+const SPRITE_H: f32 = 3.0;
+const SPRITE_W: f32 = 1.7;
+
+/// Build the diorama's shared assets — the cel-shaded ground/plaza/slate, plus the HD-2D character
+/// **sprite** pieces (an upright quad + placeholder-silhouette materials).
 pub(crate) fn build_assets(
     meshes: &mut Assets<Mesh>,
     toon_mats: &mut Assets<ToonMaterial>,
+    images: &mut Assets<Image>,
+    materials: &mut Assets<StandardMaterial>,
 ) -> PoiAssets {
+    let silhouette = images.add(crate::sprites::placeholder_silhouette(128, 224));
+    // A tinted, alpha-masked, unlit sprite: the mask makes the depth prepass (hence the cel outline)
+    // trace the silhouette, so the placeholder already reads as a cel-outlined character.
+    let sprite_mat = |tint: Color| StandardMaterial {
+        base_color: tint,
+        base_color_texture: Some(silhouette.clone()),
+        alpha_mode: AlphaMode::Mask(0.5),
+        unlit: true,
+        ..default()
+    };
     PoiAssets {
         ground_mesh: meshes.add(Cylinder::new(15.0, 0.4)),
         ground_mat: toon_mats.add(toon(StandardMaterial {
@@ -71,7 +92,9 @@ pub(crate) fn build_assets(
             perceptual_roughness: 0.9,
             ..default()
         })),
-        figure_mesh: meshes.add(Capsule3d::new(0.42, 1.5)),
+        sprite_mesh: meshes.add(Rectangle::new(SPRITE_W, SPRITE_H)),
+        sprite_avatar_mat: materials.add(sprite_mat(Color::srgb(0.96, 0.80, 0.30))),
+        sprite_npc_mat: materials.add(sprite_mat(Color::srgb(0.72, 0.78, 0.86))),
     }
 }
 
@@ -126,12 +149,15 @@ pub(crate) fn spawn_infra(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
     toon_mats: &mut Assets<ToonMaterial>,
+    images: &mut Assets<Image>,
+    materials: &mut Assets<StandardMaterial>,
     fonts: &ThemeFonts,
 ) {
-    commands.insert_resource(build_assets(meshes, toon_mats));
+    commands.insert_resource(build_assets(meshes, toon_mats, images, materials));
 
     // The diorama camera: orthographic 2.5-D like the overworld, on layer 1, inactive until a scene
-    // opens. The depth prepass earns the cel outline for free (see `outline.rs`).
+    // opens. The depth prepass earns the cel outline for free (see `outline.rs`); HDR + Bloom give
+    // the soft HD-2D glow. `Tonemapping` keeps the cel colours where they were under HDR.
     let rig = PoiCamRig {
         yaw: 0.45,
         pitch: 0.62,
@@ -147,6 +173,9 @@ pub(crate) fn spawn_infra(
             clear_color: ClearColorConfig::Custom(Color::srgb(0.50, 0.56, 0.64)),
             ..default()
         },
+        // NOTE: HDR + Bloom (the soft HD-2D glow) are deferred — a secondary HDR camera composited
+        // over the LDR overworld through the custom outline post-process renders black; it needs the
+        // render graph sorted out. The outline is already format-aware (LDR/HDR) for when it lands.
         Projection::Orthographic(OrthographicProjection {
             scaling_mode: ScalingMode::FixedVertical {
                 viewport_height: 1.0,
@@ -196,7 +225,6 @@ pub(crate) fn enter_scene(
     mut target: ResMut<PoiTarget>,
     assets: Res<PoiAssets>,
     lib: Res<PropLibrary>,
-    ra: Res<RenderAssets>,
     mut cam: Query<&mut Camera, With<PoiCam>>,
 ) {
     // The only caller (`request_enter`) always sets the target before the transition; if it didn't,
@@ -206,7 +234,7 @@ pub(crate) fn enter_scene(
         panic!("OnEnter(PoiScene) fired with no PoiTarget set — caller must request_enter first");
     };
     let view = game.sim.scene_at(place);
-    build_diorama(&mut commands, &assets, &lib, &ra, &view);
+    build_diorama(&mut commands, &assets, &lib, &view);
     if let Ok(mut c) = cam.single_mut() {
         c.is_active = true;
     }
@@ -237,13 +265,7 @@ pub(crate) fn exit_scene(
 
 /// Spawn the diorama — ground, plaza, a ring of buildings, the resident figures, the avatar, and the
 /// slates — at the local origin on the scene layer.
-fn build_diorama(
-    commands: &mut Commands,
-    assets: &PoiAssets,
-    lib: &PropLibrary,
-    ra: &RenderAssets,
-    view: &SceneView,
-) {
+fn build_diorama(commands: &mut Commands, assets: &PoiAssets, lib: &PropLibrary, view: &SceneView) {
     let layer = RenderLayers::layer(SCENE_LAYER);
     let mut rng = Rng::new(0x5CE7_1107 ^ tile_salt(view.place));
 
@@ -310,21 +332,22 @@ fn build_diorama(
         let pos = Vec3::new(r * a.cos(), 0.0, r * a.sin());
         commands.spawn((
             PoiProp,
-            Mesh3d(assets.figure_mesh.clone()),
-            MeshMaterial3d(ra.npc_mat.clone()),
-            Transform::from_translation(pos + Vec3::Y * 1.17)
-                .with_rotation(Quat::from_rotation_y(rng.range(-0.4, 0.4))),
+            crate::sprites::Billboard,
+            Mesh3d(assets.sprite_mesh.clone()),
+            MeshMaterial3d(assets.sprite_npc_mat.clone()),
+            Transform::from_translation(pos + Vec3::Y * (SPRITE_H * 0.5)),
             layer.clone(),
         ));
         let _ = (i, res);
     }
 
-    // You, at the mouth of the square.
+    // You, at the mouth of the square — the gold sprite.
     commands.spawn((
         PoiProp,
-        Mesh3d(assets.figure_mesh.clone()),
-        MeshMaterial3d(ra.avatar_mat.clone()),
-        Transform::from_translation(Vec3::new(0.0, 1.17, 7.0)),
+        crate::sprites::Billboard,
+        Mesh3d(assets.sprite_mesh.clone()),
+        MeshMaterial3d(assets.sprite_avatar_mat.clone()),
+        Transform::from_translation(Vec3::new(0.0, SPRITE_H * 0.5, 7.0)),
         layer.clone(),
     ));
 
@@ -409,6 +432,18 @@ pub(crate) fn poi_camera(
         }
     }
     *tf = poi_cam_transform(&rig);
+}
+
+/// Turn every character billboard to face the scene camera, so the 2-D sprites read as standing
+/// people from any orbit angle — the SO2R billboard behaviour.
+#[allow(clippy::type_complexity)]
+pub(crate) fn billboard_sprites(
+    cam: Query<&Transform, (With<PoiCam>, Without<crate::sprites::Billboard>)>,
+    mut sprites: Query<&mut Transform, (With<crate::sprites::Billboard>, Without<PoiCam>)>,
+) {
+    if let Ok(cam_tf) = cam.single() {
+        crate::sprites::face_camera(cam_tf.translation, sprites.iter_mut());
+    }
 }
 
 // ── Input: Esc backs out (reading → conversation → leave the place) ──────────────────────────

@@ -81,7 +81,13 @@ impl ViewNode for OutlineNode {
         let Some(depth) = &prepass.depth else {
             return Ok(());
         };
-        let Some(pipeline) = pipeline_cache.get_render_pipeline(outline.pipeline_id) else {
+        // Pick the pipeline whose target format matches this view (HDR scene camera vs LDR overworld).
+        let pipeline_id = if target.main_texture_format() == ViewTarget::TEXTURE_FORMAT_HDR {
+            outline.pipeline_hdr
+        } else {
+            outline.pipeline_ldr
+        };
+        let Some(pipeline) = pipeline_cache.get_render_pipeline(pipeline_id) else {
             return Ok(());
         };
 
@@ -126,7 +132,11 @@ impl ViewNode for OutlineNode {
 struct OutlinePipeline {
     layout: BindGroupLayoutDescriptor,
     sampler: Sampler,
-    pipeline_id: CachedRenderPipelineId,
+    /// One pipeline per view colour format: the outline runs over both the LDR overworld camera and
+    /// the **HDR** (bloom) scene camera, whose post-process targets differ — a pipeline whose target
+    /// format mismatches the pass panics, so we keep one of each and pick by the view's format.
+    pipeline_ldr: CachedRenderPipelineId,
+    pipeline_hdr: CachedRenderPipelineId,
 }
 
 fn init_outline_pipeline(
@@ -156,26 +166,29 @@ fn init_outline_pipeline(
         ..default()
     });
 
-    // The camera is non-HDR, so the post-process targets are in the default LDR format.
-    let pipeline_id = pipeline_cache.queue_render_pipeline(RenderPipelineDescriptor {
-        label: Some("outline_pipeline".into()),
-        layout: vec![layout.clone()],
-        vertex: fullscreen_shader.to_vertex_state(),
-        fragment: Some(FragmentState {
-            shader: asset_server.load("shaders/outline.wgsl"),
-            targets: vec![Some(ColorTargetState {
-                format: TextureFormat::bevy_default(),
-                blend: None,
-                write_mask: ColorWrites::ALL,
-            })],
+    let shader = asset_server.load("shaders/outline.wgsl");
+    let mut queue = |format: TextureFormat| {
+        pipeline_cache.queue_render_pipeline(RenderPipelineDescriptor {
+            label: Some("outline_pipeline".into()),
+            layout: vec![layout.clone()],
+            vertex: fullscreen_shader.to_vertex_state(),
+            fragment: Some(FragmentState {
+                shader: shader.clone(),
+                targets: vec![Some(ColorTargetState {
+                    format,
+                    blend: None,
+                    write_mask: ColorWrites::ALL,
+                })],
+                ..default()
+            }),
             ..default()
-        }),
-        ..default()
-    });
+        })
+    };
 
     commands.insert_resource(OutlinePipeline {
+        pipeline_ldr: queue(TextureFormat::bevy_default()),
+        pipeline_hdr: queue(ViewTarget::TEXTURE_FORMAT_HDR),
         layout,
         sampler,
-        pipeline_id,
     });
 }
