@@ -475,12 +475,14 @@ pub(crate) fn perception_step(
             .collect(),
         None => HashSet::new(),
     };
-    let by_id: HashMap<u64, &Episode> = chronicle.recent().map(|e| (e.id, e)).collect();
+    // The ring, collected once (oldest→newest) so it can be id-indexed and walked in reverse.
+    let recent: Vec<&Episode> = chronicle.recent().collect();
+    let by_id: HashMap<u64, &Episode> = recent.iter().map(|&e| (e.id, e)).collect();
     // Recurrence (S7 apophenia): how many *distinct places* a soul's name turns up at across the
     // Chronicle. A figure who recurs across POIs rises, so "the same name keeps appearing" surfaces
     // of itself in the budgeted views — no authored meaning, just legible breadcrumbs.
     let mut places_of: HashMap<Entity, HashSet<Coord>> = HashMap::new();
-    for ep in chronicle.recent() {
+    for ep in &recent {
         for party in ep.parties.iter().flatten() {
             places_of.entry(*party).or_default().insert(ep.place);
         }
@@ -497,6 +499,33 @@ pub(crate) fn perception_step(
             tell_from_candidate(cand, &by_id, avatar_pos, &bonded, &recur, width, &cfg)
         })
         .collect();
+
+    // The director's **beats** — the manufactured drama, the loudest and earliest there is — are
+    // recorded as `BeatFired` episodes, but *no Sifter pattern matches them* (the patterns key off
+    // emergent events: grudges, wars, deaths). So Γ's whole hand was invisible to every surface, and
+    // since emergent stories accrete slowly, a short session surfaced nothing at all. Surface the
+    // recent beats directly — the one production path that isn't a multi-step Sifter match — so the
+    // director's drama is legible the moment it moves. One per soul (a richer emergent story wins),
+    // newest first, capped.
+    let mut subjects: HashSet<Entity> = tells.iter().map(|t| t.subject).collect();
+    for &ep in recent.iter().rev() {
+        if tells.len() >= STANDALONE_CAP {
+            break;
+        }
+        if ep.kind != EpisodeKind::BeatFired {
+            continue;
+        }
+        let Some(subject) = ep.parties[0] else {
+            continue;
+        };
+        if !subjects.insert(subject) {
+            continue; // already the subject of a (richer) candidate or earlier beat
+        }
+        if let Some(tell) = tell_from_episode(ep, avatar_pos, &bonded, &recur, width, &cfg) {
+            tells.push(tell);
+        }
+    }
+
     // Highest salience first; deterministic tiebreak by the leading source episode, then subject — a
     // total order so the ranking is reproducible run to run.
     tells.sort_by(|a, b| {
@@ -568,6 +597,54 @@ fn tell_from_candidate(
             register: Some(cand.register),
             magnitude: cand.interest,
             tier_gate: tier_of(provenance),
+        },
+    })
+}
+
+/// The base dissonance a director **beat** carries — its loudness before proximity / bond / recurrence.
+const BEAT_BASE: f32 = 0.55;
+/// The most `Tell`s the pass holds (candidates + surfaced beats) — a backstop against a vast ring.
+const STANDALONE_CAP: usize = 48;
+
+/// Derive one `Tell` from a single director **beat** (`BeatFired`) episode — the manufactured-drama
+/// production path (the second cadence of `docs/perception_layer.md` S2), distinct from a multi-step
+/// Sifter match. Wholly Γ-authored, so it gates its provenance behind a `Deep` read like any authored
+/// charge, and renders through the beat's own register.
+fn tell_from_episode(
+    ep: &Episode,
+    avatar_pos: Option<Coord>,
+    bonded: &HashSet<Entity>,
+    recur: &HashMap<Entity, usize>,
+    width: i32,
+    cfg: &PerceptionCfg,
+) -> Option<Tell> {
+    let subject = ep.parties[0]?;
+    let proximity = avatar_pos.map_or(0.0, |ap| proximity_term(ap, ep.place, width, cfg.reach));
+    let bond = if bonded.contains(&subject) { 1.0 } else { 0.0 };
+    let recurrence = recur_term(recur.get(&subject).copied().unwrap_or(0));
+    let salience = cfg.w_dissonance * BEAT_BASE
+        + cfg.w_proximity * proximity
+        + cfg.w_authorship   // a beat is wholly Γ's hand — full authorship
+        + cfg.w_bond * bond
+        + cfg.w_recurrence * recurrence;
+    if salience < cfg.min_salience {
+        return None;
+    }
+    Some(Tell {
+        subject,
+        kind: TellKind::Tension,
+        salience,
+        provenance: ep.provenance,
+        anchor: Anchor {
+            place: Some(ep.place),
+            when: When::Past(ep.tick),
+        },
+        source: [ep.id].into_iter().collect(),
+        hints: RealizeHints {
+            actors: ep.parties.iter().flatten().copied().collect(),
+            register: ep.register,
+            magnitude: BEAT_BASE,
+            tier_gate: tier_of(ep.provenance),
         },
     })
 }
@@ -918,6 +995,49 @@ mod tests {
             cfg.w_recurrence
         );
         assert!(recurring.salience > bare.salience, "a recurring name rises");
+    }
+
+    #[test]
+    fn a_director_beat_surfaces_as_a_tell() {
+        // The director's manufactured drama (a BeatFired episode) has no Sifter pattern, so it would
+        // be invisible — surface it directly, carrying the beat's own register and Γ's authorship.
+        let reg = Registry::bundled();
+        let betrayal = reg
+            .register_id("betrayal")
+            .expect("betrayal register ships");
+        let mut w = World::new();
+        let lead = w.spawn_empty().id();
+        let ep = Episode {
+            id: 0,
+            tick: 5,
+            kind: EpisodeKind::BeatFired,
+            provenance: Provenance::Director,
+            parties: [Some(lead), None, None],
+            place: Coord::new(1, 1),
+            register: Some(betrayal),
+            detail: 0,
+        };
+        let tell = tell_from_episode(
+            &ep,
+            None,
+            &HashSet::new(),
+            &HashMap::new(),
+            64,
+            &PerceptionCfg::default(),
+        )
+        .expect("a director beat surfaces as a Tell");
+        assert_eq!(tell.subject, lead);
+        assert_eq!(tell.provenance, Provenance::Director);
+        assert_eq!(
+            tell.hints.register,
+            Some(betrayal),
+            "carries the beat's own register, not a fixed one"
+        );
+        assert_eq!(
+            tell.hints.tier_gate,
+            ReadTier::Deep,
+            "a beat is wholly Γ's hand — Deep-gated"
+        );
     }
 
     #[test]
