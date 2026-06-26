@@ -2388,16 +2388,14 @@ fn update_hud(
         .iter()
         .map(|q| format!("\nCharge: {} {}", q.objective, g.sim.quest_bearing(q)))
         .collect();
-    // The drama-map (S5.2): if a story is centred on this very tile, read the place through its
-    // fiction — a gathering, a hush — so where you stand is legible as story, not just terrain.
-    let drama_here: String = match &view {
-        Some(v) => g
-            .sim
-            .place_mood_at(v.pos)
-            .map(|m| format!("\n  {}", m.fiction))
-            .unwrap_or_default(),
-        None => String::new(),
-    };
+    // The drama-map (S5.2): read where things are happening *as you move* — the tile underfoot if a
+    // story is centred there, else the loudest charged place within reach with a bearing to it — so
+    // the world is legible as story, not just terrain, without having to stand on the exact spot.
+    let drama_here: String = g
+        .sim
+        .drama_nearby()
+        .map(|d| format!("\n  {d}"))
+        .unwrap_or_default();
 
     for (kind, mut text, mut vis) in &mut texts {
         text.0 = match kind {
