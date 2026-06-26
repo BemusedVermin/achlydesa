@@ -529,8 +529,6 @@ pub(crate) struct PoiRoot;
 #[derive(Component)]
 pub(crate) struct PoiTitle;
 #[derive(Component)]
-pub(crate) struct PoiHint;
-#[derive(Component)]
 pub(crate) struct PoiRow(RowKind);
 #[derive(Clone, Copy)]
 enum RowKind {
@@ -542,13 +540,16 @@ pub(crate) struct PoiRowLabel(usize, bool); // (index, is_readable)
 #[derive(Component)]
 pub(crate) struct PoiReadingPanel;
 #[derive(Component)]
+pub(crate) struct PoiReadingTitle;
+#[derive(Component)]
 pub(crate) struct PoiReadingText;
 
 const ROSTER_ROWS: usize = MAX_FIGURES;
 const READ_ROWS: usize = 4;
+/// Side-panel width (reference px).
+const PANEL_W: f32 = 250.0;
 
 fn spawn_overlay(commands: &mut Commands, fonts: &ThemeFonts) {
-    // A transparent full-screen frame: the diorama shows through the centre; panels sit at the edges.
     commands
         .spawn((
             PoiRoot,
@@ -559,63 +560,72 @@ fn spawn_overlay(commands: &mut Commands, fonts: &ThemeFonts) {
                 width: Val::Percent(100.0),
                 height: Val::Percent(100.0),
                 flex_direction: FlexDirection::Column,
-                justify_content: JustifyContent::SpaceBetween,
-                padding: UiRect::all(Val::Px(theme::SP_LG)),
                 ..default()
             },
             GlobalZIndex(70),
             Visibility::Hidden,
         ))
         .with_children(|root| {
-            // Title bar.
+            // ── Header band: the settlement name, with the controls quietly to the right. A solid
+            //    strip with a hairline base, so it reads as a title bar, not a floating chip.
             root.spawn((
                 Node {
-                    padding: UiRect::axes(Val::Px(theme::SP_MD), Val::Px(theme::SP_SM)),
-                    align_self: AlignSelf::FlexStart,
+                    width: Val::Percent(100.0),
+                    padding: UiRect::axes(Val::Px(theme::SP_XL), Val::Px(theme::SP_MD)),
+                    justify_content: JustifyContent::SpaceBetween,
+                    align_items: AlignItems::Center,
+                    border: UiRect::bottom(Val::Px(theme::BORDER_W)),
                     ..default()
                 },
-                theme::panel_chrome(),
+                BackgroundColor(theme::INK_RAISED),
+                BorderColor::all(theme::BORDER),
             ))
             .with_children(|bar| {
                 bar.spawn((theme::display(fonts, ""), PoiTitle));
+                bar.spawn(theme::micro(
+                    fonts,
+                    "A/D  W/S  look around        Esc  leave",
+                ));
             });
 
-            // Middle: the two interaction panels, left (people) and right (readables), centre open.
+            // ── Body: residents | the framed main stage | readables. The stage is a bordered,
+            //    transparent panel so the diorama reads as the game's *main view* (per
+            //    docs/UI Mockups/town.png), not bare 3-D behind floating boxes.
             root.spawn(Node {
                 width: Val::Percent(100.0),
                 flex_grow: 1.0,
-                justify_content: JustifyContent::SpaceBetween,
-                align_items: AlignItems::FlexStart,
-                padding: UiRect::vertical(Val::Px(theme::SP_MD)),
+                column_gap: Val::Px(theme::SP_LG),
+                padding: UiRect::all(Val::Px(theme::SP_LG)),
                 ..default()
             })
-            .with_children(|mid| {
-                spawn_list(mid, fonts, "Those here", ROSTER_ROWS, false);
-                spawn_list(mid, fonts, "To read", READ_ROWS, true);
+            .with_children(|body| {
+                spawn_list(body, fonts, "Those here", ROSTER_ROWS, false);
+                body.spawn((
+                    Node {
+                        flex_grow: 1.0,
+                        height: Val::Percent(100.0),
+                        border: UiRect::all(Val::Px(2.0)),
+                        border_radius: BorderRadius::all(Val::Px(theme::RADIUS)),
+                        ..default()
+                    },
+                    BorderColor::all(theme::BORDER),
+                ));
+                spawn_list(body, fonts, "To read", READ_ROWS, true);
             });
-
-            // Hint.
-            root.spawn((
-                theme::micro(
-                    fonts,
-                    "click someone to speak \u{00b7} a slate to read \u{00b7} A/D/W/S orbit \u{00b7} Esc to leave",
-                ),
-                PoiHint,
-            ));
         });
 
-    // The reading panel — a centred slate, shown only while reading.
+    // ── The reading panel — a centred document: serif title, the inscription, what it taught. ──
     commands
         .spawn((
             PoiReadingPanel,
             Node {
                 position_type: PositionType::Absolute,
-                left: Val::Percent(30.0),
+                left: Val::Percent(31.0),
                 top: Val::Percent(28.0),
-                width: Val::Percent(40.0),
-                padding: UiRect::all(Val::Px(theme::SP_LG)),
+                width: Val::Percent(38.0),
+                padding: UiRect::all(Val::Px(theme::SP_XL)),
                 flex_direction: FlexDirection::Column,
-                row_gap: Val::Px(theme::SP_SM),
+                row_gap: Val::Px(theme::SP_MD),
                 ..default()
             },
             theme::panel_chrome(),
@@ -623,7 +633,10 @@ fn spawn_overlay(commands: &mut Commands, fonts: &ThemeFonts) {
             Visibility::Hidden,
         ))
         .with_children(|p| {
+            p.spawn((theme::heading(fonts, ""), PoiReadingTitle));
+            p.spawn(theme::divider());
             p.spawn((theme::body(fonts, ""), PoiReadingText));
+            p.spawn(theme::micro(fonts, "Esc to set it down"));
         });
 }
 
@@ -637,16 +650,18 @@ fn spawn_list(
     parent
         .spawn((
             Node {
-                width: Val::Px(260.0),
+                width: Val::Px(PANEL_W),
+                height: Val::Percent(100.0),
                 flex_direction: FlexDirection::Column,
                 row_gap: Val::Px(theme::SP_XS),
-                padding: UiRect::all(Val::Px(theme::SP_SM)),
+                padding: UiRect::all(Val::Px(theme::SP_MD)),
                 ..default()
             },
             theme::panel_chrome(),
         ))
         .with_children(|col| {
-            col.spawn(theme::label(fonts, heading));
+            col.spawn(theme::heading(fonts, heading));
+            col.spawn(theme::divider());
             for i in 0..rows {
                 col.spawn((
                     PoiRow(if readable {
@@ -657,14 +672,13 @@ fn spawn_list(
                     Button,
                     Node {
                         width: Val::Percent(100.0),
-                        padding: UiRect::axes(Val::Px(theme::SP_SM), Val::Px(4.0)),
-                        border: UiRect::all(Val::Px(1.0)),
+                        padding: UiRect::axes(Val::Px(theme::SP_SM), Val::Px(theme::SP_XS + 1.0)),
                         border_radius: BorderRadius::all(Val::Px(theme::RADIUS_SM)),
                         display: Display::None,
                         ..default()
                     },
-                    BackgroundColor(theme::INK_RAISED),
-                    BorderColor::all(theme::BORDER),
+                    // Transparent until hovered/selected — a clean list, not a grid of buttons.
+                    BackgroundColor(Color::NONE),
                 ))
                 .with_children(|b| {
                     b.spawn((theme::body(fonts, ""), PoiRowLabel(i, readable)));
@@ -673,7 +687,7 @@ fn spawn_list(
         });
 }
 
-/// Fill the overlay each frame: visibility, title, the two row lists, and the reading panel.
+/// Fill the overlay each frame: visibility, title, the two row lists (with hover), the reading panel.
 #[allow(clippy::type_complexity)]
 pub(crate) fn update_poi_overlay(
     poi: Option<Res<PoiScene>>,
@@ -683,20 +697,38 @@ pub(crate) fn update_poi_overlay(
         &mut Text,
         (
             With<PoiTitle>,
-            Without<PoiReadingText>,
             Without<PoiRowLabel>,
+            Without<PoiReadingTitle>,
+            Without<PoiReadingText>,
         ),
     >,
-    mut reading_text: Query<
+    mut rows: Query<(&PoiRow, &Interaction, &mut Node, &mut BackgroundColor)>,
+    mut labels: Query<
+        (&PoiRowLabel, &mut Text),
+        (
+            Without<PoiTitle>,
+            Without<PoiReadingTitle>,
+            Without<PoiReadingText>,
+        ),
+    >,
+    mut reading_title: Query<
+        &mut Text,
+        (
+            With<PoiReadingTitle>,
+            Without<PoiTitle>,
+            Without<PoiRowLabel>,
+            Without<PoiReadingText>,
+        ),
+    >,
+    mut reading_body: Query<
         &mut Text,
         (
             With<PoiReadingText>,
             Without<PoiTitle>,
             Without<PoiRowLabel>,
+            Without<PoiReadingTitle>,
         ),
     >,
-    mut rows: Query<(&PoiRow, &mut Node, &mut BackgroundColor)>,
-    mut labels: Query<(&PoiRowLabel, &mut Text), (Without<PoiTitle>, Without<PoiReadingText>)>,
 ) {
     let on = poi.is_some();
     if let Ok(mut v) = root.single_mut() {
@@ -717,14 +749,18 @@ pub(crate) fn update_poi_overlay(
         t.0 = poi.view.title.clone();
     }
 
-    // Show/hide each row by whether the scene has that resident / readable, and label it.
-    for (row, mut node, mut bg) in &mut rows {
+    // Each row: shown only if the scene has that resident/readable; lit when hovered.
+    for (row, interaction, mut node, mut bg) in &mut rows {
         let has = match row.0 {
             RowKind::Talk(i) => i < poi.view.residents.len().min(ROSTER_ROWS),
             RowKind::Read(i) => i < poi.view.readables.len().min(READ_ROWS),
         };
         node.display = if has { Display::Flex } else { Display::None };
-        bg.0 = theme::INK_RAISED;
+        bg.0 = if matches!(interaction, Interaction::Hovered | Interaction::Pressed) {
+            theme::INK_RAISED
+        } else {
+            Color::NONE
+        };
     }
     for (label, mut text) in &mut labels {
         text.0 = if label.1 {
@@ -738,28 +774,32 @@ pub(crate) fn update_poi_overlay(
                 .residents
                 .get(label.0)
                 .map(|r| match &r.demeanour {
-                    Some(d) => format!("{} \u{2014} {d}", r.name),
+                    Some(d) => format!("{}  \u{2014} {d}", r.name),
                     None => r.name.clone(),
                 })
                 .unwrap_or_default()
         };
     }
 
-    // The reading panel.
-    let reading = poi.reading.and_then(|i| poi.view.readables.get(i));
+    // The reading panel: shown only while reading; the title, the inscription, what it taught.
+    let open = poi.reading.and_then(|i| poi.view.readables.get(i));
     if let Ok(mut v) = reading_vis.single_mut() {
-        *v = if reading.is_some() {
+        *v = if open.is_some() {
             Visibility::Visible
         } else {
             Visibility::Hidden
         };
     }
-    if let (Ok(mut t), Some(r)) = (reading_text.single_mut(), reading) {
-        let mut body = format!("{}\n\n{}", r.title, r.lines.join("\n"));
-        if !poi.learned.is_empty() {
-            body.push_str(&format!("\n\nYou now know: {}", poi.learned.join("; ")));
+    if let Some(r) = open {
+        if let Ok(mut t) = reading_title.single_mut() {
+            t.0 = r.title.clone();
         }
-        body.push_str("\n\n(Esc to set it down)");
-        t.0 = body;
+        if let Ok(mut t) = reading_body.single_mut() {
+            let mut body = r.lines.join("\n\n");
+            if !poi.learned.is_empty() {
+                body.push_str(&format!("\n\nYou now know: {}", poi.learned.join("; ")));
+            }
+            t.0 = body;
+        }
     }
 }
