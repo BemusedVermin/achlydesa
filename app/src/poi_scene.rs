@@ -45,10 +45,35 @@ pub(crate) struct PoiAssets {
     slate_mat: Handle<ToonMaterial>,
     /// An upright quad for the HD-2D character **billboards** — feet at the base, faces the camera.
     sprite_mesh: Handle<Mesh>,
-    /// Placeholder sprite materials (silhouette texture, alpha-masked, tinted): the gold avatar and
-    /// the cool townsfolk. Swap `base_color_texture` for real art — see `docs/hd2d_assets.md`.
+    /// The avatar's sprite material — a procedural body sprite (or a dropped-in `avatar.png`).
+    /// Residents get their *own* per-soul materials, cached in [`ProcSpriteCache`].
     sprite_avatar_mat: Handle<StandardMaterial>,
-    sprite_npc_mat: Handle<StandardMaterial>,
+}
+
+/// Per-soul resident sprite materials, keyed by the soul's seed and built on first sight — so a soul
+/// keeps the same procedural body across visits, and re-entering a place allocates nothing new.
+#[derive(Resource, Default)]
+pub(crate) struct ProcSpriteCache(std::collections::HashMap<u64, Handle<StandardMaterial>>);
+
+/// Build an unlit, alpha-masked billboard material from a real sprite image when present, else a
+/// **procedural body sprite** seeded per soul. The mask makes the depth prepass — hence the cel
+/// outline — trace the figure's silhouette.
+fn body_material(
+    images: &mut Assets<Image>,
+    materials: &mut Assets<StandardMaterial>,
+    real: Option<Handle<Image>>,
+    seed: u64,
+    archetype: &str,
+) -> Handle<StandardMaterial> {
+    let texture =
+        real.unwrap_or_else(|| images.add(crate::sprites::procedural_body_sprite(seed, archetype)));
+    materials.add(StandardMaterial {
+        base_color: Color::WHITE,
+        base_color_texture: Some(texture),
+        alpha_mode: AlphaMode::Mask(0.5),
+        unlit: true,
+        ..default()
+    })
 }
 
 /// The billboard quad's height in world units — a person, tall enough to read beside the buildings.
@@ -97,23 +122,6 @@ pub(crate) fn build_assets(
     images: &mut Assets<Image>,
     materials: &mut Assets<StandardMaterial>,
 ) -> PoiAssets {
-    let silhouette = images.add(crate::sprites::placeholder_silhouette(128, 224));
-    // An alpha-masked, unlit sprite. With a real sprite (`base_color = WHITE`) the art shows as drawn;
-    // with the placeholder, `base_color` *tints* the white silhouette. The mask makes the depth
-    // prepass — hence the cel outline — trace the figure either way.
-    let sprite_mat = |real: Option<Handle<Image>>, tint: Color| {
-        let (base_color, texture) = match real {
-            Some(h) => (Color::WHITE, h),
-            None => (tint, silhouette.clone()),
-        };
-        StandardMaterial {
-            base_color,
-            base_color_texture: Some(texture),
-            alpha_mode: AlphaMode::Mask(0.5),
-            unlit: true,
-            ..default()
-        }
-    };
     // A cel surface: a real tileable texture when present (untinted), else the flat fallback colour.
     let surface = |rel: &str, fallback: Color, roughness: f32| {
         let (base_color, base_color_texture) = match loaded_if_present(asset_server, rel, false) {
@@ -147,14 +155,13 @@ pub(crate) fn build_assets(
             0.9,
         )),
         sprite_mesh: meshes.add(Rectangle::new(SPRITE_W, SPRITE_H)),
-        sprite_avatar_mat: materials.add(sprite_mat(
+        sprite_avatar_mat: body_material(
+            images,
+            materials,
             loaded_if_present(asset_server, "sprites/avatar.png", true),
-            Color::srgb(0.96, 0.80, 0.30),
-        )),
-        sprite_npc_mat: materials.add(sprite_mat(
-            loaded_if_present(asset_server, "sprites/townsfolk.png", true),
-            Color::srgb(0.72, 0.78, 0.86),
-        )),
+            crate::sprites::seed_of("avatar"),
+            "traveller",
+        ),
     }
 }
 
@@ -222,6 +229,7 @@ pub(crate) fn spawn_infra(
         images,
         materials,
     ));
+    commands.init_resource::<ProcSpriteCache>();
 
     // The diorama camera: orthographic 2.5-D like the overworld, on layer 1, inactive until a scene
     // opens. The depth prepass earns the cel outline for free (see `outline.rs`); HDR + Bloom give
@@ -293,6 +301,9 @@ pub(crate) fn enter_scene(
     mut target: ResMut<PoiTarget>,
     assets: Res<PoiAssets>,
     lib: Res<PropLibrary>,
+    mut images: ResMut<Assets<Image>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut cache: ResMut<ProcSpriteCache>,
     mut cam: Query<&mut Camera, With<PoiCam>>,
 ) {
     // The only caller (`request_enter`) always sets the target before the transition; if it didn't,
@@ -302,7 +313,15 @@ pub(crate) fn enter_scene(
         panic!("OnEnter(PoiScene) fired with no PoiTarget set — caller must request_enter first");
     };
     let view = game.sim.scene_at(place);
-    build_diorama(&mut commands, &assets, &lib, &view);
+    build_diorama(
+        &mut commands,
+        &assets,
+        &lib,
+        &view,
+        &mut images,
+        &mut materials,
+        &mut cache,
+    );
     if let Ok(mut c) = cam.single_mut() {
         c.is_active = true;
     }
@@ -333,7 +352,15 @@ pub(crate) fn exit_scene(
 
 /// Spawn the diorama — ground, plaza, a ring of buildings, the resident figures, the avatar, and the
 /// slates — at the local origin on the scene layer.
-fn build_diorama(commands: &mut Commands, assets: &PoiAssets, lib: &PropLibrary, view: &SceneView) {
+fn build_diorama(
+    commands: &mut Commands,
+    assets: &PoiAssets,
+    lib: &PropLibrary,
+    view: &SceneView,
+    images: &mut Assets<Image>,
+    materials: &mut Assets<StandardMaterial>,
+    cache: &mut ProcSpriteCache,
+) {
     let layer = RenderLayers::layer(SCENE_LAYER);
     let mut rng = Rng::new(0x5CE7_1107 ^ tile_salt(view.place));
 
@@ -398,15 +425,24 @@ fn build_diorama(commands: &mut Commands, assets: &PoiAssets, lib: &PropLibrary,
         let a = std::f32::consts::FRAC_PI_2 + (t - 0.5) * spread;
         let r = rng.range(3.0, 5.0);
         let pos = Vec3::new(r * a.cos(), 0.0, r * a.sin());
+        // Each resident is their *own* procedural figure, cached per soul so it's stable across visits.
+        let seed = crate::sprites::seed_of(&res.name);
+        let mat = match cache.0.get(&seed) {
+            Some(h) => h.clone(),
+            None => {
+                let h = body_material(images, materials, None, seed, "");
+                cache.0.insert(seed, h.clone());
+                h
+            }
+        };
         commands.spawn((
             PoiProp,
             crate::sprites::Billboard,
             Mesh3d(assets.sprite_mesh.clone()),
-            MeshMaterial3d(assets.sprite_npc_mat.clone()),
+            MeshMaterial3d(mat),
             Transform::from_translation(pos + Vec3::Y * (SPRITE_H * 0.5)),
             layer.clone(),
         ));
-        let _ = (i, res);
     }
 
     // You, at the mouth of the square — the gold sprite.

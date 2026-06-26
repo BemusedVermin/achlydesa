@@ -9,9 +9,12 @@ HD-2D shift. The chosen direction (see the design call):
   upgraded to 4-/8-direction later without changing the scene code.)
 - **Re-skin the hex overworld** as HD-2D later; **the town/POI scene is first**.
 
-Until each asset exists the game uses a **placeholder**: characters render as a procedurally-drawn
-pawn silhouette (`app/src/sprites.rs::placeholder_silhouette`), tinted per role; environment surfaces
-keep their flat cel colour. **Status: `placeholder` until you replace it.**
+Characters are **procedurally generated** — every soul is a distinct full-body pixel figure composed
+in code (`app/src/sprites.rs::procedural_body_sprite`), seeded from its identity, with the clothing
+biased by archetype. No art asset is needed (and the dialogue portraits are likewise procedural
+busts, `app/src/portraits.rs`). Environment surfaces still keep their flat cel colour until a texture
+is supplied (textures are the next proc-gen target). A real authored sprite/texture can still drop in
+over the procedural default by filename.
 
 ## Drop-in
 The game already **loads a real file over its placeholder automatically** — author the PNG, save it
@@ -33,11 +36,12 @@ to the placeholder.
 ## Character sprites (town/POI scene — first)
 | Slot | Used for | Facings | Status |
 |------|----------|---------|--------|
-| `avatar` | the player figure (gold-tinted placeholder) | 1 (billboard) | placeholder |
-| `townsfolk` | every resident in a settlement scene | 1 | placeholder (one shared silhouette, cool tint) |
+| `avatar` | the player figure | 1 (billboard) | **procedural** (`avatar.png` overrides) |
+| residents | every resident in a settlement scene | 1 | **procedural, per-soul** (each a distinct figure) |
 
-_Deferred (later scenes): per-archetype townsfolk (farmer / smith / noble / priest / child), fauna
-species sprites (overworld), enemy/combatant sprites (combat arena), the recruited-companion roster._
+_Deferred (later scenes): per-archetype refinement (more pronounced smith/noble/priest silhouettes),
+fauna species sprites (overworld), enemy/combatant sprites (combat arena), the recruited-companion
+roster. A `townsfolk.png` no longer applies — residents are individually generated._
 
 ## Environment textures (town/POI scene)
 | Slot | Used for | Status |
