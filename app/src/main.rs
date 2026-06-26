@@ -2145,9 +2145,12 @@ fn update_convo_portrait(
     ));
     if let Ok(mut node) = portrait.single_mut() {
         node.image = bust.clone();
-    }
-    if let Some(c) = game.convo.as_mut() {
-        c.bust = Some(bust);
+        // Mark done *only* once the portrait actually carries the image. If the query failed, `bust`
+        // drops here (Assets<Image> reclaims it) and we retry next frame instead of leaving the
+        // portrait permanently blank with an orphaned image.
+        if let Some(c) = game.convo.as_mut() {
+            c.bust = Some(bust);
+        }
     }
 }
 
