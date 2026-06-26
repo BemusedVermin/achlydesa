@@ -77,6 +77,7 @@ fn default_reach() -> u32 {
     2
 }
 
+// coupling-lint:allow name_match name: the six WWN attribute keys are a fixed closed vocabulary parsed at the RON boundary, not renameable authored content
 fn attr_index(name: &str) -> Option<usize> {
     Some(match name {
         "STR" => rpg::STR,
