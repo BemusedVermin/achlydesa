@@ -2124,8 +2124,8 @@ fn open_conversation_with(g: &mut Game, npc: Entity) {
 }
 
 /// Draw the speaker's procedural pixel **bust** into the conversation portrait — once per open
-/// conversation (cached on `Convo::bust`). Deterministic per soul (seeded from archetype + name, the
-/// key the sigil used), so a face is recognisably theirs.
+/// conversation (cached on `Convo::bust`). Seeded from the soul's entity bits (stable, unique) and
+/// keyed by its typed archetype id — no names, no string matching — so a face is recognisably theirs.
 fn update_convo_portrait(
     mut game: NonSendMut<Game>,
     mut images: ResMut<Assets<Image>>,
@@ -2134,14 +2134,10 @@ fn update_convo_portrait(
     if !game.convo.as_ref().is_some_and(|c| c.bust.is_none()) {
         return;
     }
-    let (name, archetype) = {
-        let c = game.convo.as_ref().unwrap();
-        let arch = game.sim.archetype_of(c.listener).unwrap_or("").to_string();
-        (c.name.clone(), arch)
-    };
+    let listener = game.convo.as_ref().unwrap().listener;
     let bust = images.add(portraits::procedural_bust(
-        portraits::seed_of(&format!("{archetype}/{name}")),
-        &archetype,
+        listener.to_bits(),
+        game.sim.archetype_id_of(listener),
     ));
     if let Ok(mut node) = portrait.single_mut() {
         node.image = bust.clone();
