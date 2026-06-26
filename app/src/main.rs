@@ -46,6 +46,7 @@ mod palette;
 mod poi_scene;
 mod props;
 mod scatter;
+mod sprites;
 mod toon;
 mod ui;
 mod world_mesh;
@@ -525,6 +526,7 @@ fn main() {
             poi_scene::poi_input,
             poi_scene::poi_clicks,
             poi_scene::poi_camera,
+            poi_scene::billboard_sprites,
             poi_scene::dev_read,
             poi_scene::dev_leave,
         )
@@ -853,7 +855,14 @@ fn setup(
     hud::spawn(&mut commands, &theme_fonts, grassy);
     convo_ui::spawn(&mut commands, &theme_fonts);
     combat::spawn_combat_ui(&mut commands, &theme_fonts, &mut images);
-    poi_scene::spawn_infra(&mut commands, &mut meshes, &mut toon_mats, &theme_fonts);
+    poi_scene::spawn_infra(
+        &mut commands,
+        &mut meshes,
+        &mut toon_mats,
+        &mut images,
+        &mut materials,
+        &theme_fonts,
+    );
     let parchment = asset_server.load("ui/parchment.jpg");
     spawn_pause_menu(&mut commands, &theme_fonts, parchment);
     commands.insert_resource(theme_fonts);
