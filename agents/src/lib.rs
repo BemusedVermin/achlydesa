@@ -2624,6 +2624,13 @@ impl Simulation {
         Some(self.world.get_resource::<RpgData>()?.edge_name(id))
     }
 
+    /// The soul's archetype as its **typed edge id** (the index into the RPG edge table), or `None`.
+    /// Use this — not [`archetype_of`]'s display name — whenever the archetype *drives* behaviour
+    /// (e.g. picking a sprite): the id is stable, the name is for humans and must never be matched on.
+    pub fn archetype_id_of(&self, e: bevy_ecs::entity::Entity) -> Option<usize> {
+        self.world.get::<Archetype>(e)?.0
+    }
+
     /// Every living NPC entity (deterministic iteration order).
     pub fn npcs(&mut self) -> Vec<bevy_ecs::entity::Entity> {
         let mut q = self.world.query_filtered::<Entity, With<Npc>>();

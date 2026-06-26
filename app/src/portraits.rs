@@ -1,8 +1,7 @@
 //! Procedural pixel-art **busts** for dialogue portraits — every soul gets a distinct head-and-
 //! shoulders face, composed deterministically from its identity + archetype and software-rasterised
-//! to an RGBA image. No art assets, no AI: the same procedural spirit as `props.rs` and the sprite
-//! placeholder. A soul's face is stable for a run (seeded from its name + archetype, the same key
-//! the sigil tint used), so you recognise who you're talking to.
+//! to an RGBA image. No art assets, no AI: the same procedural spirit as `props.rs`. A soul's face is
+//! seeded from its **entity id**, so it is stable for the run and recognisably theirs.
 //!
 //! Rendered low-resolution (pixel art) with a transparent background, so the bust sits on the
 //! conversation panel; the convo UI point-samples it, keeping the pixels crisp.
@@ -12,43 +11,13 @@ use bevy::image::ImageSampler;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 
+use crate::props::Rng;
+
 const W: usize = 64;
 const H: usize = 72;
 
-// ── A tiny SplitMix64, like props::Rng ──────────────────────────────────────────────────────────
-struct Rng(u64);
-impl Rng {
-    fn new(seed: u64) -> Self {
-        Self(seed ^ 0x9E37_79B9_7F4A_7C15)
-    }
-    fn next(&mut self) -> u64 {
-        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
-        let mut z = self.0;
-        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-        z ^ (z >> 31)
-    }
-    fn int(&mut self, n: usize) -> usize {
-        (self.next() % n as u64) as usize
-    }
-    fn chance(&mut self, p: f32) -> bool {
-        ((self.next() >> 40) as f32 / (1u64 << 24) as f32) < p
-    }
-    /// Pick an entry from a slice.
-    fn pick<'a, T>(&mut self, xs: &'a [T]) -> &'a T {
-        &xs[self.int(xs.len())]
-    }
-}
-
-/// A stable 64-bit seed from a soul's identity string (FNV-1a) — matches what the sigil hashed.
-pub fn seed_of(s: &str) -> u64 {
-    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-    for b in s.bytes() {
-        h ^= b as u64;
-        h = h.wrapping_mul(0x0000_0100_0000_01b3);
-    }
-    h
-}
+/// XORed into the seed so the bust draws from its own stream, distinct from the body sprite's.
+const FACE_STREAM: u64 = 0x0FACE_B057_5EED;
 
 // ── Raster helpers (RGBA8, opaque writes — pixel art, no AA) ─────────────────────────────────────
 type Buf = Vec<u8>;
@@ -87,6 +56,10 @@ fn shade(c: [u8; 4], f: f32) -> [u8; 4] {
         c[3],
     ]
 }
+/// Pick a palette entry from the shared `props::Rng`.
+fn pick(rng: &mut Rng, xs: &[[u8; 4]]) -> [u8; 4] {
+    xs[rng.int(xs.len() as u32) as usize]
+}
 
 // ── Palettes (muted, to share the world's cool mood) ────────────────────────────────────────────
 const SKIN: &[[u8; 4]] = &[
@@ -116,36 +89,28 @@ const CLOTHES: &[[u8; 4]] = &[
 const EYE_DARK: [u8; 4] = [40, 40, 48, 255];
 const EYE_WHITE: [u8; 4] = [222, 224, 226, 255];
 
-/// Map an archetype hint to a clothing colour, so a class reads at a glance; `None` falls back to a
-/// seed-chosen colour.
-fn clothes_for(archetype: &str) -> Option<[u8; 4]> {
-    let a = archetype.to_ascii_lowercase();
-    let pick = |k: &str| a.contains(k);
-    Some(
-        if pick("noble") || pick("lord") || pick("king") || pick("court") {
-            [96, 64, 72, 255] // maroon finery
-        } else if pick("priest") || pick("monk") || pick("seer") || pick("cleric") {
-            [58, 62, 74, 255] // dark robe
-        } else if pick("smith") || pick("craft") || pick("labor") || pick("farm") || pick("hunt") {
-            [86, 70, 56, 255] // homespun / leather
-        } else if pick("soldier") || pick("guard") || pick("warrior") || pick("warlord") {
-            [70, 78, 86, 255] // steely
-        } else {
-            return None;
-        },
-    )
+/// The collar colour. When the soul has an archetype, its **typed edge id** indexes the palette (so a
+/// class reads consistently); otherwise it's seed-chosen. No string matching — the id is the identity,
+/// a display name is for humans. The seeded colour is drawn unconditionally so the archetype only
+/// swaps the result, never the RNG position (else features would drift by archetype).
+fn clothes_for(archetype: Option<usize>, rng: &mut Rng) -> [u8; 4] {
+    let seeded = pick(rng, CLOTHES);
+    match archetype {
+        Some(id) => CLOTHES[id.wrapping_mul(0x9E37_79B1) % CLOTHES.len()],
+        None => seeded,
+    }
 }
 
-/// Render a bust portrait for a soul. `seed` is a stable per-soul value (see [`seed_of`]); the
-/// `archetype` hint biases the clothing colour. Transparent background, nearest-sampled.
-pub fn procedural_bust(seed: u64, archetype: &str) -> Image {
-    let mut rng = Rng::new(seed);
+/// Render a bust portrait for a soul. `seed` is a stable per-soul value (the entity bits); the typed
+/// `archetype` edge id (if any) keys the collar colour. Transparent background, nearest-sampled.
+pub fn procedural_bust(seed: u64, archetype: Option<usize>) -> Image {
+    let mut rng = Rng::new(seed ^ FACE_STREAM);
     let mut buf: Buf = vec![0; W * H * 4];
 
-    let skin = *rng.pick(SKIN);
+    let skin = pick(&mut rng, SKIN);
     let skin_dk = shade(skin, 0.82);
-    let hair = *rng.pick(HAIR);
-    let clothes = clothes_for(archetype).unwrap_or(*rng.pick(CLOTHES));
+    let hair = pick(&mut rng, HAIR);
+    let clothes = clothes_for(archetype, &mut rng);
     let clothes_dk = shade(clothes, 0.8);
 
     let cx = W as f32 / 2.0;
@@ -159,8 +124,7 @@ pub fn procedural_bust(seed: u64, archetype: &str) -> Image {
     let head_cy = 30.0;
     let (head_rx, head_ry) = (15.0, 18.0);
     // Long hair behind the head (sometimes), framing down to the shoulders.
-    let long = rng.chance(0.45);
-    if long {
+    if rng.chance(0.45) {
         ellipse(
             &mut buf,
             cx,
@@ -186,8 +150,7 @@ pub fn procedural_bust(seed: u64, archetype: &str) -> Image {
     ellipse(&mut buf, cx, head_cy, head_rx - 1.0, head_ry - 1.0, skin);
 
     // Hair on top: a cap ellipse, then carve the face back with skin so a hairline shows.
-    let bald = rng.chance(0.12);
-    if !bald {
+    if !rng.chance(0.12) {
         ellipse(
             &mut buf,
             cx,
@@ -196,8 +159,7 @@ pub fn procedural_bust(seed: u64, archetype: &str) -> Image {
             head_ry - 3.0,
             hair,
         );
-        // Fringe height varies; carve the face below it.
-        let fringe = head_cy - 12.0 + rng.int(7) as f32;
+        let fringe = head_cy - 12.0 + rng.int(7) as f32; // fringe height varies
         ellipse(
             &mut buf,
             cx,
@@ -206,15 +168,13 @@ pub fn procedural_bust(seed: u64, archetype: &str) -> Image {
             head_ry - 2.0,
             skin,
         );
-        // Re-draw a thin hair band at the very top so the carve doesn't eat it all.
-        ellipse(&mut buf, cx, fringe, head_rx, 3.0, hair);
+        ellipse(&mut buf, cx, fringe, head_rx, 3.0, hair); // thin top band
     }
 
     // Eyes, brows, nose, mouth.
     let eye_y = (head_cy + 1.0) as i32;
-    let eye_dx = 6;
     for s in [-1, 1] {
-        let ex = cx as i32 + s * eye_dx;
+        let ex = cx as i32 + s * 6;
         rect(&mut buf, ex - 2, eye_y, ex + 1, eye_y + 1, EYE_WHITE);
         rect(&mut buf, ex - 1, eye_y, ex, eye_y + 1, EYE_DARK); // iris
         rect(
@@ -226,7 +186,6 @@ pub fn procedural_bust(seed: u64, archetype: &str) -> Image {
             shade(hair, 0.9),
         ); // brow
     }
-    // Nose.
     rect(
         &mut buf,
         cx as i32,
@@ -234,8 +193,7 @@ pub fn procedural_bust(seed: u64, archetype: &str) -> Image {
         cx as i32,
         eye_y + 5,
         skin_dk,
-    );
-    // Mouth.
+    ); // nose
     rect(
         &mut buf,
         cx as i32 - 3,
@@ -243,7 +201,7 @@ pub fn procedural_bust(seed: u64, archetype: &str) -> Image {
         cx as i32 + 2,
         eye_y + 8,
         shade(skin, 0.6),
-    );
+    ); // mouth
 
     // Beard (sometimes) — fill the lower face, then re-open the mouth.
     if rng.chance(0.4) {
@@ -287,9 +245,12 @@ mod tests {
 
     #[test]
     fn a_bust_is_drawn_and_deterministic() {
-        let a = procedural_bust(seed_of("Maren/farmer"), "farmer");
-        let b = procedural_bust(seed_of("Maren/farmer"), "farmer");
-        assert_eq!(a.data, b.data, "same soul → same face");
+        let a = procedural_bust(101, Some(2));
+        assert_eq!(
+            a.data,
+            procedural_bust(101, Some(2)).data,
+            "same soul → same face"
+        );
         let drawn = a
             .data
             .as_ref()
@@ -297,36 +258,45 @@ mod tests {
             .chunks(4)
             .filter(|px| px[3] > 0)
             .count();
-        assert!(
-            drawn > 200,
-            "the bust should actually draw something ({drawn} px)"
+        assert!(drawn > 200, "the bust should draw something ({drawn} px)");
+        assert_ne!(
+            a.data,
+            procedural_bust(202, Some(5)).data,
+            "different souls → different faces"
         );
-        // Different souls differ.
-        let c = procedural_bust(seed_of("Bram/soldier"), "soldier");
-        assert_ne!(a.data, c.data, "different souls → different faces");
     }
 
-    /// Preview: writes sample busts as raw RGBA to `target/` for visual inspection. Run with
-    /// `cargo test -p app -- --ignored dump_bust_preview`, then e.g.
-    /// `magick -size 64x72 -depth 8 rgba:target/bust_Maren_farmer.rgba out.png`.
+    #[test]
+    fn same_archetype_same_collar() {
+        // The typed id keys the collar, regardless of the seed; distinct ids generally differ.
+        let mut r1 = Rng::new(1);
+        let mut r2 = Rng::new(2);
+        assert_eq!(clothes_for(Some(3), &mut r1), clothes_for(Some(3), &mut r2));
+        let mut r = Rng::new(0);
+        assert_ne!(clothes_for(Some(0), &mut r), clothes_for(Some(1), &mut r));
+    }
+
+    /// Preview: writes sample busts as raw RGBA to `target/`. Run `cargo test -p app -- --ignored
+    /// dump_bust_preview`, then `magick -size 64x72 -depth 8 rgba:target/bust_N.rgba out.png`.
     #[test]
     #[ignore = "dev preview, writes files"]
     fn dump_bust_preview() {
         let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../target");
-        for name in [
-            "Maren/farmer",
-            "Bram/soldier",
-            "Yalda/noble",
-            "Coil/priest",
-            "Zoe/smith",
-            "Vesper/",
-            "Ossa/",
-            "Nebro/court",
-        ] {
-            let arch = name.split('/').nth(1).unwrap_or("");
-            let img = procedural_bust(seed_of(name), arch);
-            let path = format!("{dir}/bust_{}.rgba", name.replace('/', "_"));
-            std::fs::write(&path, img.data.as_ref().unwrap()).unwrap();
+        for (i, (seed, arch)) in [
+            (11u64, Some(0)),
+            (22, Some(1)),
+            (33, Some(2)),
+            (44, Some(3)),
+            (55, Some(4)),
+            (66, None),
+            (77, None),
+            (88, Some(5)),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let img = procedural_bust(seed, arch);
+            std::fs::write(format!("{dir}/bust_{i}.rgba"), img.data.as_ref().unwrap()).unwrap();
         }
     }
 }
