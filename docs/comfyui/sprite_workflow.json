@@ -1,0 +1,218 @@
+{
+  "last_node_id": 10,
+  "last_link_id": 14,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "CheckpointLoaderSimple",
+      "pos": [40, 220],
+      "size": [300, 98],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "MODEL", "type": "MODEL", "links": [1], "slot_index": 0},
+        {"name": "CLIP", "type": "CLIP", "links": [2], "slot_index": 1},
+        {"name": "VAE", "type": "VAE", "links": [11], "slot_index": 2}
+      ],
+      "properties": {"Node name for S&R": "CheckpointLoaderSimple"},
+      "widgets_values": ["sd_xl_base_1.0.safetensors"]
+    },
+    {
+      "id": 2,
+      "type": "LoraLoader",
+      "pos": [380, 220],
+      "size": [300, 126],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {"name": "model", "type": "MODEL", "link": 1},
+        {"name": "clip", "type": "CLIP", "link": 2}
+      ],
+      "outputs": [
+        {"name": "MODEL", "type": "MODEL", "links": [3], "slot_index": 0},
+        {"name": "CLIP", "type": "CLIP", "links": [4, 5], "slot_index": 1}
+      ],
+      "properties": {"Node name for S&R": "LoraLoader"},
+      "widgets_values": ["pixel-art-xl.safetensors", 1.0, 1.0]
+    },
+    {
+      "id": 3,
+      "type": "CLIPTextEncode",
+      "pos": [720, 60],
+      "size": [400, 160],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {"name": "clip", "type": "CLIP", "link": 4}
+      ],
+      "outputs": [
+        {"name": "CONDITIONING", "type": "CONDITIONING", "links": [7], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "CLIPTextEncode"},
+      "widgets_values": ["full body character, front view, standing idle, simple clean design, jrpg town sprite, hd-2d pixel art, a weathered peasant farmer in homespun, plain, centered, full figure with feet visible"]
+    },
+    {
+      "id": 4,
+      "type": "CLIPTextEncode",
+      "pos": [720, 260],
+      "size": [400, 150],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {"name": "clip", "type": "CLIP", "link": 5}
+      ],
+      "outputs": [
+        {"name": "CONDITIONING", "type": "CONDITIONING", "links": [8], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "CLIPTextEncode"},
+      "widgets_values": ["multiple views, sprite sheet, turnaround, cropped, sitting, extra limbs, blurry, jpeg artifacts, text, watermark, busy background, drop shadow on ground"]
+    },
+    {
+      "id": 5,
+      "type": "LayeredDiffusionApply",
+      "pos": [720, 460],
+      "size": [320, 82],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {"name": "model", "type": "MODEL", "link": 3}
+      ],
+      "outputs": [
+        {"name": "MODEL", "type": "MODEL", "links": [6], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "LayeredDiffusionApply"},
+      "widgets_values": ["SDXL, Conv Injection", 1.0]
+    },
+    {
+      "id": 6,
+      "type": "EmptyLatentImage",
+      "pos": [720, 600],
+      "size": [300, 106],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {"name": "LATENT", "type": "LATENT", "links": [9], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "EmptyLatentImage"},
+      "widgets_values": [832, 1216, 1]
+    },
+    {
+      "id": 7,
+      "type": "KSampler",
+      "pos": [1160, 220],
+      "size": [300, 262],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {"name": "model", "type": "MODEL", "link": 6},
+        {"name": "positive", "type": "CONDITIONING", "link": 7},
+        {"name": "negative", "type": "CONDITIONING", "link": 8},
+        {"name": "latent_image", "type": "LATENT", "link": 9}
+      ],
+      "outputs": [
+        {"name": "LATENT", "type": "LATENT", "links": [10, 12], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "KSampler"},
+      "widgets_values": [42, "randomize", 26, 6.5, "dpmpp_2m", "karras", 1.0]
+    },
+    {
+      "id": 8,
+      "type": "VAEDecode",
+      "pos": [1500, 220],
+      "size": [220, 46],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {"name": "samples", "type": "LATENT", "link": 10},
+        {"name": "vae", "type": "VAE", "link": 11}
+      ],
+      "outputs": [
+        {"name": "IMAGE", "type": "IMAGE", "links": [13], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "VAEDecode"},
+      "widgets_values": []
+    },
+    {
+      "id": 9,
+      "type": "LayeredDiffusionDecodeRGBA",
+      "pos": [1500, 340],
+      "size": [320, 102],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {"name": "samples", "type": "LATENT", "link": 12},
+        {"name": "images", "type": "IMAGE", "link": 13}
+      ],
+      "outputs": [
+        {"name": "IMAGE", "type": "IMAGE", "links": [14], "slot_index": 0}
+      ],
+      "properties": {"Node name for S&R": "LayeredDiffusionDecodeRGBA"},
+      "widgets_values": ["SDXL", 16]
+    },
+    {
+      "id": 10,
+      "type": "SaveImage",
+      "pos": [1860, 220],
+      "size": [360, 380],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {"name": "images", "type": "IMAGE", "link": 14}
+      ],
+      "outputs": [],
+      "properties": {"Node name for S&R": "SaveImage"},
+      "widgets_values": ["townsfolk"]
+    }
+  ],
+  "links": [
+    [1, 1, 0, 2, 0, "MODEL"],
+    [2, 1, 1, 2, 1, "CLIP"],
+    [3, 2, 0, 5, 0, "MODEL"],
+    [4, 2, 1, 3, 0, "CLIP"],
+    [5, 2, 1, 4, 0, "CLIP"],
+    [6, 5, 0, 7, 0, "MODEL"],
+    [7, 3, 0, 7, 1, "CONDITIONING"],
+    [8, 4, 0, 7, 2, "CONDITIONING"],
+    [9, 6, 0, 7, 3, "LATENT"],
+    [10, 7, 0, 8, 0, "LATENT"],
+    [11, 1, 2, 8, 1, "VAE"],
+    [12, 7, 0, 9, 0, "LATENT"],
+    [13, 8, 0, 9, 1, "IMAGE"],
+    [14, 9, 0, 10, 0, "IMAGE"]
+  ],
+  "groups": [
+    {
+      "title": "1) Model + pixel-art LoRA",
+      "bounding": [20, 150, 680, 220],
+      "color": "#3f789e",
+      "font_size": 22
+    },
+    {
+      "title": "2) Prompt + transparency (LayerDiffuse)",
+      "bounding": [700, 0, 360, 720],
+      "color": "#a1309b",
+      "font_size": 22
+    },
+    {
+      "title": "3) Sample -> RGBA -> save",
+      "bounding": [1140, 150, 1100, 470],
+      "color": "#b58b2a",
+      "font_size": 22
+    }
+  ],
+  "config": {},
+  "extra": {},
+  "version": 0.4
+}
