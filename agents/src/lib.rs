@@ -1005,11 +1005,11 @@ impl Simulation {
             .map_or(0, |p| p.tells().len())
     }
 
-    /// The **prose log** (`docs/perception_layer.md` S5.1): the player's recent history as a
+    /// The **prose log** (`docs/perception_layer.md` S5.1): the world's recent drama as a
     /// salience-ranked, budgeted handful of one-line recollections, each rendered from a `Tell` by the
     /// `GrammarRealizer` in the register's own authored phrasing — so it arrives as recollection, not
-    /// a wall of text. Filters `When::Past` (S5.1): the *retrospective* surface shows arcs that have
-    /// **played out**, leaving the forming present to the scan and the tidings. Empty when the
+    /// a wall of text. Shows the loudest current stories, **forming and resolved** (a `past()`-only
+    /// log surfaced just resolved arcs, which are rare, so it was almost always empty). Empty when the
     /// Perception Layer is off. Read-only & deterministic: it surfaces only what the legibility pass
     /// already ranked, and renders no sim state.
     pub fn prose_log(&self, budget: usize) -> Vec<String> {
@@ -1183,20 +1183,33 @@ impl Simulation {
     /// to the north"). `None` when the layer is off or nothing is charged nearby. Read-only.
     pub fn drama_nearby(&self) -> Option<String> {
         let at = self.player_position()?;
-        let width = self.substrate().topology().width();
-        let moods = self.place_moods(); // salience-ranked
-        if let Some(m) = moods.iter().find(|m| m.place == at) {
-            return Some(m.fiction.clone());
+        // The tile underfoot first — `place_mood_at` finds-then-renders just the one.
+        if let Some(m) = self.place_mood_at(at) {
+            return Some(m.fiction);
         }
-        // The loudest charged place within a few days' travel, pointed to.
+        // Else the loudest charged place within reach. Find the winning `Tell` on the plain slice
+        // first, then render *only* it — `place_moods()` would grammar-realise every charged place
+        // each frame and discard all but one.
         const RANGE: i32 = 12;
-        let near = moods
-            .iter()
-            .find(|m| wrapped_dist(at, m.place, width) <= RANGE)?;
+        let width = self.substrate().topology().width();
+        let perception = self.world.get_resource::<agent_core::Perception>()?;
+        let tell = perception.tells().iter().find(|t| {
+            t.anchor
+                .place
+                .is_some_and(|p| wrapped_dist(at, p, width) <= RANGE)
+        })?;
+        let place = tell.anchor.place?;
+        let registry = self.world.resource::<Registry>();
+        let name = |e: bevy_ecs::entity::Entity| self.display_name(e);
+        let ctx = agent_core::RealizeCtx {
+            registry,
+            name: &name,
+        };
+        let mood = agent_core::PlaceRealizer.realize(tell, &ctx);
         Some(format!(
             "{}  ({})",
-            near.fiction,
-            compass_dir(at, near.place, width)
+            mood.fiction,
+            compass_dir(at, place, width)
         ))
     }
 

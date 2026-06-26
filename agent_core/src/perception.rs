@@ -620,7 +620,13 @@ fn tell_from_episode(
 ) -> Option<Tell> {
     let subject = ep.parties[0]?;
     let proximity = avatar_pos.map_or(0.0, |ap| proximity_term(ap, ep.place, width, cfg.reach));
-    let bond = if bonded.contains(&subject) { 1.0 } else { 0.0 };
+    // Any bonded party of the beat lifts it — mirroring the candidate path, so drama about a
+    // companion who is the beat's *counterpart* (not its lead) still surfaces.
+    let bond = if ep.parties.iter().flatten().any(|e| bonded.contains(e)) {
+        1.0
+    } else {
+        0.0
+    };
     let recurrence = recur_term(recur.get(&subject).copied().unwrap_or(0));
     let salience = cfg.w_dissonance * BEAT_BASE
         + cfg.w_proximity * proximity
