@@ -12,7 +12,29 @@ The two hard requirements that make a generated sprite actually drop in cleanly:
 
 ---
 
-## Characters — the sprite workflow
+## Quick start — load the ready workflow
+A ready-to-load graph ships at **`docs/comfyui/sprite_workflow.json`** (SDXL base + Pixel Art XL LoRA
++ LayerDiffuse — picked to be the most reliable sprite-with-transparency stack). Starting from zero:
+
+1. **Install LayerDiffuse** — ComfyUI **Manager → Custom Nodes Manager → `ComfyUI-layerdiffuse` →
+   Install → restart.** (It downloads its transparency weights to `models/layer_model/` on first run.)
+2. **Download the two model files** (Manager → Model Manager can do both, or by hand):
+   - `sd_xl_base_1.0.safetensors` → `ComfyUI/models/checkpoints/`
+     — [stabilityai/stable-diffusion-xl-base-1.0](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0)
+   - `pixel-art-xl.safetensors` → `ComfyUI/models/loras/`
+     — [nerijs/pixel-art-xl](https://huggingface.co/nerijs/pixel-art-xl)
+3. **Load the workflow** — ComfyUI **Workflow → Open** (or drag `sprite_workflow.json` onto the canvas).
+4. Edit the **positive prompt** (the character description), hit **Queue Prompt**. The result saves to
+   `ComfyUI/output/townsfolk_*.png` **with transparency**.
+5. **Crop so the feet touch the bottom edge** (and center it), save as `assets/sprites/townsfolk.png`,
+   run `cargo run -p app`, enter a settlement.
+
+If a node loads **red**, its dropdown filename doesn't match what you downloaded — just re-pick it.
+**Tuning:** too pixelated → lower the LoRA strength (node *Load LoRA*, ~0.6) or swap the checkpoint for
+an illustration SDXL model; for a matching *set* of townsfolk, set the KSampler control to **fixed**
+and change only the character words. Manual node-by-node build is below if you'd rather wire it yourself.
+
+## Characters — the sprite workflow (manual build)
 
 ### Install
 - **ComfyUI-layerdiffuse** (`huchenlei/ComfyUI-layerdiffuse`, via the ComfyUI Manager) — generates an
