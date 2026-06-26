@@ -48,6 +48,7 @@ mod portraits;
 mod props;
 mod scatter;
 mod sprites;
+mod textures;
 mod toon;
 mod ui;
 mod world_mesh;

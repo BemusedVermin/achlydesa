@@ -12,9 +12,9 @@ HD-2D shift. The chosen direction (see the design call):
 Characters are **procedurally generated** — every soul is a distinct full-body pixel figure composed
 in code (`app/src/sprites.rs::procedural_body_sprite`), seeded from its identity, with the clothing
 biased by archetype. No art asset is needed (and the dialogue portraits are likewise procedural
-busts, `app/src/portraits.rs`). Environment surfaces still keep their flat cel colour until a texture
-is supplied (textures are the next proc-gen target). A real authored sprite/texture can still drop in
-over the procedural default by filename.
+busts, `app/src/portraits.rs`). Environment surfaces are **procedural too** — tileable grass, plaza
+cobblestone and slate generated from noise (`app/src/textures.rs`), under the cel pass. A real
+authored sprite/texture can still drop in over the procedural default by filename.
 
 ## Drop-in
 The game already **loads a real file over its placeholder automatically** — author the PNG, save it
@@ -46,11 +46,11 @@ roster. A `townsfolk.png` no longer applies — residents are individually gener
 ## Environment textures (town/POI scene)
 | Slot | Used for | Status |
 |------|----------|--------|
-| `ground_grass` | the settlement commons (ground disc) | placeholder (flat green) |
-| `plaza_stone` | the paved central plaza | placeholder (flat grey) |
+| `ground_grass` | the settlement commons (ground disc) | **procedural** (FBM grass; `.png` overrides) |
+| `plaza_stone` | the paved central plaza | **procedural** (Worley cobblestone; `.png` overrides) |
 | `wall_wattle`, `wall_stone` | hut / house / hall walls | placeholder (procedural prop colour) |
 | `roof_thatch`, `roof_slate` | building roofs | placeholder (procedural prop colour) |
-| `slate_face` | the readable stone slate | placeholder (flat dark) |
+| `slate_face` | the readable stone slate | **procedural** (stratified slate; `.png` overrides) |
 
 ## Post-processing
 | Effect | Status |
