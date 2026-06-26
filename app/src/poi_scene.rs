@@ -64,11 +64,27 @@ const ASSET_ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../assets");
 /// mechanism: author a real sprite/texture, save it to the catalogued path, and it replaces its
 /// placeholder on the next run with no code change. A missing file would otherwise load as a broken
 /// (opaque white) texture and wreck the alpha mask, so the existence check matters.
-fn loaded_if_present(asset_server: &AssetServer, rel: &str) -> Option<Handle<Image>> {
-    std::path::Path::new(ASSET_ROOT)
-        .join(rel)
-        .exists()
-        .then(|| asset_server.load(rel.to_string()))
+///
+/// `nearest` selects point sampling — on for **character sprites** so a low-resolution pixel-art PNG
+/// renders as crisp blocks instead of a blurry smear; off (linear) for tiling environment textures.
+fn loaded_if_present(
+    asset_server: &AssetServer,
+    rel: &str,
+    nearest: bool,
+) -> Option<Handle<Image>> {
+    if !std::path::Path::new(ASSET_ROOT).join(rel).exists() {
+        return None;
+    }
+    Some(if nearest {
+        asset_server.load_with_settings(
+            rel.to_string(),
+            |s: &mut bevy::image::ImageLoaderSettings| {
+                s.sampler = bevy::image::ImageSampler::nearest();
+            },
+        )
+    } else {
+        asset_server.load(rel.to_string())
+    })
 }
 
 /// Build the diorama's shared assets — the cel-shaded ground/plaza/slate, plus the HD-2D character
@@ -100,7 +116,7 @@ pub(crate) fn build_assets(
     };
     // A cel surface: a real tileable texture when present (untinted), else the flat fallback colour.
     let surface = |rel: &str, fallback: Color, roughness: f32| {
-        let (base_color, base_color_texture) = match loaded_if_present(asset_server, rel) {
+        let (base_color, base_color_texture) = match loaded_if_present(asset_server, rel, false) {
             Some(h) => (Color::WHITE, Some(h)),
             None => (fallback, None),
         };
@@ -132,11 +148,11 @@ pub(crate) fn build_assets(
         )),
         sprite_mesh: meshes.add(Rectangle::new(SPRITE_W, SPRITE_H)),
         sprite_avatar_mat: materials.add(sprite_mat(
-            loaded_if_present(asset_server, "sprites/avatar.png"),
+            loaded_if_present(asset_server, "sprites/avatar.png", true),
             Color::srgb(0.96, 0.80, 0.30),
         )),
         sprite_npc_mat: materials.add(sprite_mat(
-            loaded_if_present(asset_server, "sprites/townsfolk.png"),
+            loaded_if_present(asset_server, "sprites/townsfolk.png", true),
             Color::srgb(0.72, 0.78, 0.86),
         )),
     }
