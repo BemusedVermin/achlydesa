@@ -34,6 +34,31 @@ If a node loads **red**, its dropdown filename doesn't match what you downloaded
 an illustration SDXL model; for a matching *set* of townsfolk, set the KSampler control to **fixed**
 and change only the character words. Manual node-by-node build is below if you'd rather wire it yourself.
 
+## Queryable — generate anything from the command line
+To generate *any* character (not just townsfolk) without touching the GUI, drive ComfyUI over its HTTP
+API with **`tools/comfy_gen.py`** (Python standard library only — nothing to `pip install`). With
+ComfyUI running:
+
+```sh
+python tools/comfy_gen.py --name blacksmith --prompt "a burly blacksmith in a leather apron"
+python tools/comfy_gen.py --name avatar     --prompt "a hooded traveller with a short sword"
+python tools/comfy_gen.py --name child      --prompt "a small barefoot village child" --seed 7
+```
+
+It posts the API-format graph (`docs/comfyui/sprite_workflow_api.json`) to `/prompt`, waits, and saves
+the transparent PNG to `assets/sprites/<name>.png`. The constant sprite framing (front view, full
+body, feet-visible) is prepended automatically; `--raw` sends your prompt verbatim. Flags: `--seed`,
+`--negative`, `--workflow <path>`, `--out <dir>`; the `COMFY_URL` env var points at a non-default server.
+
+**The API is three calls:** `POST /prompt {"prompt": <graph>}` queues and returns a `prompt_id`;
+`GET /history/<prompt_id>` reports the outputs once it's done; `GET /view?filename=…` returns the PNG.
+The graph is just the workflow with the prompt / seed / filename swapped — so the same mechanism makes
+the avatar, future per-archetype townsfolk, enemies, fauna, anything.
+
+> Tweaked the GUI workflow? Re-export its API form (ComfyUI **Settings → enable Dev mode → Save (API
+> Format)**) and pass it with `--workflow`. The script locates the prompt/seed/save nodes
+> *structurally*, so changed node ids don't matter.
+
 ## Characters — the sprite workflow (manual build)
 
 ### Install
