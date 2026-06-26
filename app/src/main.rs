@@ -512,7 +512,8 @@ fn main() {
             hide_hud_in_combat,
             // Reflect the combat data into the context FSM (one authority for gating).
             sync_combat_mode,
-        ),
+        )
+            .chain(),
     )
     // The POI scene: enter/leave on the FSM, then the in-scene systems. The overlay fill runs always
     // (it hides itself when the `PoiScene` resource is absent).
@@ -2454,12 +2455,16 @@ fn dev_poi(
     if *done || std::env::var("ACHLYDESA_POI").is_err() || *state.get() != GameMode::Overworld {
         return;
     }
-    let mut counts: std::collections::HashMap<Coord, usize> = std::collections::HashMap::new();
+    // Keyed by (col, row) in a BTreeMap so the iteration order — and so the tie-break among tiles
+    // with equal headcount — is deterministic (a randomized HashMap would pick a different tile per
+    // run, breaking screenshot reproducibility).
+    let mut counts: std::collections::BTreeMap<(i32, i32), usize> =
+        std::collections::BTreeMap::new();
     for c in game.sim.npc_positions() {
-        *counts.entry(c).or_default() += 1;
+        *counts.entry((c.col, c.row)).or_default() += 1;
     }
-    if let Some((&c, _)) = counts.iter().max_by_key(|(_, n)| **n) {
-        poi_scene::request_enter(&mut target, &mut next, c);
+    if let Some((&(col, row), _)) = counts.iter().max_by_key(|(_, n)| **n) {
+        poi_scene::request_enter(&mut target, &mut next, Coord::new(col, row));
         *done = true;
     }
 }
