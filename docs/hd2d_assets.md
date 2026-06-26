@@ -11,8 +11,16 @@ HD-2D shift. The chosen direction (see the design call):
 
 Until each asset exists the game uses a **placeholder**: characters render as a procedurally-drawn
 pawn silhouette (`app/src/sprites.rs::placeholder_silhouette`), tinted per role; environment surfaces
-keep their flat cel colour. Each real asset drops in by swapping one texture handle — no scene code
-changes. **Status: `placeholder` until you replace it.**
+keep their flat cel colour. **Status: `placeholder` until you replace it.**
+
+## Drop-in
+The game already **loads a real file over its placeholder automatically** — author the PNG, save it
+under the catalogued path, run. No code change. Detected by exact filename; a missing file falls back
+to the placeholder.
+- Character sprites → **`assets/sprites/`** (`avatar.png`, `townsfolk.png`) — see its README.
+- Environment textures → **`assets/textures/`** (`ground_grass.png`, `plaza_stone.png`,
+  `slate_face.png`) — see its README.
+- How to generate them locally with ComfyUI: **`docs/comfyui_pipeline.md`**.
 
 ## Conventions
 - **Character sprites**: PNG, RGBA, transparent background, character standing upright and centred

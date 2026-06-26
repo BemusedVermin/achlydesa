@@ -1,0 +1,79 @@
+# Generating HD-2D assets with ComfyUI
+
+A practical recipe for producing the sprites (and, if you want, textures) the HD-2D shift needs, with
+a **local ComfyUI**. The game already loads real files over the placeholders — author a PNG, save it
+to the catalogued path (`assets/sprites/…`, `assets/textures/…`), and it shows up next run. No code
+change. See `docs/hd2d_assets.md` for the full slot list.
+
+The two hard requirements that make a generated sprite actually drop in cleanly:
+1. **Native transparency** (RGBA), with a **hard, clean alpha edge** — the cel outline traces the
+   alpha and the material masks at 0.5, so feathered cutouts / background halos look wrong.
+2. **Feet at the bottom edge**, character centered, single **front-facing** pose.
+
+---
+
+## Characters — the sprite workflow
+
+### Install
+- **ComfyUI-layerdiffuse** (`huchenlei/ComfyUI-layerdiffuse`, via the ComfyUI Manager) — generates an
+  **RGBA** image with real transparency, so no background removal / `rembg` step and no halo. This is
+  the key node.
+- A **pixel-art style** on top of your base model — either:
+  - SDXL + the **Pixel Art XL** LoRA (`nerijs/pixel-art-xl`), or
+  - a pixel-art **checkpoint** from Civitai (search "pixel art" / "pixel"),
+  - or, for a softer HD-2D painterly look, skip the pixel LoRA and use a clean illustration model and
+    downscale in post (below).
+
+### Graph
+```
+Load Checkpoint ─┬─► (Load LoRA: pixel-art) ─► CLIP Text Encode (positive) ─┐
+                 └────────────────────────────► CLIP Text Encode (negative) ─┤
+Layer Diffuse Apply  (model in, "SDXL, Conv Injection" or the SD1.5 variant) │
+        └─► KSampler ◄── Empty Latent (portrait, e.g. 832×1216) ◄────────────┘
+                └─► VAE Decode ─► Layer Diffuse Decode (RGBA) ─► Save Image (PNG = keeps alpha)
+```
+(LayerDiffuse routes the model through "Apply" before the sampler and recovers the alpha in "Decode
+(RGBA)". Follow the node's example workflow if the wiring differs for your version.)
+
+### Prompt
+- **Positive:** `full body character, front view, standing idle, simple clean design, jrpg town
+  sprite, hd-2d, [a weathered peasant farmer in homespun / a young woman in a market dress / a hooded
+  traveller], plain, centered`
+- **Negative:** `multiple views, sprite sheet, turntable, cropped, sitting, extra limbs, blurry,
+  text, watermark, busy background`
+
+### Settings
+- **Portrait latent** (taller than wide) so the full body fits with headroom — e.g. **832 × 1216**
+  (SDXL). Steps ~28, CFG ~6–7.
+- **Fix the seed** and keep the framing prompt constant; change only the character description to get a
+  consistent set of townsfolk that share scale/pose.
+
+### Post (so feet sit on the ground)
+- **Crop + pad** the RGBA so the character's **feet touch the bottom edge** and it's **centered
+  horizontally** (the quad's base is the ground line). A ComfyUI image-crop node works, or any editor.
+- *Optional pixel crunch:* `Image Scale` down to ~128 px tall with **nearest**, then back up to 448
+  with **nearest** — crisp chunky pixels. (The Pixel Art XL LoRA mostly does this already.)
+- **Save as PNG** (preserves alpha). Name it `avatar.png` / `townsfolk.png` → `assets/sprites/`.
+
+---
+
+## Textures — fastest path is *not* generation
+
+For grass / stone / slate, **download CC0 albedo** from **[ambientCG](https://ambientcg.com/)** or
+**[Poly Haven](https://polyhaven.com/textures)** — tileable, no attribution, better than generating.
+Grab the *Color/Diffuse* map, resize to ~512², save as `ground_grass.png` / `plaza_stone.png` /
+`slate_face.png` in `assets/textures/`.
+
+If you'd rather generate them in ComfyUI:
+- Install a **seamless-tiling** node (e.g. `spinagon/ComfyUI-seamless-tiling`, which patches conv
+  padding to circular so the output tiles), enable it before the sampler.
+- **Prompt:** `seamless tileable [lush grass / worn cobblestone / dark slate stone] texture, top-down,
+  flat even lighting, no shadows, game texture`. Render **512×512**, save PNG.
+- Keep it **mid-value, low-contrast** — the cel pass adds the banding/contrast; a busy texture fights it.
+
+---
+
+## Try one first
+Make **one** `townsfolk.png` and grab **one** `ground_grass.png`, drop them in, and run
+`cargo run -p app` (then enter a settlement). We'll look at the real thing on a known-good scene before
+you batch the rest — easier to dial the prompt/scale against a live target than to guess.
