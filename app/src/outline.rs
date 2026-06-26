@@ -167,9 +167,9 @@ fn init_outline_pipeline(
     });
 
     let shader = asset_server.load("shaders/outline.wgsl");
-    let mut queue = |format: TextureFormat| {
+    let mut queue = |format: TextureFormat, label: &'static str| {
         pipeline_cache.queue_render_pipeline(RenderPipelineDescriptor {
-            label: Some("outline_pipeline".into()),
+            label: Some(label.into()),
             layout: vec![layout.clone()],
             vertex: fullscreen_shader.to_vertex_state(),
             fragment: Some(FragmentState {
@@ -186,8 +186,8 @@ fn init_outline_pipeline(
     };
 
     commands.insert_resource(OutlinePipeline {
-        pipeline_ldr: queue(TextureFormat::bevy_default()),
-        pipeline_hdr: queue(ViewTarget::TEXTURE_FORMAT_HDR),
+        pipeline_ldr: queue(TextureFormat::bevy_default(), "outline_pipeline_ldr"),
+        pipeline_hdr: queue(ViewTarget::TEXTURE_FORMAT_HDR, "outline_pipeline_hdr"),
         layout,
         sampler,
     });
