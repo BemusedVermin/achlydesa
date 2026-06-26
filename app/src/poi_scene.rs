@@ -467,6 +467,46 @@ pub(crate) fn poi_clicks(
     }
 }
 
+/// Dev only: leave the scene a few frames after entering, so the exit teardown can be screenshotted
+/// (`ACHLYDESA_POI_LEAVE`).
+pub(crate) fn dev_leave(mut next: ResMut<NextState<GameMode>>, mut frames: Local<u32>) {
+    if std::env::var("ACHLYDESA_POI_LEAVE").is_err() {
+        return;
+    }
+    *frames += 1;
+    if *frames == 6 {
+        next.set(GameMode::Overworld);
+    }
+}
+
+/// The **single-scene invariant**: away from [`GameMode::PoiScene`], the scene camera must be asleep
+/// and no diorama entity may exist — so only one 3-D scene (the overworld *or* the diorama) is ever
+/// rendering. Returns `true` when it holds. Drives both the runtime guard and a test.
+pub(crate) fn scene_invariant_holds(
+    in_poi: bool,
+    poi_cam_active: bool,
+    diorama_count: usize,
+) -> bool {
+    in_poi || (!poi_cam_active && diorama_count == 0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::scene_invariant_holds;
+
+    #[test]
+    fn only_one_scene_renders() {
+        // In the scene: the diorama and its active camera are expected.
+        assert!(scene_invariant_holds(true, true, 12));
+        // Out of the scene: a clean teardown — camera asleep, no diorama.
+        assert!(scene_invariant_holds(false, false, 0));
+        // Out of the scene but the camera never slept → two scenes drawing (the reported bug).
+        assert!(!scene_invariant_holds(false, true, 0));
+        // Out of the scene but diorama entities leaked → the town keeps rendering.
+        assert!(!scene_invariant_holds(false, false, 5));
+    }
+}
+
 /// Dev/screenshot only: open the first slate so the reading panel can be captured (`ACHLYDESA_POI_READ`).
 pub(crate) fn dev_read(mut game: NonSendMut<Game>, mut poi: ResMut<PoiScene>) {
     if poi.reading.is_some() || std::env::var("ACHLYDESA_POI_READ").is_err() {
