@@ -39,6 +39,23 @@ fn the_lint_still_sees_the_codebase() {
 }
 
 #[test]
+fn name_match_detector_fires() {
+    // The `name_match` detector must catch branching on a name by string-literal matching. The
+    // feature-art registry (annotated as known debt) is the canonical surviving offender — if this
+    // stops firing, the detector regressed (or feature_art was refactored, in which case update this).
+    let raw = coupling_lint::scan_workspace_raw();
+    let hits: Vec<&str> = raw
+        .iter()
+        .filter(|f| f.detector == "name_match")
+        .map(|f| f.key.as_str())
+        .collect();
+    assert!(
+        hits.iter().any(|k| k.contains("feature_art")),
+        "name_match should flag feature_art.rs's name-string matching; got {hits:?}",
+    );
+}
+
+#[test]
 fn the_data_driven_domains_stay_data_driven() {
     // Register and SpeechAct became data; a regression that re-hardcoded them would resurrect these
     // findings (and they'd be unannotated, failing the gate above too). Lock the win in.

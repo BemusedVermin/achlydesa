@@ -23,6 +23,7 @@ pub enum Plan {
     Nothing,
 }
 
+// coupling-lint:allow name_match name: pre-existing — this view-only art registry keys bespoke looks off the feature's kind-name with a typed Category fallback; tracked to move onto a typed feature-kind id (a sim-side change), not fixed in the lint PR
 /// The registry. Signature kinds get a bespoke look here; everything else falls back by
 /// category. **This match is the extension point** — one row per kind.
 pub fn plan_for(name: &str, category: Category) -> Plan {

@@ -1,7 +1,7 @@
 //! The **coupling ratchet**: a `syn`-based source lint for the "domain instances baked into code"
 //! anti-pattern — the shape the `Register` → `registers.ron` refactor removed.
 //!
-//! It hunts three structural signals, each a face of the same smell (per-variant content living in
+//! It hunts four structural signals, each a face of the same smell (per-variant content living in
 //! code instead of data, so adding an instance needs a Rust change):
 //!
 //! - **`self_match`** — an `enum` with many variants that carries a per-variant metadata table as a
@@ -12,6 +12,10 @@
 //!   `Biome::ALL`). Adding an instance means editing the array too.
 //! - **`string_ids`** — a file with many `*_id("literal")` lookups (`mood_id("joy")`,
 //!   `trait_id("ambition")`): content names hardcoded as code constants, silently broken by a rename.
+//! - **`name_match`** — branching on a **name** by matching it against a string literal
+//!   (`archetype.contains("smith")`, `role == "priest"`, `match kind { "noble" => … }`). The display
+//!   name is for humans; a rename breaks the match silently. Key off a typed id instead. The receiver
+//!   is matched by identifier against [`NAME_IDENTS`] (case/slice adapters are seen through).
 //!
 //! It is a **ratchet**, not an absolute gate: the current offenders the audit found are recorded in
 //! `baseline.txt`, and the lint fails only when a finding is *new* or *grows* past its baseline. Pay
@@ -41,6 +45,35 @@ pub const ID_METHODS: &[&str] = &[
     "predicate_id",
     "register_id",
     "attr_id",
+];
+
+/// Identifiers (a variable or a field) that denote a human-facing **name / identity**. Branching on
+/// one by matching it against a string literal is the silent-bug anti-pattern: a content rename breaks
+/// the match quietly, with no compile error (e.g. `archetype.contains("smith")` when the edge is
+/// actually `"Warden"`). Behaviour must key off a typed id, never the display name.
+pub const NAME_IDENTS: &[&str] = &[
+    "name",
+    "display_name",
+    "archetype",
+    "epithet",
+    "role",
+    "profession",
+    "calling",
+    "occupation",
+    "species",
+    "edge",
+    "edge_name",
+    "faction",
+    "title",
+];
+
+/// `str`/`String` methods that perform a **literal match** — `x.contains("…")`, `starts_with`, etc.
+pub const STR_MATCH_METHODS: &[&str] = &[
+    "contains",
+    "starts_with",
+    "ends_with",
+    "eq",
+    "eq_ignore_ascii_case",
 ];
 
 /// One detected coupling site.
@@ -158,6 +191,7 @@ fn scan_file(file: &syn::File, rel: &str, out: &mut Vec<Finding>) {
         enums: &enums.map,
         findings: Vec::new(),
         id_count: 0,
+        name_hits: HashMap::new(),
     };
     det.visit_file(file);
     if det.id_count >= MIN_STRING_IDS {
@@ -168,6 +202,19 @@ fn scan_file(file: &syn::File, rel: &str, out: &mut Vec<Finding>) {
             note: format!(
                 "{} hardcoded `*_id(\"…\")` content-name lookups",
                 det.id_count
+            ),
+        });
+    }
+    // One `name_match` finding per name identifier in the file (so an allow covers all its sites).
+    let mut name_hits: Vec<_> = det.name_hits.iter().collect();
+    name_hits.sort();
+    for (ident, count) in name_hits {
+        det.findings.push(Finding {
+            detector: "name_match",
+            key: format!("{rel}::{ident}"),
+            score: *count,
+            note: format!(
+                "`{ident}` matched against a string literal ({count}×) — branch on a typed id, not the name"
             ),
         });
     }
@@ -205,6 +252,8 @@ struct Detector<'a> {
     enums: &'a HashMap<String, usize>,
     findings: Vec<Finding>,
     id_count: usize,
+    /// `name_match` sites, counted per name identifier (`"archetype"` → 3).
+    name_hits: HashMap<String, usize>,
 }
 
 impl<'ast> Visit<'ast> for Detector<'_> {
@@ -254,13 +303,50 @@ impl<'ast> Visit<'ast> for Detector<'_> {
     }
 
     fn visit_expr_method_call(&mut self, m: &'ast syn::ExprMethodCall) {
-        if ID_METHODS.contains(&m.method.to_string().as_str())
+        let method = m.method.to_string();
+        if ID_METHODS.contains(&method.as_str())
             && let Some(syn::Expr::Lit(lit)) = m.args.first()
             && matches!(lit.lit, syn::Lit::Str(_))
         {
             self.id_count += 1;
         }
+        // name_match: `<name>.contains("lit")` / starts_with / ends_with / eq / eq_ignore_ascii_case.
+        if STR_MATCH_METHODS.contains(&method.as_str())
+            && m.args.iter().any(expr_is_str_lit)
+            && let Some(id) = name_ident_of(&m.receiver)
+        {
+            *self.name_hits.entry(id).or_default() += 1;
+        }
         syn::visit::visit_expr_method_call(self, m);
+    }
+
+    fn visit_expr_binary(&mut self, b: &'ast syn::ExprBinary) {
+        // name_match: `<name> == "lit"` / `<name> != "lit"` (either side may be the literal).
+        if matches!(b.op, syn::BinOp::Eq(_) | syn::BinOp::Ne(_)) {
+            let name_side = if expr_is_str_lit(&b.right) {
+                Some(&*b.left)
+            } else if expr_is_str_lit(&b.left) {
+                Some(&*b.right)
+            } else {
+                None
+            };
+            if let Some(side) = name_side
+                && let Some(id) = name_ident_of(side)
+            {
+                *self.name_hits.entry(id).or_default() += 1;
+            }
+        }
+        syn::visit::visit_expr_binary(self, b);
+    }
+
+    fn visit_expr_match(&mut self, m: &'ast syn::ExprMatch) {
+        // name_match: `match <name> { "lit" => … }`.
+        if let Some(id) = name_ident_of(&m.expr)
+            && m.arms.iter().any(|a| pattern_has_str_lit(&a.pat))
+        {
+            *self.name_hits.entry(id).or_default() += 1;
+        }
+        syn::visit::visit_expr_match(self, m);
     }
 
     fn visit_item_mod(&mut self, m: &'ast syn::ItemMod) {
@@ -269,6 +355,59 @@ impl<'ast> Visit<'ast> for Detector<'_> {
             syn::visit::visit_item_mod(self, m);
         }
     }
+}
+
+/// Whether an expr is a string literal (`"…"`).
+fn expr_is_str_lit(e: &syn::Expr) -> bool {
+    matches!(e, syn::Expr::Lit(l) if matches!(l.lit, syn::Lit::Str(_)))
+}
+
+/// Whether a match pattern is (or contains) a string literal — `"noble" => …`, including `"a" | "b"`.
+fn pattern_has_str_lit(p: &syn::Pat) -> bool {
+    match p {
+        syn::Pat::Lit(l) => matches!(l.lit, syn::Lit::Str(_)),
+        syn::Pat::Or(o) => o.cases.iter().any(pattern_has_str_lit),
+        syn::Pat::Reference(r) => pattern_has_str_lit(&r.pat),
+        syn::Pat::Paren(par) => pattern_has_str_lit(&par.pat),
+        _ => false,
+    }
+}
+
+/// The underlying **name identifier** a comparison is really on, if it is one of [`NAME_IDENTS`]
+/// (returned lower-cased). Sees through the case/slice adapters that don't change identity
+/// (`x.to_lowercase()`, `x.as_str()`, `&x`, `(x)`), so `res.archetype.to_ascii_lowercase()` →
+/// `"archetype"`.
+fn name_ident_of(e: &syn::Expr) -> Option<String> {
+    let raw = match e {
+        syn::Expr::Path(p) => p.path.segments.last().map(|s| s.ident.to_string()),
+        syn::Expr::Field(f) => match &f.member {
+            syn::Member::Named(id) => Some(id.to_string()),
+            syn::Member::Unnamed(_) => None,
+        },
+        syn::Expr::Reference(r) => return name_ident_of(&r.expr),
+        syn::Expr::Paren(p) => return name_ident_of(&p.expr),
+        syn::Expr::MethodCall(m) => {
+            const PASSTHROUGH: &[&str] = &[
+                "to_string",
+                "to_ascii_lowercase",
+                "to_lowercase",
+                "to_ascii_uppercase",
+                "to_uppercase",
+                "as_str",
+                "as_ref",
+                "trim",
+                "clone",
+                "deref",
+            ];
+            if PASSTHROUGH.contains(&m.method.to_string().as_str()) {
+                return name_ident_of(&m.receiver);
+            }
+            None
+        }
+        _ => None,
+    }?;
+    let lower = raw.to_ascii_lowercase();
+    NAME_IDENTS.contains(&lower.as_str()).then_some(lower)
 }
 
 /// Finds the widest `match self` / `match *self` in a function body — the per-variant-table tell.
@@ -367,7 +506,7 @@ fn parse_allows(text: &str) -> Vec<Allow> {
         let Some(det) = toks.next() else {
             continue;
         };
-        if !["self_match", "const_all", "string_ids"].contains(&det) {
+        if !["self_match", "const_all", "string_ids", "name_match"].contains(&det) {
             continue;
         }
         out.push(Allow {
