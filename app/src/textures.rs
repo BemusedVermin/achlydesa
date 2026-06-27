@@ -14,7 +14,7 @@ use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 const SIZE: usize = 256;
 
 /// Which surface to draw — each maps to a noise recipe + palette below.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum TextureKind {
     Grass,
     Plaza,
@@ -63,6 +63,10 @@ fn value(u: f32, v: f32, period: i32, seed: u64) -> f32 {
 /// Fractional Brownian motion over the unit square — `octaves` of value noise, each double the
 /// frequency. Tiles because every octave's period is `base * 2^o`.
 fn fbm(u: f32, v: f32, base: i32, octaves: u32, seed: u64) -> f32 {
+    debug_assert!(
+        octaves > 0,
+        "fbm needs at least one octave, else norm stays 0 → NaN"
+    );
     let (mut sum, mut amp, mut norm, mut freq) = (0.0, 0.5f32, 0.0, 1i32);
     for o in 0..octaves {
         sum += amp
@@ -133,17 +137,18 @@ fn grass(u: f32, v: f32) -> [u8; 4] {
 fn plaza(u: f32, v: f32) -> [u8; 4] {
     const P: i32 = 20;
     let (f1, f2, cell) = worley(u, v, P, PLAZA_SEED);
-    let _ = f1;
     let stone = 0.40 + lattice(cell.0, cell.1, P, PLAZA_SEED ^ 0xCE11) * 0.12;
     let edge = smooth(((f2 - f1) / 0.10).clamp(0.0, 1.0)); // 0 in the mortar, 1 in a stone's interior
     let g = stone * (0.55 + 0.45 * edge);
     rgb(g + 0.015, g, g + 0.03) // a faint cool tint
 }
 
-/// Slate — dark blue-grey with faint horizontal strata (the noise is stretched vertically).
+/// Slate — dark blue-grey with faint horizontal strata (the noise varies far faster in v than u).
 fn slate(u: f32, v: f32) -> [u8; 4] {
     let body = fbm(u, v, 4, 3, SLATE_SEED);
-    let strata = value(u * 0.5, v * 3.0, 16, SLATE_SEED ^ 0x57A7);
+    // u-period 8, v-period 48 (`v * 6` over period 8) — same stretch as before, but now `u` completes
+    // whole periods so it tiles horizontally too (a bare `u * 0.5` did not, leaving a seam).
+    let strata = value(u, v * 6.0, 8, SLATE_SEED ^ 0x57A7);
     let t = (body * 0.6 + strata * 0.4).clamp(0.0, 1.0);
     lerp3([0.24, 0.26, 0.32], [0.34, 0.36, 0.43], t)
 }
@@ -200,6 +205,38 @@ mod tests {
         let l = value(0.0, 0.37, 8, GRASS_SEED);
         let r = value(1.0, 0.37, 8, GRASS_SEED);
         assert!((l - r).abs() < 1e-5, "value noise should wrap: {l} vs {r}");
+    }
+
+    #[test]
+    fn surfaces_tile_seamlessly() {
+        // End-to-end seam check: when a tile repeats, column 0 sits beside column SIZE-1 (and row 0
+        // beside row SIZE-1), so the mean per-channel gap there must be small. A recipe that mis-tiles
+        // — e.g. feeding `u * 0.5` to `value`, which never completes a period — blows this up. That's
+        // the slate seam the analytic `value_noise_tiles` test could not see (it tests the primitive,
+        // not how a recipe *calls* it).
+        for kind in [TextureKind::Grass, TextureKind::Plaza, TextureKind::Slate] {
+            let img = procedural_surface(kind);
+            let d = img.data.as_ref().unwrap();
+            let px = |x: usize, y: usize, c: usize| d[(y * SIZE + x) * 4 + c] as i32;
+            let (mut u_seam, mut v_seam) = (0i64, 0i64);
+            for i in 0..SIZE {
+                for c in 0..3 {
+                    u_seam += (px(0, i, c) - px(SIZE - 1, i, c)).unsigned_abs() as i64;
+                    v_seam += (px(i, 0, c) - px(i, SIZE - 1, c)).unsigned_abs() as i64;
+                }
+            }
+            let n = (SIZE * 3) as i64;
+            assert!(
+                u_seam / n <= 24,
+                "{kind:?} u-seam mean {} too large",
+                u_seam / n
+            );
+            assert!(
+                v_seam / n <= 24,
+                "{kind:?} v-seam mean {} too large",
+                v_seam / n
+            );
+        }
     }
 
     /// Preview: raw RGBA of each surface to `target/`. Run `cargo test -p app -- --ignored
