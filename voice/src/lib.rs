@@ -303,9 +303,10 @@ const OUT_OF_WORLD: &[&str] = &[
     "large language",
     "chatbot",
     "openai",
-    "i am a model",
-    "i'm a model",
-    "simulation",
+    // " simulation" (leading space) so it can't match "dissimulation", a fine medieval word. "model"
+    // as a bare word is dropped — "a model farmer" is plausible speech, and the real AI self-naming is
+    // already caught by "language model" / "as an ai" / "artificial intelligence".
+    " simulation",
     "these instructions",
     "my programming",
     "i was programmed",
@@ -445,6 +446,8 @@ mod tests {
             "Stoke the fire with that poker and sit a while.",
             "The deer is fine game this season, stranger.",
             "I'll not forget what you did to my brother.",
+            "You are a model farmer, and the village knows it.",
+            "Your dissimulation fools me not, stranger.",
         ] {
             assert_ne!(guard(good, fb), fb, "single-line should keep: {good}");
             assert_ne!(guard_chat(good, fb), fb, "chat should keep: {good}");
