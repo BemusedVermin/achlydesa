@@ -66,6 +66,9 @@ pub struct TopTab(pub usize);
 pub struct HudMinimap;
 #[derive(Component)]
 pub struct VitalFill(pub Vital);
+/// The standing readout (purse + the town's regard) — your goal, made visible.
+#[derive(Component)]
+pub struct HudStanding;
 #[derive(Component)]
 pub struct ActionButton(pub ActionKind);
 #[derive(Component)]
@@ -427,6 +430,21 @@ pub fn spawn(commands: &mut Commands, f: &ThemeFonts, grassy: Handle<Image>) {
                     });
                 }
             });
+            // Standing — your purse and the town's regard, the goal made visible.
+            t.spawn((
+                HudStanding,
+                Node {
+                    width: px(232.0),
+                    ..default()
+                },
+                Text::new(""),
+                TextFont {
+                    font: f.mono.clone(),
+                    font_size: theme::T_MICRO,
+                    ..default()
+                },
+                TextColor(TRAY_TEXT),
+            ));
             // One-line status (the HUD's Help kind) on the tray.
             t.spawn((
                 crate::HudKind::Help,
@@ -592,6 +610,24 @@ pub fn update_portraits(
             .map(|(s, _, _)| s.clone())
             .unwrap_or_default();
     }
+}
+
+/// Surface the avatar's **standing** — coin in the purse and the town's regard for you — on the
+/// tray. The wealth and the warmth you've built: the goal, made visible and always in view.
+pub fn update_standing(mut game: NonSendMut<Game>, mut q: Query<&mut Text, With<HudStanding>>) {
+    let Ok(mut text) = q.single_mut() else {
+        return;
+    };
+    if game.sim.player_avatar().is_none() {
+        text.0.clear();
+        return;
+    }
+    let purse = game.sim.avatar_purse();
+    let regard = match game.sim.avatar_regard() {
+        Some(r) => crate::disposition_word(r),
+        None => "a stranger here",
+    };
+    text.0 = format!("Standing   {purse} coin · {regard}");
 }
 
 /// Drive each vital bar's fill width from the avatar's live vitals (0–100 → 0–100%).

@@ -557,6 +557,7 @@ fn main() {
             hud::scale_ui,
             hud::update_portraits,
             hud::update_vitals,
+            hud::update_standing,
             hud::update_action_buttons,
             hud::update_hud_minimap,
             hud::action_button_click,
