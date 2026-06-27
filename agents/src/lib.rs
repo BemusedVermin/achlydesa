@@ -2171,6 +2171,11 @@ impl Simulation {
 
     // --- Exploration: the player avatar (an ordinary body in the world) ---
 
+    /// The coin the avatar arrives with — a stranger of little means (well below an NPC's "solvent"
+    /// goal of 200), so wealth is something to **build**. It makes the avatar a real economic actor:
+    /// the foundation of standing, and the stake it can later gift, wager, and trade.
+    const AVATAR_PURSE: i64 = 40;
+
     /// Place the player's avatar in the world (at `at`, or a sensible land start if
     /// `None`) and reveal its surroundings. Returns the avatar entity. Calling it again
     /// re-homes the player. Until called, the world runs with no player and is unchanged.
@@ -2231,7 +2236,8 @@ impl Simulation {
         // learns a trade by apprenticing at a guild (a `Teach` affordance) then gathers goods at a
         // `Yield` site — the same effects an NPC gets, applied by `player_use_affordance`. Inert to
         // the NPC-gated economy systems (the avatar is no `Npc`), so it never auto-trades or gets
-        // planned; only the Use verb touches these. Starts empty (no money minted, no goods).
+        // planned; only the Use verb touches these. Starts with a modest **purse** (so you can gift,
+        // wager, and trade from the outset) but no goods.
         {
             let (n_goods, n_skills) = {
                 let reg = self.world.resource::<Registry>();
@@ -2240,7 +2246,7 @@ impl Simulation {
             if n_goods > 0 {
                 self.world.entity_mut(avatar).insert((
                     people::Inventory {
-                        money: 0,
+                        money: Self::AVATAR_PURSE,
                         stock: vec![0; n_goods],
                     },
                     people::Skills(vec![Fx::ZERO; n_skills]),
@@ -2595,6 +2601,33 @@ impl Simulation {
     /// Coins held by a specific person, if alive.
     pub fn money_of(&self, e: bevy_ecs::entity::Entity) -> Option<i64> {
         self.world.get::<Inventory>(e).map(|i| i.money)
+    }
+
+    /// The coin in the avatar's purse — the wealth half of your **standing**. `0` if no avatar.
+    pub fn avatar_purse(&self) -> i64 {
+        self.player_avatar()
+            .and_then(|a| self.money_of(a))
+            .unwrap_or(0)
+    }
+
+    /// The town's **regard** for the avatar — the mean opinion of every soul that has formed one
+    /// toward you (−1 cold … +1 devoted). The social half of standing. `None` when no soul knows you
+    /// yet (distinct from a neutral 0.0), so the surface can say "a stranger" rather than "indifferent".
+    pub fn avatar_regard(&mut self) -> Option<f32> {
+        let avatar = self.player_avatar()?;
+        let mut q = self.world.query::<(bevy_ecs::entity::Entity, &Opinion)>();
+        let (mut sum, mut n) = (0.0f32, 0u32);
+        for (e, op) in q.iter(&self.world) {
+            if e == avatar {
+                continue;
+            }
+            let o = op.of(avatar).to_num::<f32>();
+            if o != 0.0 {
+                sum += o;
+                n += 1;
+            }
+        }
+        (n > 0).then(|| sum / n as f32)
     }
 
     /// Where an entity stands, if it carries a position.
@@ -3392,6 +3425,23 @@ mod tests {
         assert!(res.downed.contains(&enemy), "the enemy fell");
         assert!(!sim.npc_present(enemy), "a downed enemy leaves the world");
         assert!(!res.avatar_down, "the avatar survived");
+    }
+
+    #[test]
+    fn the_avatar_arrives_with_a_purse_and_neutral_standing() {
+        let mut sim = Simulation::new(Setup {
+            npcs: 4,
+            seed: 7,
+            ..Default::default()
+        });
+        sim.spawn_player(None);
+        assert_eq!(
+            sim.avatar_purse(),
+            40,
+            "the avatar is an economic actor — it arrives with a starting purse"
+        );
+        // No soul has formed an opinion of the newcomer yet — a stranger, not merely indifferent.
+        assert_eq!(sim.avatar_regard(), None);
     }
 
     #[test]
