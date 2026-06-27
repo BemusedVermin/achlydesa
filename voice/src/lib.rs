@@ -289,6 +289,51 @@ fn strip_label_and_quotes(s: &str) -> &str {
     s.trim_matches('"').trim()
 }
 
+/// Phrases that mean the model slipped out of the fiction — fourth-wall / meta-talk (it's an AI, has
+/// a "goal", sees the rules) or blatant anachronism (modern gambling, technology). Matched
+/// case-insensitively; a hit rejects the line (the worker retries once, then uses the grounded
+/// fallback). Deliberately conservative — only phrasings a medieval villager would never utter — so a
+/// good line is not dropped (e.g. a fireplace "poker" or "the game" they hunt stays in).
+const OUT_OF_WORLD: &[&str] = &[
+    // fourth wall / meta
+    "as an ai",
+    "an a.i",
+    "artificial intelligence",
+    "language model",
+    "large language",
+    "chatbot",
+    "openai",
+    "i am a model",
+    "i'm a model",
+    "simulation",
+    "these instructions",
+    "my programming",
+    "i was programmed",
+    "i was designed to",
+    "i was instructed",
+    "my objective",
+    "my goal is",
+    "i have a goal",
+    "non-player",
+    "npc",
+    // anachronism
+    "craps",
+    "casino",
+    "roulette",
+    "blackjack",
+    "slot machine",
+    "computer",
+    "internet",
+    "telephone",
+    "television",
+];
+
+/// Whether a generated line has broken the fiction — meta-talk or anachronism (see [`OUT_OF_WORLD`]).
+fn breaks_character(line: &str) -> bool {
+    let lower = line.to_ascii_lowercase();
+    OUT_OF_WORLD.iter().any(|p| lower.contains(p))
+}
+
 /// Reduce the model's raw output to a single sane utterance, or fall back to the grammar.
 /// The model occasionally opens with a blank line, wraps the line in quotes, or runs long;
 /// this keeps the first real sentence and rejects only genuine junk (so a good generation is
@@ -301,7 +346,7 @@ fn guard(raw: &str, fallback: &str) -> String {
         .find(|l| !l.is_empty())
         .unwrap_or("");
     let line = strip_label_and_quotes(line);
-    if line.is_empty() {
+    if line.is_empty() || breaks_character(line) {
         return fallback.to_string();
     }
     // Overlong → keep just the first sentence if there is one, else treat it as junk.
@@ -326,7 +371,7 @@ fn guard_chat(raw: &str, fallback: &str) -> String {
         .collect::<Vec<_>>()
         .join(" ");
     let text = strip_label_and_quotes(joined.trim());
-    if text.is_empty() {
+    if text.is_empty() || breaks_character(text) {
         return fallback.to_string();
     }
     // Cap runaway replies, cutting back to the last sentence end within the budget.
@@ -379,6 +424,31 @@ mod tests {
             }
         }
         panic!("the world stayed silent — no utterance to test with");
+    }
+
+    #[test]
+    fn guards_reject_out_of_world_lines() {
+        let fb = "I have nothing to say to that.";
+        // Meta / fourth-wall and anachronism are rejected back to the grounded fallback...
+        for bad in [
+            "As an AI, I cannot help you with that.",
+            "My goal is to make this conversation interesting.",
+            "Fancy a game of craps, traveller?",
+            "This is just a simulation, friend.",
+        ] {
+            assert_eq!(guard(bad, fb), fb, "single-line should reject: {bad}");
+            assert_eq!(guard_chat(bad, fb), fb, "chat should reject: {bad}");
+        }
+        // ...but ordinary in-world speech survives, including the false-positive traps (a fireplace
+        // poker, hunted game).
+        for good in [
+            "Stoke the fire with that poker and sit a while.",
+            "The deer is fine game this season, stranger.",
+            "I'll not forget what you did to my brother.",
+        ] {
+            assert_ne!(guard(good, fb), fb, "single-line should keep: {good}");
+            assert_ne!(guard_chat(good, fb), fb, "chat should keep: {good}");
+        }
     }
 
     #[test]
