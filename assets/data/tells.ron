@@ -1,0 +1,114 @@
+// The Wolfean **tells** — oblique surface fragments, one library per fact KIND.
+//
+// STATUS: starter / design-status. The loader is not built yet (see docs/prose_generation.md
+// §"Data-driven content" and §"The Wolfean layer"); this file is authored content waiting for it.
+// Nothing references it yet, so it is inert — safe to grow on a plane. Field set mirrors the
+// `Tell` schema documented in prose_generation.md.
+//
+// A tell is a SYMPTOM of a true fact, never the fact itself. The engine only emits a tell when its
+// `implies` fact is true RIGHT NOW, so a tell can never lie. The Wolfean rule: name the symptom,
+// let the player infer the fact. NEVER name the cosmology (no "returned", "tallowed", "Lethe", …) —
+// see docs/worldbuilding/style_guide.md §4 and §6.
+//
+//   implies             the true fact-kind this obliquely conveys
+//   template            the fragment: literal text + {slot} fills bound to real sim values
+//   distinctive   0..100 how loudly the symptom points at the fact. KEEP LOW (15..45) by default —
+//                        the reader must lean in; reserve 60+ for "nearly stated"
+//   sense               Sight | Sound | Smell | Behaviour — how the symptom is noticed
+//   visibility    0..100 how plainly observable the symptom is at all
+//   requires_knowledge  tokens the observer must already hold to read the tell ([] = none)
+//   mood_tint           optional colour added by the OBSERVER's mood (same fact, different eye); {} = none
+//
+// Slots are state-bound: {name}/{other}/{place}/{count} resolve to real values or the tell is skipped.
+// Author MANY per kind, varying sense + distinctive, so a fact never reads the same way twice.
+[
+    // ============================ Poor(x) — scarcity at a body ============================
+    Tell( implies: Poor,
+        template: "{name} counts the coppers twice before letting them go, and the cloak has been turned at the collar.",
+        distinctive: 30, sense: Behaviour, visibility: 60, requires_knowledge: [],
+        mood_tint: { "pity": " You looked away to spare {name} the seeing of it.", "contempt": " You had seen the trick before and were not moved." } ),
+    Tell( implies: Poor,
+        template: "The fire in {name}'s hearth is built small and mean, more smoke than warmth.",
+        distinctive: 20, sense: Sight, visibility: 70, requires_knowledge: [], mood_tint: {} ),
+    Tell( implies: Poor,
+        template: "{name} asks, too lightly, whether there's work going — any work — and names no price.",
+        distinctive: 45, sense: Behaviour, visibility: 50, requires_knowledge: [], mood_tint: {} ),
+
+    // ============================ Feud(a,b) — a grievance between two ============================
+    Tell( implies: Feud,
+        template: "{name} breaks off talking as you pass, and will not be in the same room as {other}.",
+        distinctive: 30, sense: Behaviour, visibility: 50, requires_knowledge: [], mood_tint: {} ),
+    Tell( implies: Feud,
+        template: "When {other}'s name comes up {name} goes very still, and finds something else to be doing.",
+        distinctive: 35, sense: Behaviour, visibility: 45, requires_knowledge: [], mood_tint: {} ),
+
+    // ===================== Returned(x) — came back wrong (Palingenesis) =====================
+    Tell( implies: Returned,
+        template: "{name} thanks you by a name you never gave, and is too sure of the small true things — which knife you keep dull, that the well-rope wants replacing.",
+        distinctive: 35, sense: Behaviour, visibility: 55, requires_knowledge: [],
+        mood_tint: { "dread": " You did not ask whose name it had been.", "fond": " You let it pass, the way you'd learned to." } ),
+    Tell( implies: Returned,
+        template: "{name} keeps to the old habits exactly — too exactly — and cannot tell you how long it has been at them.",
+        distinctive: 30, sense: Behaviour, visibility: 50, requires_knowledge: [], mood_tint: {} ),
+
+    // ===================== Tallowed(x) — a soul smoothing away (Wrought) =====================
+    Tell( implies: Tallowed,
+        template: "When the work is done {name}'s hand won't take the lamplight right — gives it back too smooth, a candle's hand where a man's should be.",
+        distinctive: 50, sense: Sight, visibility: 35, requires_knowledge: [], mood_tint: {} ),
+    Tell( implies: Tallowed,
+        template: "The glove goes on before the coin is counted, and {name} names a price that is mostly drink.",
+        distinctive: 30, sense: Behaviour, visibility: 50, requires_knowledge: [], mood_tint: {} ),
+
+    // ===================== Dimming(here) — a Castellan's cold (Penury) =====================
+    Tell( implies: Dimming,
+        template: "The lamps along the way sink low as the chair passes and come back grudging after; the warming-beggars have gone to other walls.",
+        distinctive: 40, sense: Sight, visibility: 70, requires_knowledge: [], mood_tint: {} ),
+    Tell( implies: Dimming,
+        template: "You feel the year go a little shorter as it passes, and tip your head the way everyone does.",
+        distinctive: 25, sense: Behaviour, visibility: 40, requires_knowledge: ["the-cold"], mood_tint: {} ),
+
+    // ===================== Forgetting(x) — memory thinned (Lethe) =====================
+    Tell( implies: Forgetting,
+        template: "{name} loses the thread mid-sentence and carries on as if meaning to, and the ledger goes back eleven years and then stops at a clean first page.",
+        distinctive: 35, sense: Behaviour, visibility: 55, requires_knowledge: [], mood_tint: {} ),
+    Tell( implies: Forgetting,
+        template: "Ask {name} how long it has stood and you get \"it has always stood,\" which is what they all say of anything that matters.",
+        distinctive: 30, sense: Sound, visibility: 60, requires_knowledge: [], mood_tint: {} ),
+
+    // ===================== Aevum(thing) — a real thing in a forged world =====================
+    Tell( implies: Aevum,
+        template: "It has a weight that argues with your hand and an edge that hasn't gone soft in all the years it should have. Set on the table, it makes the table look like the lie.",
+        distinctive: 50, sense: Sight, visibility: 40, requires_knowledge: [], mood_tint: {} ),
+    Tell( implies: Aevum,
+        template: "The old families keep pieces like {name} behind glass and pay stupid money and won't say why.",
+        distinctive: 35, sense: Sight, visibility: 45, requires_knowledge: [], mood_tint: {} ),
+
+    // ===================== ThinPlace(tile) — a thinning (the Asymptote) =====================
+    Tell( implies: ThinPlace,
+        template: "Past the last fence the grass comes in even and untrodden, poured into that smooth dreamless shape, and the path stops caring which way it goes.",
+        distinctive: 45, sense: Sight, visibility: 65, requires_knowledge: [], mood_tint: {} ),
+    Tell( implies: ThinPlace,
+        template: "Folk leave this ground a wide berth and a little bread, and turn back without a word before the dark.",
+        distinctive: 30, sense: Behaviour, visibility: 55, requires_knowledge: [], mood_tint: {} ),
+
+    // ===================== ForgedLineage(faction) — an untested claim =====================
+    Tell( implies: ForgedLineage,
+        template: "The charter on the wall is plainly thirty years old and calls itself ancient, and no one in {place} says so.",
+        distinctive: 40, sense: Sight, visibility: 45, requires_knowledge: ["letters"], mood_tint: {} ),
+
+    // ===================== Grieving(x) — sustained sorrow =====================
+    Tell( implies: Grieving,
+        template: "{name} keeps the good knife sharp now, the way the lost one would have hated, and sets two cups from habit.",
+        distinctive: 35, sense: Behaviour, visibility: 50, requires_knowledge: [], mood_tint: {} ),
+
+    // ===================== Hostile(x -> you) — turned opinion =====================
+    Tell( implies: Hostile,
+        template: "{name}'s greeting comes a half-beat late, and the hand stays near the belt while you talk.",
+        distinctive: 35, sense: Behaviour, visibility: 55, requires_knowledge: [], mood_tint: {} ),
+
+    // ===================== Bonded(x -> you) — attachment (the endgame) =====================
+    Tell( implies: Bonded,
+        template: "{name} saved you the warm seat without being asked, and falls into step like the road had been holding your place.",
+        distinctive: 35, sense: Behaviour, visibility: 50, requires_knowledge: [],
+        mood_tint: { "longing": " You found you did not want to think about leaving." } ),
+]

@@ -23,6 +23,10 @@ product" without itemising it. **These three docs are that worldbuilding and tha
    author into — **`tells.ron`** (the Wolfean tell libraries, the heart of the corpus) and the hardened
    **`grammar.ron`** — plus the agent_core meaning-data (registers, intents, beats), how the generators
    map onto them, and a plane-friendly flight plan. **Defers to the two v2 docs where they overlap.**
+4. **[`worked_examples.md`](./worked_examples.md)** — *one copy-paste example for every surface*, in
+   the Waxen voice, with the real RON syntax. Start here if the catalog feels abstract. A pre-seeded
+   starter file lives at **`assets/data/tells.ron`** (12 fact-kinds, a few tells each) — fill it in
+   rather than starting blank. (That file is inert until a loader lands — it's authoring ahead of code.)
 
 **The golden rule across all of these:** the cosmology is *never named* to the player. Lethe, Penury,
 Caryatid, tallow, Corollary, the forgery — these are authoring labels and fact-kinds, not words a
