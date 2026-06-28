@@ -1,14 +1,29 @@
 # The Waxen World — Style Guide
 
-> How to write *anything* the player reads in achlydesa: room prose, dialogue lines, rumor,
-> a relic's description, a single overheard aside. Read `waxen_world.md` (the canon) first,
-> then this, then `content_catalog.md` (the worklist). When a line you're authoring and this
+> How to write *anything* the player reads in achlydesa: scene prose, dialogue lines, rumor,
+> the symptom that implies a relic, a single overheard aside. Read `waxen_world.md` (the canon)
+> first, then this, then `content_catalog.md` (the worklist). When a line you're authoring and this
 > guide disagree, the **Voice Gallery in `waxen_world.md` §I wins** — those seven passages are
 > the tuning fork. Read one aloud before a writing session.
+>
+> **This guide is the *voice* companion to the v2 architecture in `docs/prose_generation.md` (how
+> prose is generated — guarded grammar + Wolfean tells, no LLM, never false) and
+> `docs/text_interface.md` (the parser front-end). It does not override them; it tells you how the
+> fragments and tells they call for should *sound*.** Note the consequence: you are not writing
+> finished passages, you are writing **fact-keyed fragments** (a *tell* = one oblique symptom of one
+> true fact) that the engine assembles per scene. The craft below is exactly the craft of writing a
+> good tell.
 
 ---
 
 ## 1. The one rule
+
+> **Why this is *safe*, not just stylish (the v2 justification):** the engine never states a falsehood
+> because it only ever emits a fragment whose underlying fact is true (`prose_generation.md`). The
+> Wolfean voice rides on top of that as a Gricean move — **flout Quantity, never Quality**: say *less*
+> than the whole truth (omit the bald fact), but everything you *do* say is literally true. Hemingway's
+> iceberg works because the simulation genuinely holds the seven-eighths underwater. So the voice and
+> the truth-guarantee are the same discipline: imply by omission, never by invention.
 
 **The narrator is native to the Cerement and finds nothing strange.** Everything else here is a
 consequence of that one fact. The world is a forgery — a waxen imitation of a real world, kept
@@ -100,15 +115,28 @@ and the player renders *verdicts* (is this ruin authentic, is this person return
 threat). The prose voice exists to **serve that verb**: every passage should carry exactly the readable
 material the player needs, dressed as the teller's ordinary observation.
 
-- A **tell** in prose is a concrete, slightly-wrong detail the player can choose to notice or pass over
-  (the too-smooth hand, the clean first page, the lamps sinking low).
+- A **tell** is the formal unit of this game's prose (`prose_generation.md` §"The Wolfean layer"): a
+  `Tell` is one *oblique symptom* of one true fact — a concrete detail the player can notice or pass
+  over (the too-smooth hand, the clean first page, the lamps sinking low). You author tells into
+  `tells.ron`; each carries a `distinctive` dial.
+- **Oblique by default — keep `distinctive` low.** The reader must do the inference; a high
+  `distinctive` tell is nearly a statement, so reserve it. A high-perception character notices *more*
+  tells (a denser web of implication), never an *easier* one — so do not author a "plain" version of a
+  tell for skilled readers. Reading is never trivialised.
 - Never *flag* a flagged thing — **leak it through ordinary self-presentation** (`waxen_world.md` §E).
-  The innkeeper isn't "described as Returned"; he's "warm, helpful, slightly too accurate about your
-  business, who cannot tell you how long he has kept the place."
-- **Fidelity is in the prose.** When the surfacing layer marks a claim as second-hand or Lethe-thinned,
-  the prose hedges: "they say," "the toll-book went back eleven years and then stopped," "you'd have
-  sworn you'd never met her." High-fidelity (you witnessed it) prose is flat and certain. Match the
-  hedging to the reliability the system hands you.
+  The innkeeper isn't "described as Returned"; the tell is "slightly too accurate about your business,
+  and cannot tell you how long he has kept the place."
+- **Focalise.** A tell is only surfaced if the observer could plausibly perceive it (co-located, has
+  the prerequisite knowledge, the symptom is visible enough). Write the symptom as something *this*
+  body, in *this* place, would actually notice — and tint it through their mood (free indirect
+  discourse: the same fact reads differently to an anxious vs. a gloating observer).
+- **Fidelity is in the prose — and it traces to a real record.** Rumor, gossip, and corrupt text are a
+  legitimate second tier (`prose_generation.md` §"The distortion tier"), but **every falsehood derives
+  from a real fact** — a garbled rumor, a worn slate, a half-memory; never invented lore. So when a
+  claim is second-hand or Lethe-thinned, the prose hedges ("they say," "the toll-book went back eleven
+  years and then stopped," "you'd have sworn you'd never met her") and the *distortion lives in the
+  record, not in your prose*. High-fidelity (you witnessed it) prose is flat and certain. Write so the
+  player can **triangulate** — compare frayed accounts and recover what truly happened.
 
 If a line reads beautifully but gives the player nothing to *read*, it's set-dressing. If it gives a
 tell but breaks the native stance, it's a tutorial. The target is both at once.

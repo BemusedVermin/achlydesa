@@ -1,469 +1,362 @@
 # The Waxen World — Content Authoring Catalog
 
-> The worklist for the v2 text-first shift. Every surface a writer can author into, with its exact
-> file, schema, current size, a target, a priority, and worked examples **in voice**. Pair it with
-> `style_guide.md` (how to write) and `waxen_world.md` (the canon). Built to be worked **offline** —
-> everything you need to author is in this file; you don't need to read the code.
+> The corpus worklist for the v2 text conversion. It enumerates the **fragment/tell library** that
+> `docs/prose_generation.md` calls "the product" but does not itemise, written in the voice of
+> `docs/worldbuilding/style_guide.md` and the canon of `waxen_world.md`. Built to be worked
+> **offline** — every surface you can author into is here with its schema, a target, and worked
+> examples in voice; you don't need to read the code.
 >
-> **Conventions:** all content lives under `assets/data/*.ron` and is parsed by the owning crate (see
-> `CLAUDE.md`). Adding lines/entries needs **no recompile** for the prose surfaces (grammar, registers,
-> features, bestiary, goods); it's just data. Beats/intents/norms are data too but interact with
-> mechanics — author prose freely, but flag any new *mechanical* field for a dev pass.
+> **This catalog is a companion to the two v2 design docs — read them first; they are the canon for
+> *how* prose is made, and this catalog must not contradict them:**
+> - **`docs/prose_generation.md`** — the no-LLM, never-false generative-grammar + Wolfean-tells pipeline.
+> - **`docs/text_interface.md`** — the terminal (ratatui) parser front-end the prose renders into.
 >
-> **Golden rule (repeat):** the cosmology is *never named* to the player. Canon terms in this catalog
-> (Lethe, Penury, Caryatid, tallow, Corollary…) are **authoring labels only**. Write the folk idiom
-> (`style_guide.md` §6).
+> **Do not edit those two files.** This catalog and the other two `worldbuilding/` docs sit beside
+> them and fill the worldbuilding/corpus they keep saying is "forthcoming."
 
 ---
 
-## 0. How to use this on a plane
+## 0. The one correction that reframes everything
 
-Work top-down by priority. Each surface below is self-contained: schema + examples + a target count.
-Author into a scratch copy of the `.ron` file (or a `.md` draft if you prefer), keep entries small and
-many, and run the `style_guide.md` §9 checklist on each line. A suggested batching for one long flight
-is in §10.
+**You do not hand-write a description per location, NPC, or item.** That is ruled out by design
+(`prose_generation.md` §"The problem": the fact-space is emergent and open; a hand-authored passage
+per situation does not scale). Instead, **prose is generated from sim facts** by a guarded grammar
+and a library of *tells*, assembled per scene by salience. So the writer's job is **not** "describe
+the 101 features"; it is to **author a finite library of fact-keyed fragments** the engine assembles
+against the infinite set of fact *instances*.
 
-**The single biggest gap for a Zork-like:** the world has **101 locations with zero descriptive prose**
-(`features.ron` is placement-math only). Location prose (§E) is the new spine of a text game and is
-where most of the writing lives. It needs a tiny engine hook (noted in §E) but the *prose* can and
-should be drafted now.
+Concretely, there are exactly **two prose surfaces** to author into, plus the existing agent_core
+content lists:
+
+| Surface | File | What it is | Status |
+|---|---|---|---|
+| **Tells** | `assets/data/tells.ron` *(new, design-status)* | Oblique symptom fragments, one library per *fact kind*; the Wolfean layer. **The heart of the corpus.** | design (`prose_generation.md` §Data-driven content) |
+| **Grammar** | `assets/data/grammar.ron` *(exists; being hardened)* | Guarded/tagged Tracery productions — the sentence skeletons and fills tells/lines realise through. | live; evolving to guarded form |
+
+Everything else (registers, intents, beats, bestiary, goods, norms) is **agent_core meaning-data**,
+unaffected by the front-end shift — still worth authoring, lower priority for the text conversion.
+
+> **Retracted from the previous draft of this catalog:** the proposed `places.ron` / `relics.ron`
+> "one `look`/`brief` string per feature" surface, and any reference to the Bevy `app`,
+> `player_view`, `PlaceRealizer`, or the SLM/`voice` re-voicer. All of that is **superseded** —
+> `app` and `voice` are retired (`text_interface.md` §Workspace changes; `prose_generation.md`
+> §Determinism "Retire the SLM"), and per-entity static prose is the anti-pattern the architecture
+> exists to avoid. Location prose is *assembled from tells over the facts true at a tile*, not stored.
 
 ---
 
 ## 1. The surfaces at a glance
 
-| # | Surface | File | Now | Target | Prose? | Priority | Plane-friendly |
-|---|---|---|---|---|---|---|---|
-| **E** | **Location / room prose** | *new* `places.ron` | 0 | ~120 (1 per feature, + variants) | **all prose** | **P0** | ★★★ pure writing |
-| **A** | Dialogue grammar | `grammar.ron` | ~450 lines / 109 buckets | 1,500+ lines | **all prose** | **P0** | ★★★ pure writing |
-| **F** | Relic / item descriptions | *new* `relics.ron` | 0 | ~40 | **all prose** | P1 | ★★★ pure writing |
-| **B** | Dramatic registers | `registers.ron` | 15 | 25–30 | **prose-heavy** | P1 | ★★☆ prose + 3 flags |
-| **G** | Overheard asides / world flavor | `grammar.ron` helpers | ~8 helper rules | 25+ | **all prose** | P1 | ★★★ pure writing |
-| **C** | Narrative beats | `beats.ron` | 97 | 150+ | mixed | P2 | ★☆☆ mechanical |
-| **D** | Conversational intents | `intents.ron` | 70 | 90+ | mechanical | P2 | ★☆☆ mechanical |
-| **H** | Bestiary | `bestiary.ron` | 16 | 30+ | names + flavor | P2 | ★★☆ light prose |
-| **I** | Goods / relics economy | `goods.ron` | 9 | 20+ | names | P3 | ★☆☆ mechanical |
-| **J** | Norms / taboos | `norms.ron` | 6 | 10–12 | mechanical | P3 | ★☆☆ mechanical |
-| **—** | Codex / cosmology lore (canon doc) | `waxen_world.md` + new | — | living | reference | P1 | ★★☆ worldbuilding |
+| # | Surface | File | Now | Target | Plane-friendly | Priority |
+|---|---|---|---|---|---|---|
+| **A** | **Wolfean tells** | `tells.ron` *(new)* | 0 | a library per fact-kind (~30 kinds × 4–8 tells) | ★★★ pure writing + light tagging | **P0** |
+| **B** | **Grammar productions / skeletons** | `grammar.ron` | ~450 lines | 1,500+, guarded & tagged | ★★★ pure writing + light tagging | **P0** |
+| **C** | Dramatic registers | `registers.ron` | 15 | 25–30 | ★★☆ prose + 3 flags | P1 |
+| **D** | Conversational intents | `intents.ron` | 70 | 90+ | ★☆☆ mechanical | P2 |
+| **E** | Narrative beats | `beats.ron` | 97 | 150+ | ★☆☆ mechanical | P2 |
+| **F** | Bestiary | `bestiary.ron` | 16 | 30+ | ★★☆ light prose | P2 |
+| **G** | Goods / norms | `goods.ron`, `norms.ron` | 9 / 6 | 20 / 12 | ★☆☆ mechanical | P3 |
+| **—** | Salience / fact-kind importances | data (per `prose_generation.md` §Salience) | — | tuned | ☆ dev tuning | P2 |
 
-Generators (`waxen_world.md` Part II) are **not a separate file** — they are the *method* for filling
-the surfaces above. §9 maps each generator (Seam-Stance, Faction, Society, History, People) onto the
-concrete surfaces it feeds.
+The `waxen_world.md` Part II generators are **not a file** — they are the *method* for deciding which
+fact-kinds and tells to author and how they should read. §8 maps each generator onto these surfaces.
 
 ---
 
-## E. Location / room prose  ·  P0  ·  *new surface*
+## A. Wolfean tells — `assets/data/tells.ron` · P0 · *the heart of the corpus*
 
-**The text-game spine.** A Zork-like is its rooms. We have 101 placeable features (`features.ron`:
-thorp, village, city, monastery, royal_court, temple, thieves_guild, ruined_keep, barrow,
-sunken_temple, catacombs, shrine, monument, sacred_grove, faerie_ring, frontier_fort, nomad_camp,
-fishing_village, mining_camp, …) with **no descriptive text**. Each needs:
+A **tell** is an oblique surface fragment that a fact *entails* but never names — a symptom, not the
+diagnosis (`prose_generation.md` §"The Wolfean layer"). The fact `Poor(npc)` is never rendered "he is
+poor"; it surfaces as *"he counts the coppers twice before he lets them go, and his cloak has been
+turned at the collar."* The engine only emits a tell when its `implies` fact is **true right now**, so
+a tell can never lie. This is where the house style lives, and it is the single largest writing job.
 
-- a **first-look** description (2–4 sentences, §8 voice),
-- a **brief** re-look (1 sentence),
-- and ideally **2–3 state variants** keyed to the Society-generator rolls (§9.C) so the same feature
-  type reads differently per settlement (a salt-town vs. a fog-bound thorp).
-
-**Engine note (one small dev hook needed):** `features.ron` entries carry no text field today.
-Proposed authoring schema — a parallel `assets/data/places.ron` keyed by feature `name`, so prose is
-decoupled from placement math and a writer never edits the math file:
+**Schema** (from `prose_generation.md`; author against this shape now — the loader is design-status):
 
 ```ron
-// assets/data/places.ron — proposed; prose can be drafted now against this shape
-{
-    "thorp": (
-        look: "A double handful of turf-roofed houses leaning on each other against the cold. \
-               The lamps are kept low here even at supper, and no one says it's to save the oil. \
-               A child watches you from a doorway and does not wave.",
-        brief: "The low houses, the kept-low lamps, the unwaving child.",
-        // optional state variants, chosen by the settlement's rolled pressures (§9.C):
-        variants: [
-            (when: "scarcity:salt",   look: "..."),
-            (when: "return:venerate", look: "..."),
-        ],
-    ),
-    "barrow": ( look: "...", brief: "..." ),
-    // ...one per feature name
+// assets/data/tells.ron
+Tell {
+    implies:            FactKind,            // the true fact this obliquely conveys
+    template:           "...",               // grammar fragment: a SYMPTOM, never the diagnosis
+    distinctive:        u8,                  // 0..100 — how uniquely this detail is caused by the fact
+    sense:              Sense,               // Sight | Sound | Smell | Behaviour — how it is noticed
+    visibility:         u8,                  // 0..100 — how plainly observable the symptom is
+    requires_knowledge: ["token", ...],      // observer must already know this to read the tell
+    mood_tint:          { "grief": "...", "gloating": "..." },  // free-indirect colour by observer mood
 }
 ```
 
-> **Action for a dev (not the plane):** add a `places.ron` loader + a `look`/`brief` field surfaced by
-> the player's "look" verb (`player_view` in `player.rs`) and the Perception Layer's `PlaceRealizer`.
-> Until then, prose drafted against the shape above is ready to drop in.
+**Authoring rules (load-bearing — `prose_generation.md` is explicit):**
+- **Oblique by default.** Keep `distinctive` low-to-mid; the reader must do the inference. A high
+  `distinctive` is nearly a statement — reserve it. The perception/lore skill *widens* what's noticed
+  (more tells), it never makes a fact plainly stated; do **not** author "clear" tells for high-skill
+  readers.
+- **The template names the symptom, never the fact.** No cosmology words ever (`style_guide.md` §4).
+  `Returned(npc)` surfaces as *"he thanked you by a name you never gave"* — never *"he is one of the
+  returned."*
+- **Every word is an authored constant or a true slot.** Slots (`{name}`, `{count}`, `{place}`) bind
+  to real sim values; if a slot can't bind, the tell is skipped. Don't write a slot that isn't a real
+  attribute.
+- **One charged detail.** Each tell is *one* symptom. Scene assembly picks the single top tell per
+  keystone fact and suppresses the rest — so make each tell carry its fact alone.
+- **`mood_tint` is colour, not new fact.** The same true symptom reads differently through an anxious
+  vs. a gloating observer; the *fact* doesn't change.
 
-**What to write, per feature category:**
+**The fact-kinds to write libraries for** (4–8 tells each, mixed `sense`/`distinctive`). These are the
+catalogue's spine — each maps a Waxen-canon concept to a renderable fact-kind, surfaced obliquely:
 
-- **Community** (thorp, village, city, monastery, fishing_village, mining_camp, nomad_camp,
-  frontier_fort): lead with how the local **Penury** (what's rationed) and **return-custom** show in
-  daily habit. The tell is a custom obeyed without reason.
-- **Court** (royal_court, temple, guild, thieves_guild, druid_circle, barons_keep): lead with how
-  **legitimacy** is claimed (the forged lineage no one tests — Lethe). The tell is the too-clean
-  provenance.
-- **Ruin** (ruined_keep, barrow, sunken_temple, catacombs, collapsed_mine): the **Aevum/forgery**
-  ambiguity — is this real-old or painted-deep? The tell is realness that makes the present look thin,
-  *or* depth that's suspiciously legible.
-- **Wilderness** (shrine, monument, sacred_grove, natural_wonder, faerie_ring, thin places): the
-  **Asymptote** — the even, dreamless shape of a thinning. The tell is the land going wrong-smooth.
+| Fact-kind (authoring) | The thing | Example tell (template, oblique) | `sense` |
+|---|---|---|---|
+| `Poor(x)` | scarcity at a body | "counts the coppers twice before letting them go; the cloak turned at the collar" | Behaviour |
+| `Feud(a,b)` / grievance | a feud | "breaks off talking as you pass; will not be in the same room as {other}" | Behaviour |
+| `Returned(x)` (Palingenesis) | come-back-wrong | "thanks you by a name you never gave; too sure of the small true things" | Behaviour |
+| `Tallowed(x)` (Wrought) | a smoothing soul | "the hand gives the lamplight back too smooth; the glove goes on before the coin" | Sight |
+| `Dimming(here)` (Penury) | the cold/lord | "the lamps go grudging and come back low; the year a little shorter than it was" | Sight |
+| `Forgetting(x)` (Lethe) | thinned memory | "loses the thread mid-sentence and pretends he meant to; the ledger starts on a clean page" | Behaviour |
+| `Aevum(thing)` | a real relic | "a weight that argues with the hand; an edge that hasn't gone soft; makes the table look like the lie" | Sight |
+| `ThinPlace(tile)` (Asymptote) | a thinning | "the grass comes in even and untrodden; the path stops caring which way it goes" | Sight |
+| `ForgedLineage(faction)` | untested claim | "the charter is plainly thirty years old and no one says so" | Sight |
+| `Grieving(x)` / mood tells | named moods | "keeps the good knife sharp now, the way he'd have hated" | Behaviour |
+| `Hostile(x→you)` | turned opinion | "the greeting comes a half-beat late; the hand stays near the belt" | Behaviour |
+| `Bonded(x→you)` | attachment (endgame) | "saved you the warm seat without being asked; falls into step like the road kept the place" | Behaviour |
 
-**Worked examples (drop-in voice):**
+Plus tells for the everyday sim facts the scene needs (`Present`, `Trading`, `Wounded`, `Hungry`,
+faction `Stance`, season/weather), authored flat and low-`distinctive` so the charged ones stand out.
 
-> **thorp** — *A double handful of turf-roofed houses leaning on each other against the cold. The
-> lamps are kept low here even at supper, and no one says it's to save the oil. A child watches you
-> from a doorway and does not wave.*
+**Worked example (full entry, in voice):**
+```ron
+Tell(
+    implies: Returned, template: "{name} thanks you by a name you never gave, and is too sure \
+             of the small true things — that the well-rope wants replacing, which knife you keep dull.",
+    distinctive: 35, sense: Behaviour, visibility: 60, requires_knowledge: [],
+    mood_tint: { "dread": " You do not ask whose name it was.", "fond": " You let it pass, as you'd learned to." },
+),
+```
 
-> **ruined_keep** — *The keep had fallen the way old things fall, except the fall was too tidy — the
-> stones lay where a careful hand would have laid them. Diggers worked the lower courses for pieces
-> that argued with the hand, and the old families paid for those and asked nothing about the rest.*
-
-> **faerie_ring (a thin place)** — *Past the last fence the grass came in even and untrodden, poured
-> into that smooth dreamless shape, and the path you'd been on simply stopped caring which way it
-> went. Folk left the ring a wide berth and a little bread. You did the same and were glad to.*
-
-> **fishing_village** — *Boats drawn up past the tide-line, nets mended and re-mended. They don't
-> speak of the lake here, only of "the low water," and they go out at the grey hour and not before.*
-
-**Target:** one `look` + `brief` for all ~101 features (P0), then 2–3 variants for the dozen most
-common feature types (P1). This alone is a flight's work.
+**Target:** a library for ~30 fact-kinds, 4–8 tells each (~150–240 tells) — a flight's grind, and the
+highest-value writing in the project. Vary `sense` and skeleton (see §B) so a fact never reads the same
+way twice.
 
 ---
 
-## A. Dialogue grammar  ·  P0  ·  `assets/data/grammar.ron`
+## B. Grammar productions / skeletons — `assets/data/grammar.ron` · P0
 
-The deterministic generative surface for *all* spoken lines (NPC↔NPC, NPC→player, the Perception
-Layer's prose log, director-forced lines). **No phrasebook** — lines are composed from rules at
-runtime. This is the second-largest pure-writing surface.
+The deterministic surface every line (dialogue, tells, scene prose, the "while you were busy" feed)
+realises through. Today it is a blind Tracery expander; v2 hardens each production into a **guarded,
+tagged fragment** (`prose_generation.md` §"The grammar, hardened"). A bare string keeps working — a
+`Production` with no guards, no tags, weight 1 — so **author plain lines now; add guards/tags as the
+hardened form lands**.
 
-**Schema:** a RON map of `"rule_name": [ "line", "line", … ]`. Add a line by adding a string to the
-right bucket. It's live immediately.
-
+**Schema (target, guarded/tagged):**
 ```ron
-"greet/warm": [
-    "#listener#. It does my soul good to see your face.",
-    "Ah — #listener#. Come close. The fog is thick tonight.",
-    // add your line here ↓
-    "#listener# — sit. You look like the road's been at you.",
+Production {
+    template: "...",          // literal text + #symbol# recursion + {slot} fills
+    when:     [Guard, ...],   // ALL must hold against live sim facts, else ineligible (the truth gate)
+    tags:     [Tag, ...],     // implies:feud, register:grim, sense:sight, topic:harvest — accumulate up
+    weight:   1,
+}
+```
+Guards read facts only: `Mood("grief") >= 0.5`, `Trait("vengeance") >= 0.6`, `Relation(Feud, a, b)`,
+`Season(Waning)`, `Present(x)`, `TimeOfDay(Dusk)`, `Knows(observer, token)`. Tags are author markup;
+because they accumulate, a finished line ships with machine-readable meaning the journal files by.
+
+**Authoring rules:**
+- **Vary structure, not just fillers** (the 10,000-bowls rule). Author many *skeletons* per fact shape;
+  ten skeletons × five fills reads far more varied than one × fifty.
+- **The Venom cap.** ≤ 2 independently-varied slots per sentence, ≤ 3–4 per passage, or it reads as
+  nonsense. Vary the *meaning-bearing* word (the crime, the stake), not verb synonyms.
+- **No elegant variation for pronouns.** Repeat the name when a pronoun would be ambiguous; the
+  discourse model (`prose_generation.md` §Referring expressions) licenses pronouns — don't rotate
+  synonyms for variety.
+- **Content requested by tags.** A line is asked for by meaning ("`implies:feud`, `register:grim`, not
+  `gloating`"). Tag your productions so requests can find them.
+
+**What to write:**
+- **Deepen the existing dialogue buckets** (`greet`, `console`, `mourn`, `confide`, `gossip`,
+  `accuse`, `threaten`, `plead`, `recruit`, …; act + `/affect`) to 12–15 lines each in Waxen idiom.
+- **Author skeleton sets** for the scene-prose fact shapes the tells (§A) plug into — multiple sentence
+  shapes for "a body at a tile," "a feature seen," "a thing examined," "exits described in-voice."
+- **Deepen the world-flavor helper rules** (`#world_aside#`, `#fog_phrase#`, `#mist#`, `#oath#`,
+  `#vow#`, `#lament#`, `#epithet#`, `#address#`) and add `#dimming#`, `#thin_place#`,
+  `#provenance_doubt#` — the reusable ambient idiom every line can call.
+
+**Worked example (in voice, with tags as a comment until the hardened form lands):**
+```ron
+"mourn/grieving": [
+    "He said the small true things to the last — the well-rope, the dull knife. I keep it sharp now. He'd have hated that.",
+    // tags: register:grim, implies:grief ; guard: Mood("grief") >= 0.5
 ],
 ```
 
-**Bucket naming:** `act` or `act/affect`. The renderer tries `act/affect` first, falls back to bare
-`act`. So `accuse/angry` is angry-flavored accusation; `accuse` is the neutral floor.
-
-- **Acts** (illocutionary): `greet, accuse, praise, mourn, console, reconcile, confide, plead,
-  threaten, boast, gossip, deflect, recruit` (and the matching set in `intents.ron`).
-- **Affects** (mood tags): `warm, angry, afraid, calm, grieving, …` (matches the speaker's dominant
-  mood). When in doubt author the bare act first, then the high-frequency moods (warm/angry/afraid).
-
-**Substitution tokens:** `#listener#`, `#speaker#`, `#referent#` (the subject of conflict/affection),
-plus helper rules you can call inside any line: `#address#`, `#vow#`, `#oath#`, `#world_aside#`,
-`#fog_phrase#`, `#epithet#`, `#lament#`, `#mist#`. (See §G — those helpers are themselves authorable.)
-
-**What to write:**
-- **Deepen every existing bucket** to 12–15 lines (most have ~10). Variety kills repetition; this is
-  the single highest-impact grind.
-- **Fill missing `act/affect` pairs.** Each act should have at least `warm`, `angry`, `afraid`,
-  `calm`, `grieving` where it makes sense (a grieving boast is rare; a grieving mourn is the point).
-- **Push the Waxen idiom in.** Lines should leak the world: forgetting mid-sentence (Lethe-marked
-  speaker), uncanny accuracy (Returned), the cold of a passing lord (Penury). Don't name it.
-
-**Worked examples (in voice):**
-
-> `confide/afraid`: *"Don't write this down. The fog closes in around it if you write it down — I've
-> watched it happen. Just… keep it where the mist can't reach."*
-
-> `accuse/angry`: *"You came back wrong, #listener#, and you've the gall to thank me by my own name.
-> I'll not open the gate."*
-
-> `mourn/grieving`: *"He said the small true things to the last. That the well-rope wanted replacing.
-> I keep the good knife sharp now. He'd have hated that."*
-
-**Target:** ~450 → 1,500+ lines. Prioritize: deepen `greet/console/mourn/confide/gossip` (highest
-in-game frequency), then accusation/threat/plead for drama.
+**Target:** ~450 → 1,500+ lines. Prioritise `greet/console/mourn/confide/gossip` (highest in-game
+frequency) and the scene-prose skeleton sets the tells need.
 
 ---
 
-## F. Relic / item descriptions  ·  P1  ·  *new surface*
+## C. Dramatic registers — `assets/data/registers.ron` · P1
 
-Aevum-relics and ordinary goods the player can examine. In a text game, "examine X" is a core verb;
-relics are where the **Aevum/forgery** seam is most legible at hand-scale. No file exists yet.
-
-**Proposed schema** (mirror `places.ron`): `assets/data/relics.ron`, keyed by item id, with `look`
-prose. Lead with the **material tell** (`style_guide.md` §3.4–3.5).
-
-```ron
-{
-    "true_hinge": ( look: "Just a hinge, but it has a weight that argues with your hand and an edge \
-                           that hasn't gone soft in all the years it should have. Set it on a table \
-                           and the table starts to look like the lie." ),
-    "toll_book":  ( look: "..." ),
-}
-```
-
-**What to write:** ~20 authentic relics (the realer-than-real category — they "make everything near
-them look thin"), ~20 ordinary goods (`goods.ron`: grain, bread, shroud, veil, basket, ore, ingot,
-tool — flat, mundane, no tell), and a handful of **tallow-residue** objects (a candle's-hand smoothness
-on a thing a tallowed sorcerer handled).
-
-**Target:** ~40 entries. Engine hook: same shape as §E (a small loader + the "examine" verb).
-
----
-
-## B. Dramatic registers  ·  P1  ·  `assets/data/registers.ron`
-
-The emotional keys the narrative director plays in. Each register carries the **surface prose** for an
-arc: epithets, one-line plights, gossip, quest text. 15 exist (betrayal, vengeance, romance, wonder,
-ambition, war, disaster, triumph, grace, …). Prose-heavy with three small mechanical flags.
+The emotional keys the narrative director plays in; each carries the surface prose for an arc
+(epithets, one-line plights, gossip, quest text). 15 exist. **agent_core meaning-data — unaffected by
+the front-end shift, but its epithet/situation/told/quest prose surfaces in the text client**, so
+it's worth authoring.
 
 **Schema:**
 ```ron
 (
     name: "betrayal",
     spine: true, trunk: true, bright: false, seeds: Some("vengeance"), casting: Warmest,  // mechanical
-    epithet_lead: "the Betrayed", epithet_other: "the Faithless",      // by-names (player-facing)
-    situation_lead: "still raw from a trusted friend's turning.",       // one-line plight
+    epithet_lead: "the Betrayed", epithet_other: "the Faithless",       // by-names (surface)
+    situation_lead: "still raw from a trusted friend's turning.",        // one-line plight
     situation_other: "something unconfessed moving behind its eyes.",
-    noun: "betrayal",                                                   // for gossip
-    told: "They say {lead} was betrayed by {other}.",                  // gossip sentence
-    quest_plea: "\"{other} wronged me, and I cannot let it lie. Find them.\"",  // NPC's ask
-    quest_objective: "Seek out {other}, who wronged {giver}.",          // HUD line
-),
-```
-Placeholders: `{lead}`, `{other}`, `{giver}`, `{noun}`.
-
-**What to write:** new Waxen-native registers the cosmology begs for — **loss/grief**, **return** (the
-come-back-wrong), **dimming** (Penury creeping cold), **forgetting** (Lethe eating a bond),
-**provenance/recognition** (the Aevum-real surfacing), **tallow** (a soul smoothing away),
-**waking** (Scintilla stirring). Each is ~7 prose lines. Keep the epithet a *by-name* ("the Penurious",
-"the Faithless"), never a title.
-
-**Worked example (new register, drop-in):**
-```ron
-(
-    name: "forgetting",
-    spine: false, trunk: false, bright: false, seeds: None, casting: Warmest,
-    epithet_lead: "the Half-Remembered", epithet_other: "the One They Lose",
-    situation_lead: "losing the thread of its own days, and pretending not to.",
-    situation_other: "a name on the tip of every tongue and no face to hang it on.",
-    noun: "a forgetting",
-    told: "They say {lead} can't rightly tell you how long {lead} has kept the place.",
-    quest_plea: "\"I had it. I had all of it. Help me find where it went before the mist has the rest.\"",
-    quest_objective: "Recover what {giver} is losing to the fog.",
+    noun: "betrayal",
+    told: "They say {lead} was betrayed by {other}.",                   // gossip sentence
+    quest_plea: "\"{other} wronged me, and I cannot let it lie. Find them.\"",
+    quest_objective: "Seek out {other}, who wronged {giver}.",
 ),
 ```
 
-**Target:** 15 → 25–30. The 3 mechanical flags (`spine/trunk/bright/seeds/casting`) on *new* registers
-should be sanity-checked by a dev pass; the prose is yours.
+**What to write:** Waxen-native registers the cosmology begs for — **loss/grief**, **return** (the
+come-back-wrong), **dimming** (Penury cold), **forgetting** (Lethe eating a bond), **provenance**
+(the Aevum-real surfacing — pairs with the `Aevum` tell), **tallow** (a soul smoothing away),
+**waking** (Scintilla stirring). ~7 prose fields each. Keep the epithet a *by-name*, never a title.
+Mark the 3 mechanical flags `TODO(dev)` on new registers.
+
+**Target:** 15 → 25–30. (Full new-register example: see git history / the `forgetting` sketch — epithet
+"the Half-Remembered", told "can't rightly tell you how long {lead} has kept the place.")
 
 ---
 
-## G. Overheard asides & world-flavor helpers  ·  P1  ·  `assets/data/grammar.ron`
+## D. Conversational intents — `assets/data/intents.ron` · P2 · *mechanical*
 
-The helper rules that any dialogue line can call — they carry the ambient dread. Small, pure prose,
-extremely high leverage because every line that calls them inherits the flavor. These already exist:
-`#world_aside#`, `#fog_phrase#`, `#mist#`, `#oath#`, `#vow#`, `#lament#`, `#epithet#`, `#address#`.
-
-**Schema:** same as §A — a named bucket of strings.
-```ron
-"world_aside": [
-    "the wheel turns and we forget",
-    "even the stones here dream",
-    "the archons made a fine imitation of a sky",
-    // add ↓
-    "the toll-book always starts on a clean page, you ever notice",
-],
-```
-
-**What to write:** deepen each helper to 12–15 lines and add new helper categories the Waxen canon
-wants: `#dimming#` (the cold/lamps), `#returned_tell#` (the over-true small thing), `#thin_place#`
-(the dreamless smoothness), `#provenance_doubt#` (how-old-is-it hedges), `#tallow_tell#` (the soft
-hand). These become the reusable tells §A lines lean on.
-
-**Worked examples:**
-> `#dimming#`: *"the lamps go grudging when his chair passes"* · *"the year's a little shorter than
-> it was"* · *"we keep them low and don't say why"*
-> `#returned_tell#`: *"he knew my business better than I'd told it"* · *"she thanked me by a name I
-> never gave her"*
-
-**Target:** ~8 → 25+ buckets, each 10–15 lines deep.
-
----
-
-## C. Narrative beats  ·  P2  ·  `assets/data/beats.ron`  ·  *mechanical, less plane-friendly*
-
-The director's repertoire of dramatic micro-scenes (Polti's 36 situations as a base). 97 exist. These
-are **data, not prose** — preconditions, casting, world-effects — so they're harder to author offline
-without testing, but new ones can be drafted against the schema.
-
-**Schema:**
-```ron
-(
-    id: "a_kindred_spirit",
-    register: "romance",                         // → registers.ron supplies the prose
-    tags: ["romance", "relief", "personal"],
-    phases: [Setup],                             // Setup | Rising | Climax | Fall
-    tension: -0.5, stakes: 0.6,
-    cast: [Protagonist, Lover],                  // roles to fill
-    pre: [Exists(who: Lover)],                   // preconditions
-    effects: [                                   // world mutations
-        Turn(who: Lover, toward: Protagonist, delta: 0.6),
-        Stir(who: Lover, mood: "love", delta: 0.4),
-    ],
-),
-```
-Roles: `Protagonist, Ally, Rival, Foe, Patron, Bystander, Lover, Mentor`. Effects:
-`Turn, Stir, Sway, Grudge, Decree, War, Disaster, Afflict, Reveal, Bond, Free, Voice`.
-
-**What to write (offline-draftable, dev-verified later):** beats for the new Waxen registers (§B) —
-**a return** (someone the player knew comes back wrong: `Reveal` + `Afflict`), **a dimming** (a
-Castellan passes, `Disaster`-lite cold), **a forgetting** (a bonded soul loses the player — leans on
-`Effect::Free`/the impact-floor, per `gameplay_targets.md`), **a recognition** (an Aevum-relic
-surfaces). Tie each to its register so the prose comes free.
-
-**Target:** 97 → 150+. Draft on the plane; flag for a dev to validate `pre`/`effects` against the
-real enums before committing to a run.
-
----
-
-## D. Conversational intents  ·  P2  ·  `assets/data/intents.ron`  ·  *mechanical*
-
-The *why* behind a line — pairs an act with IAUS scoring (who wants to say it) and social effects. 70
-exist. Mostly you don't touch these; add one only to unlock a new *voice* (a new act/affect that
-grammar §A then renders).
+The *why* behind a line — an act paired with IAUS scoring (who wants to say it) and social effects. 70
+exist. Under the parser conversation model (`text_interface.md` §Conversation), the player picks an
+intent by typing it (`accuse him`, `ask about the feud`) — the meaning system is unchanged; only the
+*picker* changed from menu to parser. Add an intent only to unlock a new *voice* (then author its
+grammar bucket in §B).
 
 **Schema:**
 ```ron
 (
     id: "a_greeting", act: "greet", tags: ["warmth"], weight: 0.4,
-    appeal: [
-        (input: OpinionOf,            curve: Linear(m: 0.8, b: 0.1)),
-        (input: Trait("sociability"), curve: Linear(m: 0.6, b: 0.1)),
-    ],
+    appeal: [ (input: OpinionOf, curve: Linear(m: 0.8, b: 0.1)),
+              (input: Trait("sociability"), curve: Linear(m: 0.6, b: 0.1)) ],
     moves: [ Turn(who: Listener, toward: Speaker, delta: 0.03) ],
 ),
 ```
-Inputs: `OpinionOf, Trait(name), Mood(name), GrievanceAgainst, SharedHistory, Prominence`.
-
-**What to add (rare):** intents for Waxen tells — e.g. `a_slip_of_memory` (a Lethe-marked speaker,
-appeals on a "forgetting" mood), `a_too-true-thing` (a Returned speaker). Pair each with a grammar
-bucket (§A) of the same act. **Target:** 70 → ~90, mostly to support the new registers.
+**What to add (rare):** intents for Waxen tells — `a_slip_of_memory` (Lethe), `a_too_true_thing`
+(Returned). Pair each with a grammar bucket. **Target:** 70 → ~90.
 
 ---
 
-## H. Bestiary  ·  P2  ·  `assets/data/bestiary.ron`  ·  *light prose*
+## E. Narrative beats — `assets/data/beats.ron` · P2 · *mechanical*
 
-16 creatures (ash elk, rime vole, glass deer, wraith cat, dust stalker, …). Names are evocative;
-there's no description field yet. Plane-friendly for **naming**, and for drafting one-line descriptions
-into a future `look` field (same hook as §E).
+The director's repertoire of dramatic micro-scenes (Polti). 97 exist. **Data, not prose** — casting +
+preconditions + world-effects — harder to author offline without testing, but new ones draft against
+the schema. The text client surfaces them via the prose layer and the "while you were busy" feed; the
+director's `Effect::Voice` lines are heard in conversation (`text_interface.md` §Conversation).
 
 **Schema:**
 ```ron
 (
-    name: "ash elk", diet: Herbivore, form: Strider, habitat: ["tundra"],
-    min_temp: 0.0, max_temp: 7.0, size: 1.5, fecundity: 0.7, gregarious: 1.0,
-    color: (0.60, 0.62, 0.66),
+    id: "a_kindred_spirit", register: "romance", tags: ["romance","relief","personal"],
+    phases: [Setup], tension: -0.5, stakes: 0.6,
+    cast: [Protagonist, Lover], pre: [Exists(who: Lover)],
+    effects: [ Turn(who: Lover, toward: Protagonist, delta: 0.6),
+               Stir(who: Lover, mood: "love", delta: 0.4) ],
 ),
 ```
-Diet: `Herbivore | Carnivore`. Form: `Strider | …` (check enum before adding new forms).
+Roles: `Protagonist, Ally, Rival, Foe, Patron, Bystander, Lover, Mentor`. Effects include `Bond`,
+`Free`, `Voice` (the endgame attachment primitives, per `gameplay_targets.md`).
 
-**What to write:** ~14 more biome-appropriate fauna with Waxen-tinged names (things that read as the
-fog's own wildlife — pale, wrong-smooth, too-quiet). Keep names plain-eerie, not fantasy-baroque (per
-`style_guide.md`: a tired carter's nouns). **Target:** 16 → 30+.
+**What to draft:** beats for the new Waxen registers (§C) — **a return**, **a dimming**, **a
+forgetting** (leans on `Effect::Free`/the impact-floor), **a recognition** (an `Aevum` relic
+surfaces). Tie each to its register so the surface prose comes free. **Target:** 97 → 150+. Flag
+`pre`/`effects` for a dev to validate against the real enums.
 
 ---
 
-## I. Goods & economy  ·  P3  ·  `assets/data/goods.ron`  ·  *mechanical*
+## F. Bestiary — `assets/data/bestiary.ron` · P2 · *light prose*
 
-9 goods (grain, bread, reed-fibre, shroud, veil, basket, ore, ingot, tool). Integer economy — new
-goods need a `recipe` (`recipes.ron`) to enter the world. Schema:
+16 creatures. Names are evocative; description is *generated* from tells (§A) over the creature's
+facts, not stored — so author **names + a fact-tell or two** (e.g. a `Wrong(fauna)` tell: "too quiet
+for its size; the eyes don't track the way an animal's should"). Schema:
 ```ron
-(name: "bread", base_price: 30, target_stock: 25, nutrition: 45.0),
+(name: "ash elk", diet: Herbivore, form: Strider, habitat: ["tundra"],
+ min_temp: 0.0, max_temp: 7.0, size: 1.5, fecundity: 0.7, gregarious: 1.0, color: (0.60,0.62,0.66)),
 ```
-**What to add:** lamp-oil/heat (the Penury currency — load-bearing for the cosmology), salt (a common
-scarcity), and any relic-category trade good. Pair each with a recipe. **Target:** 9 → 20+. Mechanical;
-do with a dev.
+**What to write:** ~14 more biome fauna with plain-eerie Waxen names (the fog's own wildlife — pale,
+wrong-smooth, too-quiet); confirm `form`/`diet` enums before adding new variants. **Target:** 16 → 30+.
 
 ---
 
-## J. Norms / taboos  ·  P3  ·  `assets/data/norms.ron`  ·  *mechanical*
+## G. Goods & norms — `assets/data/goods.ron`, `norms.ron` · P3 · *mechanical*
 
-The deontic rules — the Caryatid Law as the world's taboo system. 6 exist (forbid `awaken`/`ascend`,
-oblige `bind`, …). Schema:
-```ron
-(act: "awaken", modality: Forbidden, weight: 1.3, defiance: Some("gnosis")),
-```
-Modality: `Forbidden | Permitted | Obliged`. These map directly to the **Lacuna** (the unsayable) and
-the player's transgressive verbs. **What to add:** a `name`/`speak-the-name` taboo (the local Unsayable
-from the Society generator, §9.C), a `remember-too-deep` taboo (Lethe). **Target:** 6 → 10–12.
-Mechanical; dev pass.
+- **Goods** (9): add **lamp-oil/heat** (the Penury currency — load-bearing) and **salt**; each needs a
+  `recipe` to enter the integer economy. `(name: "lamp-oil", base_price: ..., target_stock: ..., nutrition: 0.0)`.
+- **Norms** (6, the Caryatid Law as taboo): add the local **Unsayable** (Lacuna) and a
+  **remember-too-deep** (Lethe) taboo. `(act: "name-the-lake", modality: Forbidden, weight: ..., defiance: Some("gnosis"))`.
+
+Both mechanical; do with the compiler. Targets: goods 9→20, norms 6→12.
 
 ---
 
-## 9. Bridging the generators (waxen_world.md Part II) to these surfaces
+## 8. Bridging the generators (waxen_world.md Part II) → these surfaces
 
-The Part II generators aren't a file you fill — they're the **method** for filling the surfaces above
-consistently. When you author, roll the generator and let it drive the prose.
+The Part II generators are the *method* for deciding what to author, not a file:
 
-- **§A Seam-Stance** → governs the *voice* of every authored person and faction. Oblivious = props the
-  forgery up, explains nothing (the default for most §A grammar lines and §E rooms). Uneasy =
-  superstition/avoidance (the custom-without-reason; most tells live here). Collaborator/Wrought/Waked
-  = the rare, memorable ones (drive the dramatic registers §B and beats §C). **Use it as a dial on tone
-  for any line you write.**
-
-- **§B Faction generator** → feeds **registers (§B)**, **beats (§C)**, and faction-flavored **grammar
-  (§A)**. When the director instantiates a faction (Keepers / House of the Seven / Tallow-Order /
-  Lectors / Undertakings / Render-folk), it needs: a plain self-name, a by-name epithet (register
-  field), and 2–3 grammar lines in its idiom. **Author a "faction voice pack"**: ~5 lines per
-  archetype that leak its Entangled Law. (Engine note: faction naming/voice-pack selection is a dev
-  hook; the *lines* are yours to write now.)
-
-- **§C Society generator** → feeds **location prose (§E)** directly. Each settlement rolls Scarcity /
-  Amnesia / Return-custom / local-Taboo; those four become the four tells in the room's `look`, and the
-  `variants` field (§E) is exactly where the rolled pressures swap the prose. **This is why §E wants
-  variants.** Also feeds **norms (§J)** (the local Unsayable).
-
-- **§D History generator** → feeds **ruin/relic prose (§E, §F)** and a future **codex**. The four
-  strata (Lived / Hearsay / Ruin / Unwritten) are *reliability tiers* — author ruin and relic prose so
-  the deeper the claim, the more it frays (`style_guide.md` §5, fidelity-in-prose). "Is this ruin real
-  Aevum or forged depth?" is the top provenance verdict — write both readings into the prose and
+- **§A Seam-Stance** → a dial on the *voice* of every tell and line. Oblivious = props the forgery up,
+  explains nothing (flat, low-`distinctive` tells). Uneasy = the custom-without-reason (most charged
+  tells). Collaborator/Wrought/Waked = the rare, memorable fact-kinds (drive registers §C, beats §E).
+- **§B Faction generator** → **register epithets (§C)** + **faction-stance tells (§A)** + a
+  **grammar voice-pack (§B)**: ~5 lines per archetype (Keepers / House of the Seven / Tallow-Order /
+  Lectors / Undertakings / Render-folk) that leak its Entangled Law.
+- **§C Society generator** → the four rolled pressures (Scarcity / Amnesia / Return-custom / local
+  Taboo) become the **fact-kinds whose tells (§A)** a settlement's scene assembles from — *this* is how
+  the same feature type reads differently per town, with **no per-location string**. Also feeds the
+  local Unsayable norm (§G).
+- **§D History generator** → the **distortion tier** (`prose_generation.md` §"The distortion tier"):
+  the four strata (Lived / Hearsay / Ruin / Unwritten) are reliability levels driving rumor garble and
+  corrupt-text erosion. Author **degraded variants** (half-legible inscriptions, frayed rumors) — every
+  falsehood still traces to a real fact. "Is this ruin real Aevum or forged depth?" is the top
+  provenance verdict: author tells for *both* readings (the `Aevum` tell and a `ForgedDepth` tell) and
   resolve neither.
-
-- **§E People generator** → feeds **grammar affect-buckets (§A)**, **intents (§D)**, and the
-  **Corollary** flag. The cosmological flags (Returned / Tallowing / Lethe-marked / Effigies-marked /
-  Concord-marked / Corollary) are *tells leaked through ordinary self-presentation*, never labels.
-  **Author a "flag tell-set"**: for each flag, 3–5 grammar lines and one `#helper#` (§G) that leaks it.
-  (e.g. Lethe-marked → loses threads mid-sentence; Returned → over-true small things; tallowed → the
-  soft hand, "they don't last, that trade.")
+- **§E People generator** → the cosmological flags (Returned / Tallowing / Lethe-marked /
+  Effigies-marked / Concord-marked / Corollary) **are the fact-kinds you author tell libraries for**
+  (§A). A flag is *leaked through a tell*, never labelled. The Corollary flag is the one the player may
+  suspect and never confirm — author its tells deliberately ambiguous (low `distinctive`).
 
 ---
 
-## 10. Suggested flight plan (one long flight, prose-only, no compiler)
+## 9. Suggested flight plan (one long flight, prose-only, no compiler)
 
-Ordered to keep you in pure-writing mode (no engine round-trips), highest impact first:
+Reordered for v2: the work is fragments and tells, not static descriptions. All draftable offline as
+prose against the schemas above; add guards/tags as comments where the hardened form isn't in yet.
 
-1. **§E Location prose** — draft `look` + `brief` for all ~101 features into a `places.ron` draft.
-   (Biggest, most valuable, pure writing.) ~2–3 hrs.
-2. **§A Grammar deepening** — bring `greet / console / mourn / confide / gossip` to 15 lines each, in
-   Waxen idiom. ~1 hr.
-3. **§G World-flavor helpers** — add `#dimming# #returned_tell# #thin_place# #provenance_doubt#
-   #tallow_tell#`, 10+ lines each. ~45 min.
-4. **§F Relic descriptions** — 20 Aevum relics + 10 tallow-residue objects. ~45 min.
-5. **§B New registers** — write the 7 Waxen-native registers (loss, return, dimming, forgetting,
-   provenance, tallow, waking), prose fields only; mark the mechanical flags `TODO(dev)`. ~45 min.
-6. **§9 voice packs** — 5 lines per faction archetype + per people-flag tell-set, into a scratch file.
-   ~45 min.
+1. **§A Tells** — draft tell libraries for the 12 spine fact-kinds in the §A table (4–8 each), then the
+   everyday facts. *The biggest, highest-value job.* ~2–3 hrs.
+2. **§B Grammar — scene skeletons** — author multiple sentence shapes per scene fact-shape (body at a
+   tile, feature seen, thing examined, exits in-voice) so tells realise with variety. ~1 hr.
+3. **§B Grammar — dialogue depth** — bring `greet/console/mourn/confide/gossip` to ~15 lines each. ~45 min.
+4. **§B Grammar — world-flavor helpers** — deepen the helpers and add `#dimming# #thin_place#
+   #provenance_doubt#`. ~30 min.
+5. **§C Registers** — the 7 new Waxen registers, prose fields only; flags `TODO(dev)`. ~45 min.
+6. **§8 voice-packs** — 5 lines + a stance-tell per faction archetype; a tell-set per people-flag. ~45 min.
 
-Everything in 1–6 is drop-in prose against schemas in this file. Beats (§C), intents (§D), goods (§I),
-norms (§J) are mechanical — leave them for a session with the compiler. Mark anything you're unsure of
-with `TODO(dev)` and keep moving; don't let a mechanical question stall the writing.
+Leave intents (§D), beats (§E), goods/norms (§G), and salience tuning for a session with the compiler.
+Mark anything uncertain `TODO(dev)` and keep writing — don't let a mechanical question stall the prose.
 
 ---
 
-## 11. Status / provenance
+## 10. Status / provenance
 
-- These three docs (`waxen_world.md`, `style_guide.md`, `content_catalog.md`) are the v2 worldbuilding
-  authoring set. Committed to branch `claude/text-adventure-worldbuilding-hh6bun`.
-- **Counts** in §1 are read from the current `assets/data/*.ron` (2026-06). Re-check before a big push.
-- **New files proposed** (need a small dev loader hook before prose goes live): `places.ron` (§E),
-  `relics.ron` (§F), and `look`/`brief` fields surfaced via `player_view` + the Perception Layer's
-  `PlaceRealizer`. The prose is authorable now; the hook is a separate, small code task.
-- The cosmology terms used as labels here trace to `waxen_world.md`; the in-repo folk register
-  (`fog / wheel / the seven / archons`) is already live in `grammar.ron` — extend it, don't replace it.
+- These four `worldbuilding/` docs are the v2 authoring set, on branch
+  `claude/text-adventure-worldbuilding-hh6bun` (rebased onto `v2`).
+- **Canon for *how* prose is made lives in `docs/prose_generation.md` + `docs/text_interface.md`
+  (committed on v2 — do not edit). This catalog defers to them** and itemises the corpus they call
+  "the product." Where this catalog and those docs ever disagree, **those docs win** — open an issue.
+- **New file to populate:** `assets/data/tells.ron` (design-status in `prose_generation.md`); the
+  loader is a dev task, the tell prose is authorable now against the documented `Tell` schema.
+- **Superseded** (removed from an earlier draft of this catalog): a `places.ron`/`relics.ron`
+  per-entity description surface, and references to `app`/`player_view`/`PlaceRealizer`/the SLM
+  re-voicer — all retired by the v2 design.
+- Counts in §1 read from `assets/data/*.ron` at the v2 tip (2026-06-27). Re-check before a big push.
