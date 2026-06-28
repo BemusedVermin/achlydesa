@@ -9,9 +9,7 @@
 //!
 //! `cargo run -p agents --example dialogue_demo --release`
 
-use agents::{
-    DialogueConfig, DirectorConfig, Goals, Registry, Setup, Simulation, TextGen, Utterance,
-};
+use agents::{DialogueConfig, DirectorConfig, Goals, Registry, Setup, Simulation, Utterance};
 
 fn throne_goals(reg: &Registry) -> Goals {
     Goals::from_ron(
@@ -56,18 +54,6 @@ fn world() -> Simulation {
         dialogue_cfg: DialogueConfig::default(),
         ..Default::default()
     })
-}
-
-/// A stand-in for a host-supplied on-device SLM (the real one is a `candle`/`llama.cpp`
-/// adapter). It only proves the seam: the simulation hands it the grounded card + draft;
-/// here we just flag the swap. A real model would *rephrase in the character's voice*.
-struct DemoModel;
-impl TextGen for DemoModel {
-    fn generate(&self, _prompt: &str, _seed: u64) -> String {
-        // A real SLM returns an emergent line; the demo returns empty so the realizer
-        // shows its grammar fallback (so the demo stays deterministic and model-free).
-        String::new()
-    }
 }
 
 fn line(u: &Utterance) -> String {
@@ -138,14 +124,5 @@ fn main() {
                 None => println!("  → {lname} has nothing to say in return."),
             }
         }
-    }
-
-    // The SLM realizer seam (out of band): swap the surface generator for the foreground.
-    let mut realizer = agents::SlmRealizer::new(DemoModel);
-    if let Some(u) = sim.dialogue_log().last() {
-        println!(
-            "\n  The same line through the optional SLM realizer (grammar fallback shown):\n    \"{}\"",
-            realizer.realize(u)
-        );
     }
 }

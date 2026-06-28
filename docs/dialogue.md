@@ -9,6 +9,14 @@
 > with the owner over a design dialogue; the rationale and rejected alternatives are
 > preserved below.
 >
+> **Update (2026-06-27) — text conversion:** this meaning/surface split is being **generalized** from
+> one-line utterances to *all* descriptive prose (scenes, NPCs, world events, oblique "Wolfean"
+> implication) for the new text/TUI front-end. The grammar is the model; the optional `voice` SLM
+> re-voicer (§4b below) is **retired** (an LLM can distort/invent, which the new "never false" mandate
+> forbids). See **`docs/prose_generation.md`** for the full procedural-prose engine and
+> **`docs/text_interface.md`** for the front-end. The dialogue meaning layer (intents, scoring,
+> memory, the director hook) is unchanged.
+>
 > **What the build proves:** a peopled world *speaks* — each co-located soul says the
 > thing it most wants to say, scored by the same IAUS utility that ranks its goals, the
 > words composed from a generative grammar (never a phrasebook) and coloured by mood. A

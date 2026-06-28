@@ -53,7 +53,7 @@ pub use data::{
     Casting, GoodDef, GoodId, MoodDef, MoodId, Recipe, RegisterDef, RegisterId, Registry,
     ResourceKind, SkillId, TraitDef, TraitId,
 };
-pub use dialogue::{Dialogue, DialogueConfig, IntentBook, SlmRealizer, TextGen, Utterance};
+pub use dialogue::{Dialogue, DialogueConfig, IntentBook, Utterance};
 pub use director::{Cadence, Director, DirectorConfig, Protagonist, Thread};
 pub use events::{AgentEvent, Appraisals, EventQueue};
 pub use factions::{

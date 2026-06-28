@@ -9,6 +9,13 @@
 > `lib.rs`; demo `agents/examples/explore_demo.rs`; **playable 3D front-end in the `app`
 > crate** (`cargo run -p app --release`).
 
+> **Front-end conversion (2026-06-27):** the Bevy 3D `app` described below is being **retired** in
+> favour of a text-first, Zork-like **terminal client** (new `tui` crate) over the same authoritative
+> sim — pure verb-noun parser, ASCII hex map, diegetic journal, action-driven turns. The avatar model
+> and the `Simulation` API in this doc are unchanged; only the *view* changes. See
+> **`docs/text_interface.md`** (front-end) and **`docs/prose_generation.md`** (how the world is
+> narrated, no LLM, never false). Treat the `app`-specific sections below as historical.
+
 ## Playing it — the `app` crate (Bevy front-end)
 
 A first **graphical, playable** window onto the world, in the `app` crate (Bevy 0.18 +

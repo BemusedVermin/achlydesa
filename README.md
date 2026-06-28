@@ -1,31 +1,38 @@
 # achlydesa
 
-A deterministic, agent-based **living-world simulation** written in Rust, with a playable
-3D front-end. A hex world carries climate, geology, and ecology; a population of agents
-lives on it -- working, trading, forming factions, remembering, feuding, and *talking* --
-while a narrative director quietly shapes the drama. You can drop a player avatar into the
-world and explore it, wait, and hold a conversation with the souls you meet.
+A deterministic, agent-based **living-world simulation** written in Rust, played through a
+text-first, Zork-like **terminal** front-end. A hex world carries climate, geology, and
+ecology; a population of agents lives on it -- working, trading, forming factions,
+remembering, feuding, and *talking* -- while a hidden narrative director quietly shapes the
+drama. You drop into the world as a body within it: explore, take notes, and hold
+conversations with the souls you meet, while the world advances around you one turn at a time.
 
-> Status: a work in progress. The simulation, the agent layers, and a first playable
-> front-end are built and tested. Combat and an on-device dialogue model are next.
+> Status: a work in progress, mid **front-end conversion**. The simulation and agent layers
+> are built and tested. The old 3D front-end is being replaced by a terminal client -- a
+> living, MUD-like text adventure. See `docs/text_interface.md` and `docs/prose_generation.md`.
 
 ## Workspace layout
 
-A Cargo workspace of four crates, smallest to largest:
+A Cargo workspace. The simulation is engine-free (plain Rust; the agent layers use `bevy_ecs`
+-- the ECS data structures only -- never a renderer):
 
 - `sim` -- engine-agnostic agent-based-modelling core: a deterministic RNG and the
   `Substrate` / `Actor` / `Action` / `Scheduler` / `Observer` traits the rest builds on.
+- `config` -- the configuration hub: the RON format, the tunable knobs, and content sources.
 - `game_sim` -- the simulation substrate: a cylindrical hex world carrying the geological,
   climate, and ecosystem fields (elevation, temperature, water, vegetation, carrying
-  capacity, and so on). Bevy-free.
-- `agents` -- the agent layer (built on `bevy_ecs`): utility AI (IAUS) plus GOAP planning,
-  an integer economy with smoothed prices, factions and politics, personality (traits) and
-  mood, emergent dialogue, a narrative "director", and the player avatar. Bevy-free.
-- `app` -- the playable front-end (Bevy 0.18 + hexx): a true-3D hex-column view of the
-  world (column height is real elevation) with fog of war, a follow camera, and a HUD. The
-  simulation stays authoritative; the renderer is a thin view over it.
+  capacity, and so on).
+- `agent_core` -- the heart: utility AI (IAUS) plus GOAP planning, an integer economy with
+  smoothed prices, factions and politics, personality (traits) and mood, emergent dialogue, a
+  narrative director, and the player avatar.
+- `rpg` / `travel` / `party` / `survival` / `explore` -- the Worlds-Without-Number character
+  model, the travel/routing model, recruited companions, per-tile vital drain, and the
+  exploration layer.
+- `agents` -- the thin assembler: wires the layers into a run and exposes the public API.
+- `combat_core` / `combat_cli` -- the (in-progress) combat model and a headless harness.
+- `tui` -- *(in progress)* the terminal text front-end that replaces the retired 3D `app`.
 
-Design docs live in `docs/`.
+Design docs live in `docs/` -- start with `text_interface.md` and `prose_generation.md`.
 
 ## Building and running
 
@@ -34,47 +41,36 @@ Requires a recent Rust toolchain (edition 2024).
     cargo build
     cargo test
 
-Run the game. The first build is slow because the Bevy engine is compiled fully optimized;
-later builds are quick:
-
-    cargo run -p app --release
-
-Controls: click a tile to travel | Space to wait | T to speak to a nearby soul | A/D orbit
-| W/S tilt | scroll to zoom. Time is turn-based: the world advances exactly one tick per
-action you take, and stands still otherwise.
-
-Headless demos (no window):
+Headless demos of the simulation (no front-end):
 
     cargo run -p agents --example dialogue_demo --release
     cargo run -p agents --example explore_demo --release
 
+The terminal client (`cargo run -p tui --release`) is under construction.
+
 ## Design principles
 
-- **Deterministic.** Everything runs off seeded RNG; the same seed yields the same run,
-  byte for byte.
-- **Off by default.** Optional layers (dialogue, the director, the player) keep all their
-  state in their own resources, so a world without them is byte-identical to before they
-  existed.
-- **Data-driven.** Goals, norms, conversational intents, narrative beats, and the
-  generative grammar are authored as RON data, not hard-coded.
+- **Deterministic.** Everything runs off seeded RNG; the same seed yields the same run, byte
+  for byte.
+- **Off by default, on in the game.** Optional layers keep all their state in their own
+  resources, so a world without one is byte-identical to a world with it -- the tool that lets
+  a layer be switched off cleanly for a focused test. The game itself turns every layer on.
+- **Data-driven.** Goals, norms, conversational intents, narrative beats, and the generative
+  grammar are authored as RON data, not hard-coded.
 - **Integer economy.** Money and goods are integers; trade conserves money.
 
-## Dialogue, and the on-device LLM seam
+## Dialogue and procedural prose
 
-Dialogue is a new action modality for the same brain the agents already use. It splits in
+Dialogue is an action modality for the same brain the agents already use, and it splits in
 two. *Meaning* is simulation: conversational intents are scored by the same utility AI that
 ranks goals, from the speaker's traits, mood, opinion of the listener, and the grudges
-between them -- deterministic, in-tick, whole-population. *Surface* is generated, never
-drawn from a phrasebook; the always-available surface is a generative grammar.
+between them -- deterministic, in-tick, whole-population. *Surface* is generated, never drawn
+from a phrasebook: a generative grammar assembles authored fragments from grounded facts.
 
-Because the player is the avatar's mind, the player is not scored: the avatar carries no
-traits or mood, and you choose your line from the full repertoire. The soul you address
-answers from its own state.
-
-There is also an optional, out-of-band seam for a small on-device language model: a
-`TextGen` trait and an `SlmRealizer` (cache -> generate -> sanity-guard -> grammar
-fallback). The model only re-voices an already-grounded line for the one conversation in
-focus; it never feeds back into simulation state, so a build with no model loaded is
-byte-identical to one with. **No model is bundled** -- a multi-gigabyte model plus FFI is a
-host concern. To experiment with LLM-voiced dialogue, implement `TextGen` over a backend
-such as `candle` or `llama.cpp` in the `app` crate and feed it `dialogue::build_prompt`.
+The text conversion generalizes that split to all descriptive prose, under one hard rule: the
+prose must **never hallucinate or state a false thing**. Every word is an authored constant or
+a slot filled from a real simulation fact, so truth is structural -- which is why there is
+**no LLM** anywhere in the surface (a neural or Markov generator asserts unsourced claims by
+construction). See `docs/prose_generation.md` for the full engine: the guarded grammar,
+salience selection, referring expressions, the oblique "Wolfean" implication layer, and the
+truth-derived rumor/gossip distortion tier.

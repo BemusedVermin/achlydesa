@@ -34,5 +34,5 @@ pub use assets::{
 pub use params::Params;
 pub use tunables::{
     DialogueConfig, DirectorConfig, EconConfig, FactionConfig, FaunaConfig, FeatureConfig,
-    NeedsConfig, PerceptionConfig, SiftConfig, VoiceConfig,
+    NeedsConfig, PerceptionConfig, SiftConfig,
 };

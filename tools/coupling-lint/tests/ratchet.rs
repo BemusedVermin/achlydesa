@@ -41,8 +41,9 @@ fn the_lint_still_sees_the_codebase() {
 #[test]
 fn name_match_detector_fires() {
     // The `name_match` detector must catch branching on a name by string-literal matching. The
-    // feature-art registry (annotated as known debt) is the canonical surviving offender — if this
-    // stops firing, the detector regressed (or feature_art was refactored, in which case update this).
+    // combat name handling (annotated as known debt) is the canonical surviving offender — if this
+    // stops firing, the detector regressed (or combat was refactored, in which case update this).
+    // (The former anchor, app/src/feature_art.rs, was removed in the text-front-end conversion.)
     let raw = coupling_lint::scan_workspace_raw();
     let hits: Vec<&str> = raw
         .iter()
@@ -50,8 +51,8 @@ fn name_match_detector_fires() {
         .map(|f| f.key.as_str())
         .collect();
     assert!(
-        hits.iter().any(|k| k.contains("feature_art")),
-        "name_match should flag feature_art.rs's name-string matching; got {hits:?}",
+        hits.iter().any(|k| k.contains("combat")),
+        "name_match should flag combat.rs's name-string matching; got {hits:?}",
     );
 }
 

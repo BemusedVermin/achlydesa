@@ -134,8 +134,8 @@ pub struct RealizeCtx<'a> {
 
 /// Turns one `Tell` into one medium. Each Realizer is small, swappable, independently testable — the
 /// reuse that collapses the surfaces into one contract. [`GrammarRealizer`] (prose) lands in Phase 1;
-/// `PlaceRealizer` (drama-map), `ScanRowRealizer` (read-the-room), `TimelineRealizer` (combat), and
-/// the optional `SlmRealizer` follow, all behind this one trait.
+/// `PlaceRealizer` (drama-map), `ScanRowRealizer` (read-the-room), and `TimelineRealizer` (combat)
+/// follow, all behind this one trait.
 pub trait Realizer {
     type Out;
     fn realize(&self, tell: &Tell, ctx: &RealizeCtx) -> Self::Out;
@@ -144,8 +144,7 @@ pub trait Realizer {
 /// The **prose** Realizer (S5.1): render a `Tell` as one terse line of recollection, reusing the
 /// authored **register templates** (`RegisterDef::told` / `noun`) the gossip surface already fills —
 /// "wiring an existing system to a new input", with zero new prose tech. A register-less `Tell` (a
-/// bare death) falls back to a minimal connective line. The optional `SlmRealizer` (Phase 5) re-voices
-/// this same `Tell` behind the same trait, with the grammar line as its byte-identical fallback.
+/// bare death) falls back to a minimal connective line.
 pub struct GrammarRealizer;
 
 impl Realizer for GrammarRealizer {
